@@ -1536,6 +1536,17 @@ button:active {
   margin-top: 0;
 }
 
+.appearance-actions .form-actions .el-button {
+  width: 100%;
+  margin-left: 0;
+  justify-content: center;
+}
+
+/* Ensure primary button text is clearly visible */
+.appearance-actions .form-actions .el-button--primary {
+  --el-button-text-color: #fff;
+}
+
 /* Appearance sections */
 .appearance-sections {
   display: grid;
