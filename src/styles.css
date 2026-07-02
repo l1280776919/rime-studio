@@ -1660,19 +1660,25 @@ button:active {
 }
 
 .compact-form-grid .el-slider__runway.show-input {
-  margin-right: 80px;
+  margin-right: 70px;
 }
 
 .compact-form-grid .el-slider__input {
-  width: 72px;
+  width: 62px;
+}
+
+.compact-form-grid .el-slider__input .el-input__wrapper {
+  padding: 0 4px;
 }
 
 .compact-form-grid .el-slider__input .el-input__inner {
   text-align: center;
-  font-size: 12px;
-  padding: 0 4px;
+  font-size: 11px;
+  padding: 0 2px;
   color: var(--ink-800) !important;
   -webkit-text-fill-color: var(--ink-800) !important;
+  height: 28px;
+  line-height: 28px;
 }
 
 /* Compact color grid */
