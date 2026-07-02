@@ -110,13 +110,13 @@ struct AppearanceConfig {
 }
 
 fn rime_user_dir() -> Result<PathBuf, String> {
-    let appdata = env::var("APPDATA").map_err(|_| "APPDATA is not available".to_string())?;
+    let appdata = env::var("APPDATA").map_err(|_| "APPDATA 环境变量不可用".to_string())?;
     Ok(PathBuf::from(appdata).join("Rime"))
 }
 
 fn app_data_dir() -> Result<PathBuf, String> {
     let local_appdata =
-        env::var("LOCALAPPDATA").map_err(|_| "LOCALAPPDATA is not available".to_string())?;
+        env::var("LOCALAPPDATA").map_err(|_| "LOCALAPPDATA 环境变量不可用".to_string())?;
     Ok(PathBuf::from(local_appdata).join("RimeStudio"))
 }
 
@@ -430,7 +430,7 @@ fn upsert_patch_value(contents: &str, key: &str, value: &str) -> String {
 }
 
 fn write_appearance_config(user_dir: &Path, config: &AppearanceConfig) -> Result<(), String> {
-    fs::create_dir_all(user_dir).map_err(|err| format!("Failed to create Rime dir: {err}"))?;
+    fs::create_dir_all(user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
     let path = user_dir.join("weasel.custom.yaml");
     let contents = fs::read_to_string(&path).unwrap_or_else(|_| "patch:\n".to_string());
     let contents = upsert_patch_value(
@@ -541,7 +541,7 @@ fn write_appearance_config(user_dir: &Path, config: &AppearanceConfig) -> Result
         &config.hilited_candidate_back_color,
     );
 
-    fs::write(&path, contents).map_err(|err| format!("Failed to write weasel.custom.yaml: {err}"))
+    fs::write(&path, contents).map_err(|err| format!("写入外观配置文件失败: {err}"))
 }
 
 fn analyze_sogou(path: &Path) -> Option<DictHealth> {
@@ -601,10 +601,10 @@ fn copy_if_exists(source: &Path, target: &Path) -> io::Result<()> {
 fn backup_user_config(user_dir: &Path) -> Result<PathBuf, String> {
     let backup_dir = user_dir.join(format!("backup-rime-studio-{}", timestamp()));
     fs::create_dir_all(&backup_dir)
-        .map_err(|err| format!("Failed to create backup directory: {err}"))?;
+        .map_err(|err| format!("创建备份目录失败: {err}"))?;
 
-    for entry in fs::read_dir(user_dir).map_err(|err| format!("Failed to read Rime dir: {err}"))? {
-        let entry = entry.map_err(|err| format!("Failed to inspect Rime file: {err}"))?;
+    for entry in fs::read_dir(user_dir).map_err(|err| format!("读取 Rime 目录失败: {err}"))? {
+        let entry = entry.map_err(|err| format!("检查 Rime 文件失败: {err}"))?;
         let path = entry.path();
         if !path.is_file() {
             continue;
@@ -622,7 +622,7 @@ fn backup_user_config(user_dir: &Path) -> Result<PathBuf, String> {
 
         if should_backup {
             copy_if_exists(&path, &backup_dir.join(name))
-                .map_err(|err| format!("Failed to back up {name}: {err}"))?;
+                .map_err(|err| format!("备份 {name} 失败: {err}"))?;
         }
     }
 
@@ -635,8 +635,8 @@ fn list_backup_dirs(user_dir: &Path) -> Result<Vec<BackupEntry>, String> {
     }
 
     let mut backups = Vec::new();
-    for entry in fs::read_dir(user_dir).map_err(|err| format!("Failed to read Rime dir: {err}"))? {
-        let entry = entry.map_err(|err| format!("Failed to inspect Rime file: {err}"))?;
+    for entry in fs::read_dir(user_dir).map_err(|err| format!("读取 Rime 目录失败: {err}"))? {
+        let entry = entry.map_err(|err| format!("检查 Rime 文件失败: {err}"))?;
         let path = entry.path();
         if !path.is_dir() {
             continue;
@@ -682,12 +682,12 @@ fn validated_backup_dir(user_dir: &Path, backup_name: &str) -> Result<PathBuf, S
         || backup_name.contains('\\')
         || backup_name.contains("..")
     {
-        return Err("Invalid backup name".to_string());
+        return Err("无效的备份名称".to_string());
     }
 
     let backup_dir = user_dir.join(backup_name);
     if !backup_dir.is_dir() {
-        return Err(format!("Backup does not exist: {backup_name}"));
+        return Err(format!("备份不存在: {backup_name}"));
     }
 
     Ok(backup_dir)
@@ -697,8 +697,8 @@ fn restore_backup_dir(user_dir: &Path, backup_dir: &Path) -> Result<RestoreResul
     let safety_backup_dir = backup_user_config(user_dir)?;
     let mut restored_files = 0usize;
 
-    for entry in fs::read_dir(backup_dir).map_err(|err| format!("Failed to read backup: {err}"))? {
-        let entry = entry.map_err(|err| format!("Failed to inspect backup file: {err}"))?;
+    for entry in fs::read_dir(backup_dir).map_err(|err| format!("读取备份失败: {err}"))? {
+        let entry = entry.map_err(|err| format!("检查备份文件失败: {err}"))?;
         let source = entry.path();
         if !source.is_file() {
             continue;
@@ -709,7 +709,7 @@ fn restore_backup_dir(user_dir: &Path, backup_dir: &Path) -> Result<RestoreResul
         };
 
         fs::copy(&source, user_dir.join(name))
-            .map_err(|err| format!("Failed to restore {name}: {err}"))?;
+            .map_err(|err| format!("恢复 {name} 失败: {err}"))?;
         restored_files += 1;
     }
 
@@ -727,7 +727,7 @@ fn get_custom_phrases_sync() -> Result<Vec<PhraseEntry>, String> {
     }
 
     let contents = fs::read_to_string(&path)
-        .map_err(|err| format!("Failed to read custom_phrase.txt: {err}"))?;
+        .map_err(|err| format!("读取自定义短语文件失败: {err}"))?;
 
     let mut phrases = Vec::new();
     for line in contents.lines() {
@@ -756,7 +756,7 @@ fn get_custom_phrases_sync() -> Result<Vec<PhraseEntry>, String> {
 
 fn save_custom_phrases_sync(phrases: Vec<PhraseEntry>) -> Result<(), String> {
     let user_dir = rime_user_dir()?;
-    fs::create_dir_all(&user_dir).map_err(|err| format!("Failed to create Rime dir: {err}"))?;
+    fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
     backup_user_config(&user_dir)?;
 
     let path = user_dir.join("custom_phrase.txt");
@@ -777,7 +777,7 @@ fn save_custom_phrases_sync(phrases: Vec<PhraseEntry>) -> Result<(), String> {
     };
 
     let mut contents = if existing_header.is_empty() {
-        String::from("# Rime custom phrases\n# Format: phrase\\tcode\\tweight\n")
+        String::from("# Rime 自定义短语\n# 格式: 短语\\t编码\\t权重\n")
     } else {
         format!("{existing_header}\n")
     };
@@ -793,7 +793,7 @@ fn save_custom_phrases_sync(phrases: Vec<PhraseEntry>) -> Result<(), String> {
     }
 
     fs::write(&path, contents)
-        .map_err(|err| format!("Failed to write custom_phrase.txt: {err}"))
+        .map_err(|err| format!("写入自定义短语文件失败: {err}"))
 }
 
 fn list_dictionaries_sync() -> Result<Vec<DictInfo>, String> {
@@ -804,10 +804,10 @@ fn list_dictionaries_sync() -> Result<Vec<DictInfo>, String> {
 
     let mut dicts = Vec::new();
     let entries = fs::read_dir(&user_dir)
-        .map_err(|err| format!("Failed to read Rime dir: {err}"))?;
+        .map_err(|err| format!("读取 Rime 目录失败: {err}"))?;
 
     for entry in entries {
-        let entry = entry.map_err(|err| format!("Failed to inspect file: {err}"))?;
+        let entry = entry.map_err(|err| format!("检查文件失败: {err}"))?;
         let path = entry.path();
         if !path.is_file() {
             continue;
@@ -871,28 +871,28 @@ fn get_dict_health_sync(dict_name: String) -> Result<DictHealth, String> {
     let path = user_dir.join(&valid_name);
 
     if !path.exists() {
-        return Err(format!("Dictionary does not exist: {valid_name}"));
+        return Err(format!("词库不存在: {valid_name}"));
     }
 
-    analyze_sogou(&path).ok_or_else(|| "Failed to analyze dictionary".to_string())
+    analyze_sogou(&path).ok_or_else(|| "词库分析失败".to_string())
 }
 
 fn open_in_explorer(path: &Path) -> Result<(), String> {
     if !path.exists() {
-        return Err(format!("Path does not exist: {}", path.display()));
+        return Err(format!("路径不存在: {}", path.display()));
     }
 
     Command::new("explorer")
         .arg(path)
         .spawn()
-        .map_err(|err| format!("Failed to open Explorer: {err}"))?;
+        .map_err(|err| format!("打开资源管理器失败: {err}"))?;
     Ok(())
 }
 
 fn run_command(mut command: Command) -> Result<(bool, String), String> {
     let output = command
         .output()
-        .map_err(|err| format!("Failed to run command: {err}"))?;
+        .map_err(|err| format!("运行命令失败: {err}"))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -903,7 +903,7 @@ fn run_command(mut command: Command) -> Result<(bool, String), String> {
 
 fn ensure_plum(plum_dir: &Path) -> Result<String, String> {
     let git = locate_git()
-        .ok_or_else(|| "Git is required to install rime-ice, but git was not found".to_string())?;
+        .ok_or_else(|| "安装 rime-ice 需要 Git，但未找到".to_string())?;
 
     let mut log = String::new();
     if plum_dir.join(".git").exists() {
@@ -912,12 +912,12 @@ fn ensure_plum(plum_dir: &Path) -> Result<String, String> {
         let (success, command_log) = run_command(command)?;
         log.push_str(&command_log);
         if !success {
-            return Err(format!("Failed to update plum:\n{log}"));
+            return Err(format!("更新 plum 失败:\n{log}"));
         }
     } else {
         if let Some(parent) = plum_dir.parent() {
             fs::create_dir_all(parent)
-                .map_err(|err| format!("Failed to create app data directory: {err}"))?;
+                .map_err(|err| format!("创建应用数据目录失败: {err}"))?;
         }
 
         let mut command = Command::new(&git);
@@ -930,7 +930,7 @@ fn ensure_plum(plum_dir: &Path) -> Result<String, String> {
         let (success, command_log) = run_command(command)?;
         log.push_str(&command_log);
         if !success {
-            return Err(format!("Failed to clone plum:\n{log}"));
+            return Err(format!("克隆 plum 失败:\n{log}"));
         }
     }
 
@@ -939,10 +939,10 @@ fn ensure_plum(plum_dir: &Path) -> Result<String, String> {
 
 fn deploy_rime_internal() -> Result<DeployResult, String> {
     let deployer =
-        locate_deployer().ok_or_else(|| "WeaselDeployer.exe was not found".to_string())?;
+        locate_deployer().ok_or_else(|| "未找到 WeaselDeployer.exe".to_string())?;
     let deployer_path = if deployer.extension().and_then(|ext| ext.to_str()) == Some("lnk") {
         return Err(
-            "Found the Start Menu shortcut, but direct shortcut execution is not implemented yet"
+            "找到开始菜单快捷方式，但尚未支持快捷方式直接执行"
                 .to_string(),
         );
     } else {
@@ -954,15 +954,15 @@ fn deploy_rime_internal() -> Result<DeployResult, String> {
         .current_dir(
             deployer_path
                 .parent()
-                .ok_or_else(|| "Deployer has no parent directory".to_string())?,
+                .ok_or_else(|| "部署器路径异常".to_string())?,
         )
         .output()
-        .map_err(|err| format!("Failed to run deployer: {err}"))?;
+        .map_err(|err| format!("运行部署器失败: {err}"))?;
 
     Ok(DeployResult {
         success: output.status.success(),
         message: if output.status.success() {
-            "Rime deployment finished".to_string()
+            "Rime 部署完成".to_string()
         } else {
             String::from_utf8_lossy(&output.stderr).to_string()
         },
@@ -1015,21 +1015,21 @@ fn install_rime_ice_sync(recipe: Option<String>) -> Result<InstallResult, String
     let bash = locate_git_bash();
     if bash.is_none() {
         return Err(
-            "Git Bash is required to run rime-install, but Git Bash was not found".to_string(),
+            "运行 rime-install 需要 Git Bash，但未找到".to_string(),
         );
     }
     let bash = bash.unwrap();
 
     let recipe = recipe.unwrap_or_else(|| "iDvel/rime-ice:others/recipes/full".to_string());
     let user_dir = rime_user_dir()?;
-    fs::create_dir_all(&user_dir).map_err(|err| format!("Failed to create Rime dir: {err}"))?;
+    fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
     let backup_dir = backup_user_config(&user_dir)?;
     let plum_dir = app_data_dir()?.join("plum");
 
     let mut log = String::new();
-    log.push_str("Preparing plum...\n");
+    log.push_str("正在准备 plum...\n");
     log.push_str(&ensure_plum(&plum_dir)?);
-    log.push_str("\nInstalling recipe: ");
+    log.push_str("\n正在安装方案: ");
     log.push_str(&recipe);
     log.push('\n');
 
@@ -1051,7 +1051,7 @@ fn install_rime_ice_sync(recipe: Option<String>) -> Result<InstallResult, String
         });
     }
 
-    log.push_str("\nDeploying Weasel...\n");
+    log.push_str("\n正在部署小狼毫...\n");
     match deploy_rime_internal() {
         Ok(result) => {
             log.push_str(&result.message);
@@ -1081,7 +1081,7 @@ fn get_appearance_config_sync() -> Result<AppearanceConfig, String> {
 
 fn save_appearance_config_sync(config: AppearanceConfig) -> Result<AppearanceConfig, String> {
     let user_dir = rime_user_dir()?;
-    fs::create_dir_all(&user_dir).map_err(|err| format!("Failed to create Rime dir: {err}"))?;
+    fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
     backup_user_config(&user_dir)?;
     write_appearance_config(&user_dir, &config)?;
     Ok(read_appearance_config(&user_dir))
@@ -1094,7 +1094,7 @@ fn list_backups_sync() -> Result<Vec<BackupEntry>, String> {
 
 fn create_backup_sync() -> Result<BackupEntry, String> {
     let user_dir = rime_user_dir()?;
-    fs::create_dir_all(&user_dir).map_err(|err| format!("Failed to create Rime dir: {err}"))?;
+    fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
     let backup_dir = backup_user_config(&user_dir)?;
     let backup_name = backup_dir
         .file_name()
@@ -1105,7 +1105,7 @@ fn create_backup_sync() -> Result<BackupEntry, String> {
     list_backup_dirs(&user_dir)?
         .into_iter()
         .find(|backup| backup.name == backup_name)
-        .ok_or_else(|| "Backup was created but could not be listed".to_string())
+        .ok_or_else(|| "备份已创建但无法列出".to_string())
 }
 
 fn open_rime_user_dir_sync() -> Result<(), String> {
@@ -1143,7 +1143,7 @@ where
 {
     tauri::async_runtime::spawn_blocking(task)
         .await
-        .map_err(|err| format!("Background task failed: {err}"))?
+        .map_err(|err| format!("后台任务失败: {err}"))?
 }
 
 #[tauri::command]
