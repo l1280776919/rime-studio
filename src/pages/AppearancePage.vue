@@ -200,7 +200,29 @@ const isLocked = computed(() => isPreset.value);
 async function loadAppearance() {
   try {
     const config = await invoke<AppearanceConfig>("get_appearance_config");
-    applyConfig(config);
+    // If the saved theme is a preset, reset to code defaults so dev changes take effect
+    const matchPreset = presets.find((p) => p.name === config.theme_name);
+    if (matchPreset) {
+      // Preset: use code defaults for all values, ignore saved config
+      Object.assign(form, {
+        theme_name: matchPreset.name,
+        font_point: 11,
+        label_font_point: 10,
+        page_size: 7,
+        horizontal: true,
+        inline_preedit: true,
+        candidate_format: "%c. %@",
+        corner_radius: 8,
+        border_height: 4,
+        border_width: 4,
+        line_spacing: 6,
+        spacing: 8,
+        ...matchPreset.colors,
+      });
+    } else {
+      applyConfig(config);
+    }
+    userEdited.value = false;
   } catch (_) { /* 首次使用无配置文件 */ }
 }
 
