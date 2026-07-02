@@ -299,10 +299,10 @@ onMounted(loadAppearance);
             <el-button v-if="!isLocked" type="primary" :icon="Check" :loading="saving" @click="saveAppearance(false)">
               <span style="color:#fff">保存</span>
             </el-button>
-            <el-button v-if="!isLocked" type="primary" :icon="UploadFilled" :loading="deploying" @click="saveAppearance(true)">
-              <span style="color:#fff">保存并部署</span>
+            <el-button type="primary" :icon="UploadFilled" :loading="deploying" @click="saveAppearance(true)">
+              <span style="color:#fff">{{ isLocked ? '部署' : '保存并部署' }}</span>
             </el-button>
-            <span v-if="isLocked" class="preset-readonly-hint">系统预设 — 可使用或复制，不可直接修改</span>
+            <span v-if="isLocked" class="preset-readonly-hint">预设只读 · 可先复制再修改</span>
           </div>
         </div>
       </div>
