@@ -1206,10 +1206,11 @@ button:active {
 }
 
 .preset-card {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  gap: 6px 10px;
+  padding: 10px;
   background: var(--color-surface-soft);
   border: 1px solid var(--color-line-soft);
   border-radius: var(--radius-sm);
@@ -1227,7 +1228,7 @@ button:active {
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.08);
 }
 
-.preset-preview {
+.preset-card .preset-preview {
   display: flex;
   gap: 4px;
 }
@@ -1239,17 +1240,18 @@ button:active {
   border: 1px solid rgba(0, 0, 0, 0.08);
 }
 
-.preset-label {
+.preset-card .preset-label {
   color: var(--ink-800);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
-  text-align: center;
+  align-self: center;
 }
 
-.preset-actions {
+.preset-card .preset-actions {
   display: grid;
-  gap: 6px;
+  gap: 5px;
   grid-template-columns: 1fr 1fr;
+  grid-column: 1 / -1;
 }
 
 .preset-actions .el-button {
@@ -1653,11 +1655,17 @@ button:active {
 }
 
 .compact-form-grid .el-slider__runway.show-input {
-  margin-right: 96px;
+  margin-right: 80px;
 }
 
 .compact-form-grid .el-slider__input {
-  width: 82px;
+  width: 72px;
+}
+
+.compact-form-grid .el-slider__input .el-input__inner {
+  text-align: center;
+  font-size: 12px;
+  padding: 0 4px;
 }
 
 /* Compact color grid */
