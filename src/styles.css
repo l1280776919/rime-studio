@@ -1206,15 +1206,15 @@ button:active {
 }
 
 .preset-card {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  grid-template-rows: auto auto;
-  gap: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   padding: 10px;
   background: var(--color-surface-soft);
   border: 1px solid var(--color-line-soft);
   border-radius: var(--radius-sm);
   transition: all var(--transition-fast);
+  min-width: 0;
 }
 
 .preset-card:hover {
@@ -1231,33 +1231,38 @@ button:active {
 .preset-card .preset-preview {
   display: flex;
   gap: 4px;
+  justify-content: center;
 }
 
 .preset-dot {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  flex-shrink: 0;
 }
 
 .preset-card .preset-label {
   color: var(--ink-800);
   font-size: 13px;
   font-weight: 700;
-  align-self: center;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .preset-card .preset-actions {
-  display: grid;
-  gap: 5px;
-  grid-template-columns: 1fr 1fr;
-  grid-column: 1 / -1;
+  display: flex;
+  gap: 4px;
 }
 
-.preset-actions .el-button {
+.preset-card .preset-actions .el-button {
+  flex: 1;
+  min-width: 0;
   margin-left: 0;
-  font-size: 12px;
-  padding: 4px 8px;
+  font-size: 11px;
+  padding: 4px 6px;
 }
 
 .compact-appearance .preset-row {
@@ -1666,6 +1671,8 @@ button:active {
   text-align: center;
   font-size: 12px;
   padding: 0 4px;
+  color: var(--ink-800) !important;
+  -webkit-text-fill-color: var(--ink-800) !important;
 }
 
 /* Compact color grid */
