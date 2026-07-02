@@ -1625,6 +1625,11 @@ button:active {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+/* Slider items span full width for show-input visibility */
+.compact-form-grid .el-form-item:has(.el-slider) {
+  grid-column: 1 / -1;
+}
+
 .compact-form-grid .el-form-item {
   margin-bottom: 6px;
 }
