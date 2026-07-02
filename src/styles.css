@@ -1581,6 +1581,14 @@ button:active {
   justify-content: center;
 }
 
+/* Force white text on primary buttons */
+.appearance-actions .form-actions .el-button--primary {
+  --el-button-text-color: #fff;
+  --el-button-hover-text-color: #fff;
+  --el-button-active-text-color: #fff;
+  color: #fff !important;
+}
+
 /* Appearance sections */
 .appearance-sections {
   display: grid;

@@ -162,6 +162,9 @@ function copyPreset(preset: (typeof presets)[number]) {
   nextTick(() => { programmaticChange = false; });
 }
 
+const isPreset = computed(() => presets.some((p) => p.name === form.theme_name));
+const isLocked = computed(() => isPreset.value);
+
 async function loadAppearance() {
   try {
     const config = await invoke<AppearanceConfig>("get_appearance_config");
@@ -225,7 +228,10 @@ onMounted(loadAppearance);
         </div>
         <div class="appearance-actions">
           <div>
-            <strong>{{ form.theme_name }}</strong>
+            <strong>
+              {{ form.theme_name }}
+              <el-tag v-if="isLocked" size="small" type="warning" effect="plain" style="margin-left:6px;vertical-align:middle">预设</el-tag>
+            </strong>
             <span>
               {{ form.horizontal ? "横排" : "竖排" }} ·
               {{ showPreeditInCandidateWindow ? "候选窗显示拼音" : "内嵌拼音" }} ·
@@ -234,10 +240,10 @@ onMounted(loadAppearance);
             <span v-if="userEdited" class="dirty-dot">已修改</span>
           </div>
           <div class="form-actions">
-            <el-button type="primary" :icon="Check" :loading="saving" @click="saveAppearance(false)">
+            <el-button type="primary" :icon="Check" :loading="saving" :disabled="isLocked" @click="saveAppearance(false)">
               保存
             </el-button>
-            <el-button type="primary" :icon="UploadFilled" :loading="deploying" @click="saveAppearance(true)">
+            <el-button type="primary" :icon="UploadFilled" :loading="deploying" :disabled="isLocked" @click="saveAppearance(true)">
               保存并部署
             </el-button>
           </div>
@@ -277,44 +283,44 @@ onMounted(loadAppearance);
               <h3>基础设置</h3>
               <div class="form-grid compact-form-grid">
                 <el-form-item label="方案名称">
-                  <el-input v-model="form.theme_name" size="small" />
+                  <el-input v-model="form.theme_name" size="small" :disabled="isLocked" />
                 </el-form-item>
                 <el-form-item label="候选格式">
-                  <el-input v-model="form.candidate_format" size="small" />
+                  <el-input v-model="form.candidate_format" size="small" :disabled="isLocked" />
                 </el-form-item>
                 <el-form-item label="字体大小">
-                  <el-input-number v-model="form.font_point" :min="10" :max="32" size="small" />
+                  <el-input-number v-model="form.font_point" :min="10" :max="32" size="small" :disabled="isLocked" />
                 </el-form-item>
                 <el-form-item label="标签字号">
-                  <el-input-number v-model="form.label_font_point" :min="8" :max="28" size="small" />
+                  <el-input-number v-model="form.label_font_point" :min="8" :max="28" size="small" :disabled="isLocked" />
                 </el-form-item>
                 <el-form-item label="候选数量">
-                  <el-input-number v-model="form.page_size" :min="3" :max="12" size="small" />
+                  <el-input-number v-model="form.page_size" :min="3" :max="12" size="small" :disabled="isLocked" />
                 </el-form-item>
                 <el-form-item label="候选布局">
-                  <el-switch v-model="form.horizontal" active-text="横排" inactive-text="竖排" inline-prompt size="small" />
+                  <el-switch v-model="form.horizontal" active-text="横排" inactive-text="竖排" inline-prompt size="small" :disabled="isLocked" />
                 </el-form-item>
                 <el-form-item label="候选窗显示拼音">
-                  <el-switch v-model="showPreeditInCandidateWindow" active-text="显示" inactive-text="隐藏" inline-prompt size="small" />
+                  <el-switch v-model="showPreeditInCandidateWindow" active-text="显示" inactive-text="隐藏" inline-prompt size="small" :disabled="isLocked" />
                 </el-form-item>
               </div>
 
               <h4 style="margin: 14px 0 6px; font-size:12px; color: var(--ink-500);">尺寸</h4>
               <div class="form-grid compact-form-grid">
                 <el-form-item label="圆角 ({{ form.corner_radius }}px)">
-                  <el-slider v-model="form.corner_radius" :min="0" :max="24" size="small" />
+                  <el-slider v-model="form.corner_radius" :min="0" :max="24" size="small" :disabled="isLocked" />
                 </el-form-item>
                 <el-form-item label="候选间距 ({{ form.spacing }}px)">
-                  <el-slider v-model="form.spacing" :min="0" :max="24" size="small" />
+                  <el-slider v-model="form.spacing" :min="0" :max="24" size="small" :disabled="isLocked" />
                 </el-form-item>
                 <el-form-item label="边框高度">
-                  <el-input-number v-model="form.border_height" :min="0" :max="24" size="small" />
+                  <el-input-number v-model="form.border_height" :min="0" :max="24" size="small" :disabled="isLocked" />
                 </el-form-item>
                 <el-form-item label="边框宽度">
-                  <el-input-number v-model="form.border_width" :min="0" :max="24" size="small" />
+                  <el-input-number v-model="form.border_width" :min="0" :max="24" size="small" :disabled="isLocked" />
                 </el-form-item>
                 <el-form-item label="行距">
-                  <el-input-number v-model="form.line_spacing" :min="0" :max="24" size="small" />
+                  <el-input-number v-model="form.line_spacing" :min="0" :max="24" size="small" :disabled="isLocked" />
                 </el-form-item>
               </div>
             </section>
@@ -330,6 +336,7 @@ onMounted(loadAppearance);
                     :model-value="rimeToCssColor(form[field.key])"
                     @update:model-value="setColor(field.key, $event)"
                     size="small"
+                    :disabled="isLocked"
                   />
                 </label>
               </div>
