@@ -17,8 +17,8 @@ src-tauri/target/
 *.pdb
 
 # Editor directories and files
-.vscode/*
-!.vscode/extensions.json
+.vscode/
+.claude/
 .idea
 .DS_Store
 *.suo

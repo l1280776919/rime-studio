@@ -1544,7 +1544,8 @@ button:active {
 
 /* Ensure primary button text is clearly visible */
 .appearance-actions .form-actions .el-button--primary {
-  --el-button-text-color: #fff;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
 }
 
 /* Appearance sections */
