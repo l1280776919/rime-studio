@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { invoke } from "@tauri-apps/api/core";
-import { Brush, Check, MagicStick, Refresh, UploadFilled } from "@element-plus/icons-vue";
+import { Brush, Check, CopyDocument, MagicStick, Refresh, UploadFilled } from "@element-plus/icons-vue";
 import type { AppearanceConfig, RimeEnvironment } from "../types";
 
 const props = defineProps<{
@@ -179,6 +179,26 @@ function applyPreset(preset: (typeof presets)[number]) {
   });
 }
 
+function copyPreset(preset: (typeof presets)[number]) {
+  programmaticChange = true;
+  // Generate a unique custom name
+  const baseName = preset.name + "_custom";
+  let copyName = baseName;
+  let counter = 1;
+  // Simple dedup against presets
+  while (presets.some((p) => p.name === copyName)) {
+    copyName = `${baseName}${counter}`;
+    counter++;
+  }
+  form.theme_name = copyName;
+  Object.assign(form, preset.colors);
+  userEdited.value = true;
+  ElMessage.success(`已复制「${preset.label}」为自定义方案「${copyName}」，可自由修改`);
+  nextTick(() => {
+    programmaticChange = false;
+  });
+}
+
 async function loadAppearance() {
   loading.value = true;
   try {
@@ -291,18 +311,44 @@ onMounted(loadAppearance);
 
       <el-card class="panel appearance-form compact-panel" shadow="never">
         <el-form label-position="top">
-          <div class="preset-row">
-            <button
-              v-for="preset in presets"
-              :key="preset.name"
-              type="button"
-              class="preset-button"
-              :class="{ active: form.theme_name === preset.name }"
-              @click="applyPreset(preset)"
-            >
-              <el-icon><MagicStick /></el-icon>
-              <span>{{ preset.label }}</span>
-            </button>
+          <div class="preset-section">
+            <h3>预设方案 <el-tag size="small" type="info">系统内置</el-tag></h3>
+            <div class="preset-row">
+              <div
+                v-for="preset in presets"
+                :key="preset.name"
+                class="preset-card"
+                :class="{ active: form.theme_name === preset.name }"
+              >
+                <div class="preset-preview">
+                  <span
+                    class="preset-dot"
+                    :style="{ background: rimeToCssColor(preset.colors.hilited_back_color) }"
+                  ></span>
+                  <span
+                    class="preset-dot"
+                    :style="{ background: rimeToCssColor(preset.colors.back_color) }"
+                  ></span>
+                </div>
+                <span class="preset-label">{{ preset.label }}</span>
+                <div class="preset-actions">
+                  <el-button
+                    size="small"
+                    :type="form.theme_name === preset.name ? 'primary' : 'default'"
+                    @click="applyPreset(preset)"
+                  >
+                    使用
+                  </el-button>
+                  <el-button
+                    size="small"
+                    :icon="CopyDocument"
+                    @click="copyPreset(preset)"
+                  >
+                    复制
+                  </el-button>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div class="appearance-sections">

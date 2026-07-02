@@ -1182,50 +1182,94 @@ button:active {
   background-color: rgba(248, 250, 252, 0.6);
 }
 
-/* ---- Preset buttons ---- */
+/* ---- Preset section ---- */
+.preset-section h3 {
+  margin: 0 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-800);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.preset-section {
+  margin-bottom: 16px;
+}
+
+/* ---- Preset cards ---- */
 .preset-row {
   display: grid;
   gap: 10px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-bottom: 18px;
+  margin-top: 10px;
 }
 
-.preset-button {
+.preset-card {
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
   gap: 8px;
-  min-height: 44px;
-  padding: 10px;
+  padding: 12px;
   background: var(--color-surface-soft);
   border: 1px solid var(--color-line-soft);
   border-radius: var(--radius-sm);
-  color: var(--ink-700);
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 13px;
-  transition:
-    all var(--transition-fast);
+  transition: all var(--transition-fast);
 }
 
-.preset-button:hover {
-  background: var(--color-surface);
-  border-color: var(--brand-300);
-  color: var(--brand-700);
+.preset-card:hover {
+  border-color: var(--brand-200);
   box-shadow: var(--shadow-sm);
-  transform: translateY(-1px);
 }
 
-.preset-button.active {
-  background: linear-gradient(135deg, var(--brand-50), #eff6ff);
+.preset-card.active {
+  background: linear-gradient(135deg, var(--brand-50), var(--color-surface-soft));
   border-color: var(--brand-400);
-  color: var(--brand-700);
-  font-weight: 700;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.08);
 }
 
-.preset-button:active {
-  transform: translateY(0);
+.preset-preview {
+  display: flex;
+  gap: 4px;
+}
+
+.preset-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.preset-label {
+  color: var(--ink-800);
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.preset-actions {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.preset-actions .el-button {
+  margin-left: 0;
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.compact-appearance .preset-row {
+  gap: 8px;
+}
+
+.compact-appearance .preset-card {
+  padding: 10px;
+  gap: 6px;
+}
+
+/* ---- Preset buttons (keep for backward compat but hidden) ---- */
+.preset-button {
+  display: none;
 }
 
 /* ---- Color grid ---- */
