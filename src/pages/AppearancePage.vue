@@ -270,10 +270,10 @@ onMounted(loadAppearance);
             </span>
           </div>
           <div class="form-actions">
-            <el-button link type="primary" :icon="Refresh" :loading="loading" @click="loadAppearance">
+            <el-button :icon="Refresh" :loading="loading" @click="loadAppearance">
               读取
             </el-button>
-            <el-button :icon="Check" :loading="saving" @click="saveAppearance(false)">
+            <el-button type="primary" plain :icon="Check" :loading="saving" @click="saveAppearance(false)">
               保存
             </el-button>
             <el-button

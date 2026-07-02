@@ -1822,6 +1822,19 @@ button:active {
   }
 }
 
+/* ---- Overview page wrapper (single-root fix) ---- */
+.overview-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.overview-page > .content-grid {
+  flex: 1;
+  min-height: 0;
+}
+
 /* ---- Phrases Page ---- */
 .phrases-grid {
   grid-template-columns: minmax(0, 1fr) 260px;

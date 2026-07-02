@@ -91,7 +91,7 @@ function formatBytes(value?: number) {
 </script>
 
 <template>
-  <div>
+  <div class="overview-page">
     <el-alert
       v-if="!hasDeployer && env"
     class="setup-alert"
