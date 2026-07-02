@@ -1542,8 +1542,8 @@ button:active {
   justify-content: center;
 }
 
-/* Ensure primary button text is clearly visible */
-.appearance-actions .form-actions .el-button--primary {
+/* Ensure filled primary button text is clearly visible (not plain) */
+.appearance-actions .form-actions .el-button--primary:not(.is-plain) {
   color: #ffffff !important;
   -webkit-text-fill-color: #ffffff !important;
 }
