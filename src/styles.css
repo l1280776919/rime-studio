@@ -993,12 +993,11 @@ button:active {
 
 /* Candidate popup window */
 .preview-window {
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid rgba(0,0,0,0.08);
-  border-radius: 8px;
-  padding: 10px 12px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.1), 0 1px 4px rgba(0,0,0,0.06);
-  min-width: 200px;
+  border: 1px solid rgba(0,0,0,0.1);
+  border-radius: 6px;
+  padding: 8px 10px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+  min-width: 180px;
   max-width: 500px;
   transition: all var(--transition-base);
 }
@@ -1027,16 +1026,17 @@ button:active {
 
 .preview-candidates span {
   padding: 3px 6px;
-  border-radius: 4px;
   white-space: nowrap;
   transition: all var(--transition-fast);
+  background: none;
+  border: none;
 }
 
 .preview-candidates span em {
   font-style: normal;
   font-size: 11px;
-  margin-right: 2px;
-  opacity: 0.6;
+  margin-right: 1px;
+  opacity: 0.5;
 }
 
 /* Dark mode preview */
