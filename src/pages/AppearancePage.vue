@@ -19,6 +19,16 @@ const deploying = ref(false);
 const userEdited = ref(false);
 let programmaticChange = false;
 
+// Track custom schemes created by copying presets
+interface CustomScheme { name: string; label: string; colors: Partial<AppearanceConfig> }
+const customSchemes = ref<CustomScheme[]>([]);
+
+// Merge presets + custom schemes for display
+const allSchemes = computed(() => [
+  ...presets.map((p) => ({ ...p, isSystem: true as const, isActive: form.theme_name === p.name })),
+  ...customSchemes.value.map((c) => ({ name: c.name, label: c.label, colors: c.colors, isSystem: false as const, isActive: form.theme_name === c.name })),
+]);
+
 function markEdited() {
   if (!programmaticChange) userEdited.value = true;
 }
@@ -151,15 +161,37 @@ function applyPreset(preset: (typeof presets)[number]) {
 }
 
 function copyPreset(preset: (typeof presets)[number]) {
+  const allNames = [...presets.map((p) => p.name), ...customSchemes.value.map((c) => c.name)];
   let n = 1;
-  while (presets.some((p) => p.name === `${preset.name}_copy${n > 1 ? n : ""}`)) n++;
-  const newName = `${preset.name}_copy${n > 1 ? n : ""}`;
+  let newId = `${preset.name}_copy`;
+  while (allNames.includes(newId)) { n++; newId = `${preset.name}_copy${n}`; }
+
+  const label = `${preset.label} · 副本`;
+  customSchemes.value.push({ name: newId, label, colors: { ...preset.colors } });
+
   programmaticChange = true;
-  form.theme_name = newName;
+  form.theme_name = newId;
   Object.assign(form, preset.colors);
   userEdited.value = true;
-  ElMessage.success(`已复制为「${newName}」`);
+  ElMessage.success(`已复制为自定义方案，可自由修改`);
   nextTick(() => { programmaticChange = false; });
+}
+
+function selectScheme(scheme: { name: string; colors: Record<string,string> }) {
+  programmaticChange = true;
+  form.theme_name = scheme.name;
+  Object.assign(form, scheme.colors);
+  userEdited.value = false;
+  nextTick(() => { programmaticChange = false; });
+}
+
+function deleteCustomScheme(scheme: CustomScheme) {
+  customSchemes.value = customSchemes.value.filter((c) => c.name !== scheme.name);
+  if (form.theme_name === scheme.name) {
+    // Switch back to first preset
+    applyPreset(presets[0]);
+  }
+  ElMessage.success(`已删除「${scheme.label}」`);
 }
 
 const isPreset = computed(() => presets.some((p) => p.name === form.theme_name));
@@ -240,10 +272,10 @@ onMounted(loadAppearance);
             <span v-if="userEdited" class="dirty-dot">已修改</span>
           </div>
           <div class="form-actions">
-            <el-button type="primary" :icon="Check" :loading="saving" :disabled="isLocked" @click="saveAppearance(false)">
+            <el-button type="primary" :icon="Check" :loading="saving" :disabled="isLocked" style="color:#fff" @click="saveAppearance(false)">
               保存
             </el-button>
-            <el-button type="primary" :icon="UploadFilled" :loading="deploying" :disabled="isLocked" @click="saveAppearance(true)">
+            <el-button type="primary" :icon="UploadFilled" :loading="deploying" :disabled="isLocked" style="color:#fff" @click="saveAppearance(true)">
               保存并部署
             </el-button>
           </div>
@@ -253,26 +285,34 @@ onMounted(loadAppearance);
       <!-- Form -->
       <el-card class="panel appearance-form compact-panel" shadow="never">
         <el-form label-position="top">
-          <!-- Presets -->
+          <!-- All Schemes (presets + custom) -->
           <div class="preset-section">
-            <h3>预设方案 <el-tag size="small" type="info">系统内置</el-tag></h3>
+            <h3>方案</h3>
             <div class="preset-row">
               <button
-                v-for="preset in presets"
-                :key="preset.name"
+                v-for="scheme in allSchemes"
+                :key="scheme.name"
                 type="button"
                 class="preset-chip"
-                :class="{ active: form.theme_name === preset.name }"
-                @click="applyPreset(preset)"
+                :class="{ active: scheme.isActive, system: scheme.isSystem }"
+                @click="selectScheme(scheme)"
               >
-                <span class="preset-swatch" :style="{ background: rimeToCssColor(preset.colors.hilited_back_color) }"></span>
-                {{ preset.label }}
+                <span class="preset-swatch" :style="{ background: rimeToCssColor(scheme.colors.hilited_back_color as string) }"></span>
+                {{ scheme.label }}
+                <el-tag v-if="scheme.isSystem" size="small" type="info" effect="plain" class="scheme-badge">系统</el-tag>
+                <el-tag v-else size="small" type="success" effect="plain" class="scheme-badge">自定义</el-tag>
                 <el-button
-                  link
-                  class="preset-copy"
-                  @click.stop="copyPreset(preset)"
+                  v-if="scheme.isSystem"
+                  link class="preset-copy"
+                  @click.stop="copyPreset(presets.find(p => p.name === scheme.name)!)"
                   title="复制为自定义方案"
                 ><el-icon><CopyDocument /></el-icon></el-button>
+                <el-button
+                  v-else
+                  link class="preset-copy preset-delete"
+                  @click.stop="deleteCustomScheme(customSchemes.find(c => c.name === scheme.name)!)"
+                  title="删除此方案"
+                >×</el-button>
               </button>
             </div>
           </div>

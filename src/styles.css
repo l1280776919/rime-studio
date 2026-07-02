@@ -1255,6 +1255,26 @@ button:active {
   color: var(--brand-500);
 }
 
+.preset-delete {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink-400);
+}
+.preset-delete:hover {
+  color: var(--red-500) !important;
+}
+
+.scheme-badge {
+  font-size: 10px !important;
+  padding: 0 5px !important;
+  height: 18px !important;
+  line-height: 18px !important;
+}
+
+.preset-chip.system {
+  border-style: solid;
+}
+
 /* ---- Dirty indicator ---- */
 .dirty-dot {
   display: inline-block;
