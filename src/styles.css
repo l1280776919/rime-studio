@@ -1834,6 +1834,119 @@ button:active {
   }
 }
 
+/* ---- About Page ---- */
+.about-grid {
+  grid-template-columns: minmax(0, 1fr) 340px;
+}
+
+.about-intro {
+  text-align: center;
+  padding: 8px 0;
+}
+
+.about-intro h3 {
+  margin: 0 0 4px;
+  color: var(--ink-900);
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.about-intro p {
+  color: var(--ink-600);
+  font-size: 14px;
+  margin: 0 0 8px;
+}
+
+.about-links {
+  display: grid;
+  gap: 10px;
+}
+
+.about-link-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-sm);
+  color: var(--ink-800);
+  text-decoration: none;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.about-link-card:hover {
+  background: var(--color-surface);
+  border-color: var(--brand-300);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
+}
+
+.about-link-card strong,
+.about-link-card small {
+  display: block;
+}
+
+.about-link-card strong {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.about-link-card small {
+  color: var(--ink-500);
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.about-link-card .el-icon:first-child {
+  color: var(--brand-500);
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+.about-link-card .link-arrow {
+  color: var(--ink-400);
+  font-size: 14px;
+  margin-left: auto;
+  flex-shrink: 0;
+  transition: transform var(--transition-fast);
+}
+
+.about-link-card:hover .link-arrow {
+  transform: translateX(3px);
+  color: var(--brand-500);
+}
+
+.tech-stack {
+  display: grid;
+  gap: 8px;
+}
+
+.tech-stack > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-xs);
+}
+
+.tech-stack span {
+  color: var(--ink-500);
+  font-size: 13px;
+}
+
+.tech-stack strong {
+  color: var(--ink-800);
+  font-size: 13px;
+  font-weight: 680;
+}
+
 /* ---- Overview page wrapper (single-root fix) ---- */
 .overview-page {
   display: flex;

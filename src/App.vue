@@ -7,12 +7,14 @@ import {
   Collection,
   EditPen,
   FolderOpened,
+  InfoFilled,
   Monitor,
   Moon,
   Refresh,
   Sunny,
   UploadFilled,
 } from "@element-plus/icons-vue";
+import AboutPage from "./pages/AboutPage.vue";
 import AppearancePage from "./pages/AppearancePage.vue";
 import BackupsPage from "./pages/BackupsPage.vue";
 import DictionariesPage from "./pages/DictionariesPage.vue";
@@ -26,7 +28,7 @@ import type {
   RimeEnvironment,
 } from "./types";
 
-type PageKey = "overview" | "appearance" | "phrases" | "dictionaries" | "backups";
+type PageKey = "overview" | "appearance" | "phrases" | "dictionaries" | "backups" | "about";
 
 const PAGE_KEYS: ReadonlySet<string> = new Set<PageKey>([
   "overview",
@@ -34,6 +36,7 @@ const PAGE_KEYS: ReadonlySet<string> = new Set<PageKey>([
   "phrases",
   "dictionaries",
   "backups",
+  "about",
 ]);
 
 function isPageKey(value: string): value is PageKey {
@@ -94,6 +97,7 @@ const pageTitle = computed(() => {
     phrases: "短语管理",
     dictionaries: "词库管理",
     backups: "备份管理",
+    about: "关于",
   };
   return titles[activePage.value];
 });
@@ -104,6 +108,7 @@ const pageDescription = computed(() => {
     phrases: "编辑自定义短语，支持添加、搜索、导入和批量管理。",
     dictionaries: "浏览和管理 Rime 词库文件，查看条目统计与健康状态。",
     backups: "查看、打开和恢复 Rime Studio 创建的配置备份。",
+    about: "关于 Rime Studio 与相关开源项目。",
   };
   return descriptions[activePage.value];
 });
@@ -311,6 +316,10 @@ onMounted(() => {
             <el-icon><FolderOpened /></el-icon>
             <span>备份</span>
           </el-menu-item>
+          <el-menu-item index="about">
+            <el-icon><InfoFilled /></el-icon>
+            <span>关于</span>
+          </el-menu-item>
         </el-menu>
 
         <div class="theme-toggle">
@@ -404,6 +413,11 @@ onMounted(() => {
               @create-backup="createManualBackup"
               @open-backup="openBackupDir"
               @restore-backup="restoreBackup"
+            />
+
+            <AboutPage
+              v-else-if="activePage === 'about'"
+              key="about"
             />
 
           </Transition>

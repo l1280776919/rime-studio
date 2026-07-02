@@ -599,7 +599,8 @@ fn copy_if_exists(source: &Path, target: &Path) -> io::Result<()> {
 }
 
 fn backup_user_config(user_dir: &Path) -> Result<PathBuf, String> {
-    let backup_dir = user_dir.join(format!("backup-rime-studio-{}", timestamp()));
+    let backup_root = app_data_dir()?;
+    let backup_dir = backup_root.join(format!("backup-rime-studio-{}", timestamp()));
     fs::create_dir_all(&backup_dir)
         .map_err(|err| format!("创建备份目录失败: {err}"))?;
 
@@ -629,13 +630,14 @@ fn backup_user_config(user_dir: &Path) -> Result<PathBuf, String> {
     Ok(backup_dir)
 }
 
-fn list_backup_dirs(user_dir: &Path) -> Result<Vec<BackupEntry>, String> {
-    if !user_dir.exists() {
+fn list_backup_dirs(_user_dir: &Path) -> Result<Vec<BackupEntry>, String> {
+    let backup_root = app_data_dir()?;
+    if !backup_root.exists() {
         return Ok(Vec::new());
     }
 
     let mut backups = Vec::new();
-    for entry in fs::read_dir(user_dir).map_err(|err| format!("读取 Rime 目录失败: {err}"))? {
+    for entry in fs::read_dir(&backup_root).map_err(|err| format!("读取备份目录失败: {err}"))? {
         let entry = entry.map_err(|err| format!("检查 Rime 文件失败: {err}"))?;
         let path = entry.path();
         if !path.is_dir() {
@@ -676,7 +678,7 @@ fn list_backup_dirs(user_dir: &Path) -> Result<Vec<BackupEntry>, String> {
     Ok(backups)
 }
 
-fn validated_backup_dir(user_dir: &Path, backup_name: &str) -> Result<PathBuf, String> {
+fn validated_backup_dir(_user_dir: &Path, backup_name: &str) -> Result<PathBuf, String> {
     if !backup_name.starts_with("backup-rime-studio-")
         || backup_name.contains('/')
         || backup_name.contains('\\')
@@ -685,7 +687,8 @@ fn validated_backup_dir(user_dir: &Path, backup_name: &str) -> Result<PathBuf, S
         return Err("无效的备份名称".to_string());
     }
 
-    let backup_dir = user_dir.join(backup_name);
+    let backup_root = app_data_dir()?;
+    let backup_dir = backup_root.join(backup_name);
     if !backup_dir.is_dir() {
         return Err(format!("备份不存在: {backup_name}"));
     }
