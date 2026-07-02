@@ -343,7 +343,12 @@ fn read_appearance_config(user_dir: &Path) -> AppearanceConfig {
         font_point: parse_u32_after_key(&weasel_custom, "style/font_point").unwrap_or(11),
         label_font_point: parse_u32_after_key(&weasel_custom, "style/label_font_point")
             .unwrap_or(10),
-        page_size: parse_u32_after_key(&weasel_custom, "style/page_size").unwrap_or(7),
+        page_size: {
+            let default_custom = read_to_string(&user_dir.join("default.custom.yaml"));
+            parse_u32_after_key(&weasel_custom, "style/page_size")
+                .or_else(|| parse_u32_after_key(&default_custom, "menu/page_size"))
+                .unwrap_or(7)
+        },
         horizontal: parse_bool_after_key(&weasel_custom, "style/horizontal").unwrap_or(true),
         inline_preedit: parse_bool_after_key(&weasel_custom, "style/inline_preedit")
             .unwrap_or(true),
@@ -449,11 +454,6 @@ fn write_appearance_config(user_dir: &Path, config: &AppearanceConfig) -> Result
         &contents,
         "style/label_font_point",
         &config.label_font_point.to_string(),
-    );
-    let contents = upsert_patch_value(
-        &contents,
-        "style/page_size",
-        &config.page_size.to_string(),
     );
     let contents = upsert_patch_value(
         &contents,
@@ -1094,6 +1094,14 @@ fn save_appearance_config_sync(config: AppearanceConfig) -> Result<AppearanceCon
     fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
     backup_user_config(&user_dir)?;
     write_appearance_config(&user_dir, &config)?;
+
+    // page_size goes to default.custom.yaml (menu/page_size), not weasel.custom.yaml
+    let default_custom_path = user_dir.join("default.custom.yaml");
+    let default_contents = fs::read_to_string(&default_custom_path).unwrap_or_else(|_| "patch:\n".to_string());
+    let default_contents = upsert_patch_value(&default_contents, "menu/page_size", &config.page_size.to_string());
+    fs::write(&default_custom_path, default_contents)
+        .map_err(|err| format!("写入 default.custom.yaml 失败: {err}"))?;
+
     Ok(read_appearance_config(&user_dir))
 }
 
