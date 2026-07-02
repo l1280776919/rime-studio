@@ -177,7 +177,11 @@ function copyPreset(preset: (typeof presets)[number]) {
   nextTick(() => { programmaticChange = false; });
 }
 
-function selectScheme(scheme: { name: string; colors: Record<string,string> }) {
+function selectScheme(scheme: { name: string; colors: Record<string,string>; isSystem?: boolean }) {
+  if (scheme.isSystem) {
+    const preset = presets.find((p) => p.name === scheme.name);
+    if (preset) { applyPreset(preset); return; }
+  }
   programmaticChange = true;
   form.theme_name = scheme.name;
   Object.assign(form, scheme.colors);
@@ -317,11 +321,11 @@ onMounted(loadAppearance);
                 class="preset-chip"
                 :class="{ active: scheme.isActive, system: scheme.isSystem }"
                 @click="selectScheme(scheme)"
+                :title="scheme.isActive ? '当前使用中' : '点击使用此方案'"
               >
                 <span class="preset-swatch" :style="{ background: rimeToCssColor(scheme.colors.hilited_back_color as string) }"></span>
                 {{ scheme.label }}
-                <el-tag v-if="scheme.isSystem" size="small" type="info" effect="plain" class="scheme-badge">系统</el-tag>
-                <el-tag v-else size="small" type="success" effect="plain" class="scheme-badge">自定义</el-tag>
+                <span v-if="scheme.isActive" class="active-dot"></span>
                 <el-button
                   v-if="scheme.isSystem"
                   link class="preset-copy"

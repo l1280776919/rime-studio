@@ -1243,16 +1243,20 @@ button:active {
   padding: 0 !important;
   font-size: 13px;
   color: var(--ink-400);
-  opacity: 0;
-  transition: opacity var(--transition-fast);
-}
-
-.preset-chip:hover .preset-copy {
-  opacity: 1;
+  transition: color var(--transition-fast);
 }
 
 .preset-copy:hover {
   color: var(--brand-500);
+}
+
+.active-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--brand-500);
+  margin-left: 2px;
+  flex-shrink: 0;
 }
 
 .preset-delete {
@@ -1264,16 +1268,6 @@ button:active {
   color: var(--red-500) !important;
 }
 
-.scheme-badge {
-  font-size: 10px !important;
-  padding: 0 5px !important;
-  height: 18px !important;
-  line-height: 18px !important;
-}
-
-.preset-chip.system {
-  border-style: solid;
-}
 
 /* ---- Dirty indicator ---- */
 .dirty-dot {
