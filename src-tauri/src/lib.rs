@@ -340,9 +340,9 @@ fn read_appearance_config(user_dir: &Path) -> AppearanceConfig {
 
     AppearanceConfig {
         theme_name,
-        font_point: parse_u32_after_key(&weasel_custom, "style/font_point").unwrap_or(12),
+        font_point: parse_u32_after_key(&weasel_custom, "style/font_point").unwrap_or(11),
         label_font_point: parse_u32_after_key(&weasel_custom, "style/label_font_point")
-            .unwrap_or(11),
+            .unwrap_or(10),
         page_size: parse_u32_after_key(&weasel_custom, "style/page_size").unwrap_or(7),
         horizontal: parse_bool_after_key(&weasel_custom, "style/horizontal").unwrap_or(true),
         inline_preedit: parse_bool_after_key(&weasel_custom, "style/inline_preedit")

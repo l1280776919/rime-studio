@@ -35,8 +35,8 @@ function markEdited() {
 
 const form = reactive<AppearanceConfig>({
   theme_name: "rime_studio_blue",
-  font_point: 12,
-  label_font_point: 11,
+  font_point: 11,
+  label_font_point: 10,
   page_size: 7,
   horizontal: true,
   inline_preedit: true,
@@ -272,10 +272,10 @@ onMounted(loadAppearance);
             <span v-if="userEdited" class="dirty-dot">已修改</span>
           </div>
           <div class="form-actions">
-            <el-button type="primary" :icon="Check" :loading="saving" :disabled="isLocked" @click="saveAppearance(false)">
+            <el-button type="primary" :icon="Check" :loading="saving" @click="saveAppearance(false)">
               <span style="color:#fff">保存</span>
             </el-button>
-            <el-button type="primary" :icon="UploadFilled" :loading="deploying" :disabled="isLocked" @click="saveAppearance(true)">
+            <el-button type="primary" :icon="UploadFilled" :loading="deploying" @click="saveAppearance(true)">
               <span style="color:#fff">保存并部署</span>
             </el-button>
           </div>
