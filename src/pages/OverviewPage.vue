@@ -174,7 +174,7 @@ function formatBytes(value?: number) {
           <el-table-column label="状态" width="130">
             <template #default="{ row }: { row: FileStatus }">
               <el-tag :type="row.exists ? 'success' : 'warning'" effect="light">
-                {{ row.exists ? "Found" : "Missing" }}
+                {{ row.exists ? "存在" : "缺失" }}
               </el-tag>
             </template>
           </el-table-column>

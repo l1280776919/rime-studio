@@ -243,12 +243,12 @@ onMounted(loadAppearance);
       <div class="appearance-toolbar panel">
         <div class="weasel-preview" :class="{ horizontal: form.horizontal }">
           <div v-if="form.inline_preedit" class="preview-inline-host">
-            rime studio
+            预览拼音
           </div>
           <div class="preview-composition" :style="previewStyle">
             <div v-if="showPreeditInCandidateWindow" class="preview-preedit" :style="previewPreeditStyle">
               <span>雾凇拼音</span>
-              <strong>rime studio</strong>
+              <strong>预览编码</strong>
             </div>
             <div class="preview-candidates" :style="{ gap: `${form.spacing}px` }">
               <span :style="previewHighlightStyle">1. 配置</span>
