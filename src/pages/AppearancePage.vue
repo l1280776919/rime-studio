@@ -28,7 +28,7 @@ const form = reactive<AppearanceConfig>({
   font_point: 14,
   label_font_point: 12,
   horizontal: true,
-  inline_preedit: false,
+  inline_preedit: true,
   candidate_format: "%c. %@",
   corner_radius: 8,
   border_height: 4,

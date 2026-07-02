@@ -344,7 +344,7 @@ fn read_appearance_config(user_dir: &Path) -> AppearanceConfig {
             .unwrap_or(12),
         horizontal: parse_bool_after_key(&weasel_custom, "style/horizontal").unwrap_or(true),
         inline_preedit: parse_bool_after_key(&weasel_custom, "style/inline_preedit")
-            .unwrap_or(false),
+            .unwrap_or(true),
         candidate_format: parse_string_after_key(&weasel_custom, "style/candidate_format")
             .unwrap_or_else(|| "%c. %@".to_string()),
         corner_radius: parse_u32_after_key(&weasel_custom, "style/corner_radius").unwrap_or(8),
