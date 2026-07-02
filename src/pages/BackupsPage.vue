@@ -1,0 +1,77 @@
+<script setup lang="ts">
+import { FolderOpened, Open, RefreshLeft } from "@element-plus/icons-vue";
+import type { BackupEntry } from "../types";
+
+defineProps<{
+  backups: BackupEntry[];
+  backingUp: boolean;
+  restoringBackup?: string;
+}>();
+
+const emit = defineEmits<{
+  createBackup: [];
+  openBackup: [backup: BackupEntry];
+  restoreBackup: [backup: BackupEntry];
+}>();
+
+function formatBackupTime(value?: number) {
+  if (!value) return "未知时间";
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value * 1000));
+}
+</script>
+
+<template>
+  <section class="content-grid backups-grid">
+    <section class="main-column">
+      <el-card class="panel" shadow="never">
+        <template #header>
+          <div class="panel-title">
+            <span>备份列表</span>
+            <el-button
+              type="primary"
+              plain
+              :icon="FolderOpened"
+              :loading="backingUp"
+              @click="emit('createBackup')"
+            >
+              创建备份
+            </el-button>
+          </div>
+        </template>
+
+        <el-empty v-if="!backups.length" description="还没有备份" />
+        <div v-else class="backup-list full">
+          <div v-for="backup in backups" :key="backup.path" class="backup-item">
+            <div class="backup-main">
+              <span>
+                <strong>{{ backup.name.replace("backup-rime-studio-", "") }}</strong>
+                <small>{{ formatBackupTime(backup.modified) }} · {{ backup.files }} 个文件</small>
+              </span>
+              <div class="backup-actions">
+                <el-button link type="primary" :icon="Open" @click="emit('openBackup', backup)">
+                  打开
+                </el-button>
+                <el-button
+                  link
+                  type="warning"
+                  :icon="RefreshLeft"
+                  :loading="restoringBackup === backup.name"
+                  @click="emit('restoreBackup', backup)"
+                >
+                  恢复
+                </el-button>
+              </div>
+            </div>
+            <code>{{ backup.path }}</code>
+          </div>
+        </div>
+      </el-card>
+    </section>
+  </section>
+</template>
