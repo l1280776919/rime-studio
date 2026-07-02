@@ -1601,6 +1601,14 @@ button:active {
   justify-content: center;
 }
 
+.preset-readonly-hint {
+  grid-column: 1 / -1;
+  color: var(--ink-400);
+  font-size: 12px;
+  text-align: right;
+  font-style: italic;
+}
+
 /* Force white text on primary buttons */
 .appearance-actions .form-actions .el-button--primary {
   --el-button-text-color: #fff;

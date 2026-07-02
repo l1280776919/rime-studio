@@ -283,10 +283,7 @@ onMounted(loadAppearance);
         </div>
         <div class="appearance-actions">
           <div>
-            <strong>
-              {{ form.theme_name }}
-              <el-tag v-if="isLocked" size="small" type="warning" effect="plain" style="margin-left:6px;vertical-align:middle">预设</el-tag>
-            </strong>
+            <strong>{{ form.theme_name }}</strong>
             <span>
               {{ form.horizontal ? "横排" : "竖排" }} ·
               {{ showPreeditInCandidateWindow ? "候选窗显示拼音" : "内嵌拼音" }} ·
@@ -295,12 +292,13 @@ onMounted(loadAppearance);
             <span v-if="userEdited" class="dirty-dot">已修改</span>
           </div>
           <div class="form-actions">
-            <el-button type="primary" :icon="Check" :loading="saving" @click="saveAppearance(false)">
+            <el-button v-if="!isLocked" type="primary" :icon="Check" :loading="saving" @click="saveAppearance(false)">
               <span style="color:#fff">保存</span>
             </el-button>
-            <el-button type="primary" :icon="UploadFilled" :loading="deploying" @click="saveAppearance(true)">
+            <el-button v-if="!isLocked" type="primary" :icon="UploadFilled" :loading="deploying" @click="saveAppearance(true)">
               <span style="color:#fff">保存并部署</span>
             </el-button>
+            <span v-if="isLocked" class="preset-readonly-hint">系统预设 — 可使用或复制，不可直接修改</span>
           </div>
         </div>
       </div>
