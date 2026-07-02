@@ -11,11 +11,13 @@ import {
   Monitor,
   Moon,
   Refresh,
+  Star,
   Sunny,
   UploadFilled,
 } from "@element-plus/icons-vue";
 import AboutPage from "./pages/AboutPage.vue";
 import AppearancePage from "./pages/AppearancePage.vue";
+import SchemasPage from "./pages/SchemasPage.vue";
 import BackupsPage from "./pages/BackupsPage.vue";
 import DictionariesPage from "./pages/DictionariesPage.vue";
 import OverviewPage from "./pages/OverviewPage.vue";
@@ -28,11 +30,12 @@ import type {
   RimeEnvironment,
 } from "./types";
 
-type PageKey = "overview" | "appearance" | "phrases" | "dictionaries" | "backups" | "about";
+type PageKey = "overview" | "appearance" | "schemas" | "phrases" | "dictionaries" | "backups" | "about";
 
 const PAGE_KEYS: ReadonlySet<string> = new Set<PageKey>([
   "overview",
   "appearance",
+  "schemas",
   "phrases",
   "dictionaries",
   "backups",
@@ -94,6 +97,7 @@ const pageTitle = computed(() => {
   const titles: Record<PageKey, string> = {
     overview: "Rime 配置控制台",
     appearance: "外观配置",
+    schemas: "方案管理",
     phrases: "短语管理",
     dictionaries: "词库管理",
     backups: "备份管理",
@@ -105,6 +109,7 @@ const pageDescription = computed(() => {
   const descriptions: Record<PageKey, string> = {
     overview: "管理方案、外观、词库与部署状态。",
     appearance: "调整小狼毫候选窗主题、字体和候选布局。",
+    schemas: "浏览系统方案，复制并自定义到用户目录。",
     phrases: "编辑自定义短语，支持添加、搜索、导入和批量管理。",
     dictionaries: "浏览和管理 Rime 词库文件，查看条目统计与健康状态。",
     backups: "查看、打开和恢复 Rime Studio 创建的配置备份。",
@@ -304,6 +309,10 @@ onMounted(() => {
             <el-icon><Brush /></el-icon>
             <span>外观</span>
           </el-menu-item>
+          <el-menu-item index="schemas">
+            <el-icon><Star /></el-icon>
+            <span>方案</span>
+          </el-menu-item>
           <el-menu-item index="phrases">
             <el-icon><EditPen /></el-icon>
             <span>短语</span>
@@ -384,6 +393,14 @@ onMounted(() => {
             <AppearancePage
               v-else-if="activePage === 'appearance'"
               key="appearance"
+              :env="env"
+              @saved="loadEnvironment"
+              @deploy="deploy"
+            />
+
+            <SchemasPage
+              v-else-if="activePage === 'schemas'"
+              key="schemas"
               :env="env"
               @saved="loadEnvironment"
               @deploy="deploy"

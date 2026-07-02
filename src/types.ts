@@ -83,6 +83,15 @@ export type PhraseEntry = {
   weight: number;
 };
 
+export type SchemaInfo = {
+  id: string;
+  name: string;
+  description: string;
+  path: string;
+  is_system: boolean;
+  is_active: boolean;
+};
+
 export type DictInfo = {
   name: string;
   path: string;

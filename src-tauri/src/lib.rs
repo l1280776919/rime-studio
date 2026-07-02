@@ -1223,6 +1223,186 @@ fn launch_installer_sync(path: String) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Debug, Serialize)]
+struct SchemaInfo {
+    id: String,
+    name: String,
+    description: String,
+    path: String,
+    is_system: bool,
+    is_active: bool,
+}
+
+fn list_schemas_sync() -> Result<Vec<SchemaInfo>, String> {
+    let user_dir = rime_user_dir()?;
+    let active_schema = read_to_string(&user_dir.join("default.custom.yaml"));
+    let active = parse_schema(&active_schema);
+    let mut schemas = Vec::new();
+
+    // Find system schemas from Weasel data directory
+    let system_dirs: Vec<PathBuf> = locate_deployer()
+        .and_then(|d| d.parent().map(|p| p.join("data")))
+        .into_iter()
+        .chain(std::iter::once(PathBuf::from(r"C:\Program Files\Rime\weasel-0.17.4\data")))
+        .chain(std::iter::once(PathBuf::from(r"C:\Program Files (x86)\Rime\weasel-0.17.4\data")))
+        .collect();
+
+    let mut seen = std::collections::HashSet::new();
+
+    // Scan system data dirs
+    for data_dir in &system_dirs {
+        if !data_dir.exists() {
+            continue;
+        }
+        if let Ok(entries) = fs::read_dir(data_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let Some(name) = path.file_name().and_then(OsStr::to_str) else {
+                    continue;
+                };
+                if !name.ends_with(".schema.yaml") {
+                    continue;
+                }
+                let id = name.replace(".schema.yaml", "");
+                if seen.contains(&id) {
+                    continue;
+                }
+                seen.insert(id.clone());
+
+                let contents = fs::read_to_string(&path).unwrap_or_default();
+                let schema_name = parse_quoted_value(&contents, "schema/name")
+                    .unwrap_or_else(|| id.clone());
+                let description = parse_quoted_value(&contents, "schema/description")
+                    .or_else(|| parse_string_after_key(&contents, "description:"))
+                    .unwrap_or_default();
+
+                schemas.push(SchemaInfo {
+                    is_system: true,
+                    is_active: active.as_ref() == Some(&id),
+                    id,
+                    name: schema_name,
+                    description,
+                    path: path.display().to_string(),
+                });
+            }
+        }
+    }
+
+    // Scan user dir for custom schemas
+    if user_dir.exists() {
+        if let Ok(entries) = fs::read_dir(&user_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let Some(name) = path.file_name().and_then(OsStr::to_str) else {
+                    continue;
+                };
+                if !name.ends_with(".schema.yaml") && !name.ends_with(".custom.yaml") {
+                    continue;
+                }
+                // Skip weasel.custom.yaml and default.custom.yaml
+                if name == "weasel.custom.yaml" || name == "default.custom.yaml" {
+                    continue;
+                }
+                let id = name
+                    .replace(".custom.yaml", "")
+                    .replace(".schema.yaml", "");
+                if seen.contains(&id) {
+                    // Already listed as system; mark as having user override
+                    if name.ends_with(".custom.yaml") {
+                        if let Some(s) = schemas.iter_mut().find(|s| s.id == id) {
+                            s.is_system = false;
+                        }
+                    }
+                    continue;
+                }
+                seen.insert(id.clone());
+
+                let contents = fs::read_to_string(&path).unwrap_or_default();
+                let schema_name = parse_quoted_value(&contents, "schema/name")
+                    .or_else(|| parse_string_after_key(&contents, "name:"))
+                    .unwrap_or_else(|| id.clone());
+                let description = parse_quoted_value(&contents, "schema/description")
+                    .or_else(|| parse_string_after_key(&contents, "description:"))
+                    .unwrap_or_default();
+
+                schemas.push(SchemaInfo {
+                    is_system: false,
+                    is_active: active.as_ref() == Some(&id),
+                    id,
+                    name: schema_name,
+                    description,
+                    path: path.display().to_string(),
+                });
+            }
+        }
+    }
+
+    schemas.sort_by(|a, b| {
+        b.is_active
+            .cmp(&a.is_active)
+            .then(a.is_system.cmp(&b.is_system))
+            .then(a.name.cmp(&b.name))
+    });
+    Ok(schemas)
+}
+
+fn copy_schema_sync(schema_id: String) -> Result<String, String> {
+    let user_dir = rime_user_dir()?;
+    fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
+
+    let safe_id = schema_id
+        .replace('/', "")
+        .replace('\\', "")
+        .replace("..", "");
+
+    // Find the source schema file
+    let system_dirs = [
+        locate_deployer().and_then(|d| d.parent().map(|p| p.join("data"))),
+        Some(PathBuf::from(r"C:\Program Files\Rime\weasel-0.17.4\data")),
+        Some(PathBuf::from(r"C:\Program Files (x86)\Rime\weasel-0.17.4\data")),
+    ];
+
+    let mut source: Option<PathBuf> = None;
+    for dir in system_dirs.iter().flatten() {
+        let candidate = dir.join(format!("{safe_id}.schema.yaml"));
+        if candidate.exists() {
+            source = Some(candidate);
+            break;
+        }
+    }
+
+    // Also check user dir
+    let user_candidate = user_dir.join(format!("{safe_id}.schema.yaml"));
+    if user_candidate.exists() {
+        source = Some(user_candidate);
+    }
+
+    let source = source.ok_or("未找到源方案文件".to_string())?;
+
+    // Read source and create a custom copy
+    let contents =
+        fs::read_to_string(&source).map_err(|err| format!("读取方案文件失败: {err}"))?;
+
+    // Write as .custom.yaml in user dir
+    let dest_name = format!("{safe_id}.custom.yaml");
+    let dest = user_dir.join(&dest_name);
+
+    // If dest already exists, back it up
+    if dest.exists() {
+        let backup = user_dir.join(format!("{dest_name}.bak"));
+        fs::copy(&dest, &backup).map_err(|err| format!("备份旧文件失败: {err}"))?;
+    }
+
+    // Add a header comment
+    let patched = format!(
+        "# {} — 从系统方案复制，由 Rime Studio 管理\n# 在此文件中添加 patch 配置即可自定义方案\n\n{}",
+        safe_id, contents
+    );
+
+    fs::write(&dest, patched).map_err(|err| format!("写入方案文件失败: {err}"))?;
+    Ok(dest.display().to_string())
+}
+
 async fn run_blocking<T, F>(task: F) -> Result<T, String>
 where
     T: Send + 'static,
@@ -1318,6 +1498,16 @@ async fn launch_rime_installer(path: String) -> Result<(), String> {
     run_blocking(move || launch_installer_sync(path)).await
 }
 
+#[tauri::command]
+async fn list_schemas() -> Result<Vec<SchemaInfo>, String> {
+    run_blocking(list_schemas_sync).await
+}
+
+#[tauri::command]
+async fn copy_schema(schema_id: String) -> Result<String, String> {
+    run_blocking(move || copy_schema_sync(schema_id)).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1339,7 +1529,9 @@ pub fn run() {
             list_dictionaries,
             get_dict_health,
             download_rime_installer,
-            launch_rime_installer
+            launch_rime_installer,
+            list_schemas,
+            copy_schema
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
