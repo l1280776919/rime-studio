@@ -63,7 +63,11 @@ const DARK_THEME_KEY = "rime-studio-theme";
 const isDark = ref(false);
 
 function applyTheme(dark: boolean) {
-  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  if (dark) {
+    document.documentElement.dataset.theme = "dark";
+  } else {
+    delete document.documentElement.dataset.theme;
+  }
   localStorage.setItem(DARK_THEME_KEY, dark ? "dark" : "light");
 }
 

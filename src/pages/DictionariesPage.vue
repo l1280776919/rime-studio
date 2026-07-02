@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -93,7 +93,6 @@ async function loadAllStats() {
 onMounted(loadAllStats);
 
 // Recalc stats when dicts change
-import { watch } from "vue";
 watch(dictionaries, (dicts) => {
   totalEntries.value = dicts.reduce((s, d) => s + d.entry_count, 0);
   totalSize.value = dicts.reduce((s, d) => s + d.size_bytes, 0);
