@@ -90,6 +90,7 @@ struct AppearanceConfig {
     theme_name: String,
     font_point: u32,
     label_font_point: u32,
+    page_size: u32,
     horizontal: bool,
     inline_preedit: bool,
     candidate_format: String,
@@ -339,9 +340,10 @@ fn read_appearance_config(user_dir: &Path) -> AppearanceConfig {
 
     AppearanceConfig {
         theme_name,
-        font_point: parse_u32_after_key(&weasel_custom, "style/font_point").unwrap_or(14),
+        font_point: parse_u32_after_key(&weasel_custom, "style/font_point").unwrap_or(12),
         label_font_point: parse_u32_after_key(&weasel_custom, "style/label_font_point")
-            .unwrap_or(12),
+            .unwrap_or(11),
+        page_size: parse_u32_after_key(&weasel_custom, "style/page_size").unwrap_or(7),
         horizontal: parse_bool_after_key(&weasel_custom, "style/horizontal").unwrap_or(true),
         inline_preedit: parse_bool_after_key(&weasel_custom, "style/inline_preedit")
             .unwrap_or(true),
@@ -447,6 +449,11 @@ fn write_appearance_config(user_dir: &Path, config: &AppearanceConfig) -> Result
         &contents,
         "style/label_font_point",
         &config.label_font_point.to_string(),
+    );
+    let contents = upsert_patch_value(
+        &contents,
+        "style/page_size",
+        &config.page_size.to_string(),
     );
     let contents = upsert_patch_value(
         &contents,

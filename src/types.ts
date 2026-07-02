@@ -57,6 +57,7 @@ export type AppearanceConfig = {
   theme_name: string;
   font_point: number;
   label_font_point: number;
+  page_size: number;
   horizontal: boolean;
   inline_preedit: boolean;
   candidate_format: string;

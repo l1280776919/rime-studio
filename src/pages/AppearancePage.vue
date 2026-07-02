@@ -25,8 +25,9 @@ function markEdited() {
 }
 const form = reactive<AppearanceConfig>({
   theme_name: "rime_studio_blue",
-  font_point: 14,
-  label_font_point: 12,
+  font_point: 12,
+  label_font_point: 11,
+  page_size: 7,
   horizontal: true,
   inline_preedit: true,
   candidate_format: "%c. %@",
@@ -266,7 +267,7 @@ onMounted(loadAppearance);
             <span>
               {{ form.horizontal ? "横排候选" : "竖排候选" }} ·
               {{ showPreeditInCandidateWindow ? "候选窗显示拼音" : "拼音内嵌输入框" }} ·
-              {{ form.font_point }}px
+              {{ form.font_point }}px · {{ form.page_size }} 项
             </span>
           </div>
           <div class="form-actions">
@@ -323,6 +324,10 @@ onMounted(loadAppearance);
 
             <el-form-item label="标签字体大小">
               <el-input-number v-model="form.label_font_point" :min="8" :max="28" />
+            </el-form-item>
+
+            <el-form-item label="候选数量">
+              <el-input-number v-model="form.page_size" :min="3" :max="12" />
             </el-form-item>
 
             <el-form-item label="圆角">
