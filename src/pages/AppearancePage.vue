@@ -143,17 +143,24 @@ const previewStyle = computed(() => ({
   borderColor: rimeToCssColor(form.border_color),
   borderRadius: `${form.corner_radius}px`,
   borderWidth: `${form.border_width}px`,
-  borderStyle: "solid" as const,
-  color: rimeToCssColor(form.text_color),
-  fontSize: `${form.font_point}px`,
-  padding: `${form.border_height}px ${form.border_width}px`,
+  padding: `${form.border_height + 6}px ${form.border_width + 6}px`,
 }));
-const previewPreeditStyle = computed(() => ({ paddingBottom: `${form.line_spacing}px` }));
-const previewCandidateStyle = computed(() => ({ color: rimeToCssColor(form.candidate_text_color) }));
-const previewCommentStyle = computed(() => ({ color: rimeToCssColor(form.comment_text_color) }));
+const previewPreeditStyle = computed(() => ({
+  paddingBottom: `${form.line_spacing}px`,
+  marginBottom: `${form.line_spacing}px`,
+}));
+const previewCandidateStyle = computed(() => ({
+  color: rimeToCssColor(form.candidate_text_color),
+  fontSize: `${form.font_point}px`,
+}));
+const previewCommentStyle = computed(() => ({
+  color: rimeToCssColor(form.comment_text_color),
+  fontSize: `${form.font_point}px`,
+}));
 const previewHighlightStyle = computed(() => ({
   backgroundColor: rimeToCssColor(form.hilited_candidate_back_color),
   color: rimeToCssColor(form.hilited_candidate_text_color),
+  fontSize: `${form.font_point}px`,
 }));
 const showPreeditInCandidateWindow = computed({
   get: () => !form.inline_preedit,
@@ -303,18 +310,26 @@ onMounted(loadAppearance);
     <section class="main-column">
       <!-- Preview bar -->
       <div class="appearance-toolbar panel">
-        <div class="weasel-preview" :class="{ horizontal: form.horizontal }">
-          <div v-if="form.inline_preedit" class="preview-inline-host">预览拼音</div>
-          <div class="preview-composition" :style="previewStyle">
-            <div v-if="showPreeditInCandidateWindow" class="preview-preedit" :style="previewPreeditStyle">
-              <span>雾凇拼音</span><strong>预览编码</strong>
+        <div class="weasel-preview">
+          <!-- Inline preedit (shown at cursor) -->
+          <div v-if="form.inline_preedit" class="preview-inline" :style="{ color: rimeToCssColor(form.text_color), fontSize: `${form.font_point}px`, fontFamily: 'var(--font-sans)' }">
+            <span class="preview-inline-code">wo</span>
+            <span class="preview-inline-caret">|</span>
+          </div>
+          <!-- Candidate window -->
+          <div class="preview-window" :style="previewStyle">
+            <!-- Preedit inside window -->
+            <div v-if="!form.inline_preedit" class="preview-preedit" :style="previewPreeditStyle">
+              <span :style="{ color: rimeToCssColor(form.text_color), fontSize: `${form.font_point}px` }">wǒ</span>
+              <strong :style="{ color: rimeToCssColor(form.hilited_text_color), background: rimeToCssColor(form.hilited_back_color), borderRadius: '3px', padding: '0 3px', fontSize: `${form.font_point}px` }">我</strong>
             </div>
-            <div class="preview-candidates" :style="{ gap: `${form.spacing}px` }">
-              <span :style="previewHighlightStyle">1. 配置</span>
-              <span :style="previewCandidateStyle">2. 词库</span>
-              <span :style="previewCandidateStyle">3. 外观</span>
-              <span :style="previewCandidateStyle">4. 部署</span>
-              <span :style="previewCommentStyle">注释</span>
+            <!-- Candidates -->
+            <div class="preview-candidates" :class="{ vertical: !form.horizontal }" :style="{ gap: `${form.spacing}px` }">
+              <span :style="previewHighlightStyle"><em>1.</em> 我们</span>
+              <span :style="previewCandidateStyle"><em>2.</em> 蜗牛</span>
+              <span :style="previewCandidateStyle"><em>3.</em> 握手</span>
+              <span :style="previewCandidateStyle"><em>4.</em> 卧室</span>
+              <span :style="previewCommentStyle"><em>5.</em> 莴苣</span>
             </div>
           </div>
         </div>
