@@ -91,6 +91,7 @@ struct AppearanceConfig {
     font_point: u32,
     label_font_point: u32,
     page_size: u32,
+    switch_key: String,
     horizontal: bool,
     inline_preedit: bool,
     candidate_format: String,
@@ -348,6 +349,11 @@ fn read_appearance_config(user_dir: &Path) -> AppearanceConfig {
             parse_u32_after_key(&weasel_custom, "style/page_size")
                 .or_else(|| parse_u32_after_key(&default_custom, "menu/page_size"))
                 .unwrap_or(7)
+        },
+        switch_key: {
+            let dc = read_to_string(&user_dir.join("default.custom.yaml"));
+            let val = parse_string_after_key(&dc, "ascii_composer/switch_key/Shift_L");
+            val.unwrap_or_else(|| "shift".to_string())
         },
         horizontal: parse_bool_after_key(&weasel_custom, "style/horizontal").unwrap_or(true),
         inline_preedit: parse_bool_after_key(&weasel_custom, "style/inline_preedit")
@@ -1099,6 +1105,13 @@ fn save_appearance_config_sync(config: AppearanceConfig) -> Result<AppearanceCon
     let default_custom_path = user_dir.join("default.custom.yaml");
     let default_contents = fs::read_to_string(&default_custom_path).unwrap_or_else(|_| "patch:\n".to_string());
     let default_contents = upsert_patch_value(&default_contents, "menu/page_size", &config.page_size.to_string());
+    // Write switch_key to default.custom.yaml
+    let default_contents = if config.switch_key == "shift" {
+        let c = upsert_patch_value(&default_contents, "ascii_composer/switch_key/Shift_L", "commit_code");
+        upsert_patch_value(&c, "ascii_composer/switch_key/Shift_R", "commit_code")
+    } else {
+        default_contents
+    };
     fs::write(&default_custom_path, default_contents)
         .map_err(|err| format!("写入 default.custom.yaml 失败: {err}"))?;
 

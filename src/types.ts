@@ -58,6 +58,7 @@ export type AppearanceConfig = {
   font_point: number;
   label_font_point: number;
   page_size: number;
+  switch_key: string;
   horizontal: boolean;
   inline_preedit: boolean;
   candidate_format: string;

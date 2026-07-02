@@ -38,6 +38,7 @@ const form = reactive<AppearanceConfig>({
   font_point: 11,
   label_font_point: 10,
   page_size: 7,
+  switch_key: "shift",
   horizontal: true,
   inline_preedit: true,
   candidate_format: "%c. %@",
@@ -253,6 +254,7 @@ async function loadAppearance() {
         font_point: 11,
         label_font_point: 10,
         page_size: 7,
+        switch_key: "shift",
         horizontal: true,
         inline_preedit: true,
         candidate_format: "%c. %@",
@@ -415,6 +417,13 @@ onMounted(loadAppearance);
                 </el-form-item>
                 <el-form-item label="候选窗显示拼音">
                   <el-switch v-model="showPreeditInCandidateWindow" active-text="显示" inactive-text="隐藏" inline-prompt size="small" :disabled="isLocked" />
+                </el-form-item>
+                <el-form-item label="中英文切换键">
+                  <el-select v-model="form.switch_key" size="small" :disabled="isLocked">
+                    <el-option label="Shift" value="shift" />
+                    <el-option label="Ctrl+空格" value="ctrl_space" />
+                    <el-option label="无" value="none" />
+                  </el-select>
                 </el-form-item>
               </div>
 
