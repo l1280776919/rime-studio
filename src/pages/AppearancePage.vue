@@ -272,11 +272,11 @@ onMounted(loadAppearance);
             <span v-if="userEdited" class="dirty-dot">已修改</span>
           </div>
           <div class="form-actions">
-            <el-button type="primary" :icon="Check" :loading="saving" :disabled="isLocked" style="color:#fff" @click="saveAppearance(false)">
-              保存
+            <el-button type="primary" :icon="Check" :loading="saving" :disabled="isLocked" @click="saveAppearance(false)">
+              <span style="color:#fff">保存</span>
             </el-button>
-            <el-button type="primary" :icon="UploadFilled" :loading="deploying" :disabled="isLocked" style="color:#fff" @click="saveAppearance(true)">
-              保存并部署
+            <el-button type="primary" :icon="UploadFilled" :loading="deploying" :disabled="isLocked" @click="saveAppearance(true)">
+              <span style="color:#fff">保存并部署</span>
             </el-button>
           </div>
         </div>
@@ -347,10 +347,10 @@ onMounted(loadAppearance);
 
               <h4 style="margin: 14px 0 6px; font-size:12px; color: var(--ink-500);">尺寸</h4>
               <div class="form-grid compact-form-grid">
-                <el-form-item label="圆角 ({{ form.corner_radius }}px)">
+                <el-form-item :label="`圆角 (${form.corner_radius}px)`">
                   <el-slider v-model="form.corner_radius" :min="0" :max="24" size="small" :disabled="isLocked" />
                 </el-form-item>
-                <el-form-item label="候选间距 ({{ form.spacing }}px)">
+                <el-form-item :label="`候选间距 (${form.spacing}px)`">
                   <el-slider v-model="form.spacing" :min="0" :max="24" size="small" :disabled="isLocked" />
                 </el-form-item>
                 <el-form-item label="边框高度">
