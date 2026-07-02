@@ -246,7 +246,8 @@ async function saveAppearance(shouldDeploy = false) {
 watch(
   () => props.env,
   (env) => {
-    if (!env || userEdited.value) return;
+    // Don't sync env values for presets — they use code defaults
+    if (!env || userEdited.value || isPreset.value) return;
     programmaticChange = true;
     if (env.theme_name) form.theme_name = env.theme_name;
     if (env.font_point) form.font_point = env.font_point;
