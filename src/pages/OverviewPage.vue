@@ -7,6 +7,7 @@ import {
   Brush,
   Check,
   Connection,
+  Delete,
   Download,
   FolderOpened,
   Open,
@@ -33,6 +34,7 @@ const emit = defineEmits<{
   install: [recipe: string];
   openBackup: [backup: BackupEntry];
   restoreBackup: [backup: BackupEntry];
+  deleteBackup: [backup: BackupEntry];
 }>();
 
 const toolsReady = computed(() => Boolean(props.env?.git_available && props.env?.bash_available));
@@ -349,6 +351,14 @@ async function autoDownloadAndInstall() {
                   @click="emit('restoreBackup', backup)"
                 >
                   恢复
+                </el-button>
+                <el-button
+                  link
+                  type="danger"
+                  :icon="Delete"
+                  @click="emit('deleteBackup', backup)"
+                >
+                  删除
                 </el-button>
               </div>
             </div>

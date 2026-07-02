@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from "vue";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Collection,
+  Delete,
   FolderOpened,
   InfoFilled,
   Open,
@@ -25,6 +26,7 @@ const loading = ref(false);
 const expandedDict = ref<string | null>(null);
 const dictHealth = ref<DictHealth | null>(null);
 const healthLoading = ref(false);
+const deletingDict = ref<string>();
 
 function formatBytes(value: number) {
   if (value < 1024) return `${value} B`;
@@ -76,9 +78,30 @@ async function toggleHealth(dict: DictInfo) {
 }
 
 function openFileLocation(dict: DictInfo) {
-  // Tauri doesn't have a "select file in explorer" — just open the user dir
   emit("openPath", "open_rime_user_dir");
   ElMessage.info(`词库文件: ${dict.name}`);
+}
+
+async function deleteDictionary(dict: DictInfo) {
+  try {
+    await ElMessageBox.confirm(
+      `确定删除「${dict.name}」？此操作不可恢复。`,
+      "删除词库",
+      { confirmButtonText: "删除", cancelButtonText: "取消", type: "warning" },
+    );
+  } catch {
+    return;
+  }
+  deletingDict.value = dict.name;
+  try {
+    await invoke("delete_dictionary", { dictName: dict.name });
+    ElMessage.success("词库已删除");
+    await loadAllStats();
+  } catch (error) {
+    ElMessage.error(String(error));
+  } finally {
+    deletingDict.value = undefined;
+  }
 }
 
 const totalEntries = ref(0);
@@ -177,10 +200,17 @@ watch(dictionaries, (dicts) => {
                 {{ formatTime(row.modified) }}
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="80" align="center">
+            <el-table-column label="操作" width="120" align="center">
               <template #default="{ row }: { row: DictInfo }">
                 <el-button link type="primary" :icon="Open" @click.stop="openFileLocation(row)">
                   打开
+                </el-button>
+                <el-button
+                  link type="danger" :icon="Delete"
+                  :loading="deletingDict === row.name"
+                  @click.stop="deleteDictionary(row)"
+                >
+                  删除
                 </el-button>
               </template>
             </el-table-column>

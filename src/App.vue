@@ -58,6 +58,7 @@ const scanning = ref(false);
 const deploying = ref(false);
 const backingUp = ref(false);
 const restoringBackup = ref<string>();
+const deletingBackup = ref<string>();
 const installingRecipe = ref<string>();
 const elapsedSeconds = ref(0);
 let elapsedTimer: ReturnType<typeof setInterval> | undefined;
@@ -197,6 +198,29 @@ async function restoreBackup(backup: BackupEntry) {
   }
 }
 
+async function deleteBackupEntry(backup: BackupEntry) {
+  try {
+    await ElMessageBox.confirm(
+      `确定删除备份 ${backup.name}（${backup.files} 个文件）？此操作不可恢复。`,
+      "删除备份",
+      { confirmButtonText: "删除", cancelButtonText: "取消", type: "warning" },
+    );
+  } catch {
+    return;
+  }
+
+  deletingBackup.value = backup.name;
+  try {
+    await invoke("delete_backup", { backupName: backup.name });
+    await loadBackups();
+    ElMessage.success("备份已删除");
+  } catch (error) {
+    ElMessage.error(String(error));
+  } finally {
+    deletingBackup.value = undefined;
+  }
+}
+
 async function deploy() {
   deploying.value = true;
   status.value = "正在重新部署小狼毫...";
@@ -329,7 +353,7 @@ onMounted(() => {
             size="small"
             @click="toggleTheme"
           />
-          <span>{{ isDark ? "浅色模式" : "深色模式" }}</span>
+          <span>{{ isDark ? "深色模式" : "浅色模式" }}</span>
         </div>
 
         <div class="sidebar-card">
@@ -379,6 +403,7 @@ onMounted(() => {
               @install="installRimeIce"
               @open-backup="openBackupDir"
               @restore-backup="restoreBackup"
+              @delete-backup="deleteBackupEntry"
             />
 
             <AppearancePage
@@ -410,9 +435,11 @@ onMounted(() => {
               :backups="backups"
               :backing-up="backingUp"
               :restoring-backup="restoringBackup"
+              :deleting-backup="deletingBackup"
               @create-backup="createManualBackup"
               @open-backup="openBackupDir"
               @restore-backup="restoreBackup"
+              @delete-backup="deleteBackupEntry"
             />
 
             <AboutPage

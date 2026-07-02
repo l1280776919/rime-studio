@@ -136,11 +136,12 @@ function parseImportText() {
 }
 
 function confirmImport() {
+  const count = parsedImport.value.length;
   entries.value.push(...parsedImport.value);
   parsedImport.value = [];
   importText.value = "";
   showImportDialog.value = false;
-  ElMessage.success(`已导入 ${parsedImport.value.length} 条短语，记得保存`);
+  ElMessage.success(`已导入 ${count} 条短语，记得保存`);
 }
 
 function copyAllAsTSV() {
@@ -188,9 +189,9 @@ onMounted(loadPhrases);
           </el-button>
         </el-empty>
 
-        <el-table v-else :data="filteredEntries" stripe max-height="calc(100dvh - 340px)" highlight-current-row>
+        <el-table v-else :data="filteredEntries" stripe max-height="calc(100dvh - 340px)" highlight-current-row @sort-change="(sort:any) => { if(sort.prop === 'text') entries.sort((a,b) => (sort.order==='ascending'?1:-1) * a.text.localeCompare(b.text)); if(sort.prop==='code') entries.sort((a,b) => (sort.order==='ascending'?1:-1) * (a.code||'').localeCompare(b.code||'')); if(sort.prop==='weight') entries.sort((a,b) => (sort.order==='ascending'?1:-1) * (a.weight-b.weight)); }">
           <el-table-column label="#" type="index" width="56" />
-          <el-table-column label="短语" min-width="200">
+          <el-table-column label="短语" min-width="200" prop="text" sortable="custom">
             <template #default="{ row, $index }: { row: PhraseEntry; $index: number }">
               <el-input
                 v-if="editingIndex === $index"
@@ -201,7 +202,7 @@ onMounted(loadPhrases);
               <span v-else class="cell-text">{{ row.text }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="编码" width="180">
+          <el-table-column label="编码" width="180" prop="code" sortable="custom">
             <template #default="{ row, $index }: { row: PhraseEntry; $index: number }">
               <el-input
                 v-if="editingIndex === $index"
@@ -212,7 +213,7 @@ onMounted(loadPhrases);
               <code v-else class="cell-code">{{ row.code || "—" }}</code>
             </template>
           </el-table-column>
-          <el-table-column label="权重" width="100" align="center">
+          <el-table-column label="权重" width="100" align="center" prop="weight" sortable="custom">
             <template #default="{ row, $index }: { row: PhraseEntry; $index: number }">
               <el-input-number
                 v-if="editingIndex === $index"

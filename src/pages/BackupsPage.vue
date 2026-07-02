@@ -1,17 +1,19 @@
 <script setup lang="ts">
-import { FolderOpened, Open, RefreshLeft } from "@element-plus/icons-vue";
+import { Delete, FolderOpened, Open, RefreshLeft } from "@element-plus/icons-vue";
 import type { BackupEntry } from "../types";
 
 defineProps<{
   backups: BackupEntry[];
   backingUp: boolean;
   restoringBackup?: string;
+  deletingBackup?: string;
 }>();
 
 const emit = defineEmits<{
   createBackup: [];
   openBackup: [backup: BackupEntry];
   restoreBackup: [backup: BackupEntry];
+  deleteBackup: [backup: BackupEntry];
 }>();
 
 function formatBackupTime(value?: number) {
@@ -65,6 +67,15 @@ function formatBackupTime(value?: number) {
                   @click="emit('restoreBackup', backup)"
                 >
                   恢复
+                </el-button>
+                <el-button
+                  link
+                  type="danger"
+                  :icon="Delete"
+                  :loading="deletingBackup === backup.name"
+                  @click="emit('deleteBackup', backup)"
+                >
+                  删除
                 </el-button>
               </div>
             </div>

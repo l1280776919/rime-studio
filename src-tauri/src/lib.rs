@@ -1146,6 +1146,26 @@ fn restore_backup_sync(backup_name: String) -> Result<RestoreResult, String> {
     restore_backup_dir(&user_dir, &backup_dir)
 }
 
+fn delete_backup_sync(backup_name: String) -> Result<(), String> {
+    let user_dir = rime_user_dir()?;
+    let backup_dir = validated_backup_dir(&user_dir, &backup_name)?;
+    fs::remove_dir_all(&backup_dir)
+        .map_err(|err| format!("删除备份失败: {err}"))
+}
+
+fn delete_dictionary_sync(dict_name: String) -> Result<(), String> {
+    let user_dir = rime_user_dir()?;
+    let safe_name = dict_name.replace('/', "").replace('\\', "").replace("..", "");
+    let path = user_dir.join(&safe_name);
+    if !path.exists() || !path.is_file() {
+        return Err("词库文件不存在".to_string());
+    }
+    if !safe_name.ends_with(".dict.yaml") {
+        return Err("只能删除 .dict.yaml 词库文件".to_string());
+    }
+    fs::remove_file(&path).map_err(|err| format!("删除词库失败: {err}"))
+}
+
 fn scan_dictionaries_sync_wrapper() -> Result<Vec<DictInfo>, String> {
     list_dictionaries_sync()
 }
@@ -1477,6 +1497,16 @@ async fn restore_backup(backup_name: String) -> Result<RestoreResult, String> {
 }
 
 #[tauri::command]
+async fn delete_backup(backup_name: String) -> Result<(), String> {
+    run_blocking(move || delete_backup_sync(backup_name)).await
+}
+
+#[tauri::command]
+async fn delete_dictionary(dict_name: String) -> Result<(), String> {
+    run_blocking(move || delete_dictionary_sync(dict_name)).await
+}
+
+#[tauri::command]
 async fn get_custom_phrases() -> Result<Vec<PhraseEntry>, String> {
     run_blocking(get_custom_phrases_sync).await
 }
@@ -1532,6 +1562,8 @@ pub fn run() {
             open_plum_dir,
             open_backup_dir,
             restore_backup,
+            delete_backup,
+            delete_dictionary,
             get_custom_phrases,
             save_custom_phrases,
             list_dictionaries,
