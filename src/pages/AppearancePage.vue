@@ -143,7 +143,7 @@ const previewStyle = computed(() => ({
   borderColor: rimeToCssColor(form.border_color),
   borderRadius: `${form.corner_radius}px`,
   borderWidth: `${form.border_width}px`,
-  padding: `${form.border_height + 6}px ${form.border_width + 6}px`,
+  padding: `${form.border_height + 4}px ${form.border_width + 4}px`,
 }));
 const previewPreeditStyle = computed(() => ({
   paddingBottom: `${form.line_spacing}px`,

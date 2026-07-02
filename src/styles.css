@@ -995,7 +995,7 @@ button:active {
 .preview-window {
   border: 1px solid rgba(0,0,0,0.1);
   border-radius: 6px;
-  padding: 8px 10px;
+  padding: 6px 8px;
   box-shadow: 0 2px 12px rgba(0,0,0,0.12);
   min-width: 180px;
   max-width: 500px;
@@ -1006,30 +1006,33 @@ button:active {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-bottom: 8px;
-  margin-bottom: 8px;
+  padding: 2px 4px 6px;
+  margin-bottom: 4px;
   border-bottom: 1px solid rgba(0,0,0,0.06);
   font-size: 13px;
 }
 
 .preview-candidates {
   display: flex;
-  gap: 0 14px;
+  gap: 0;
   flex-wrap: wrap;
   font-size: 14px;
+  align-items: stretch;
 }
 
 .preview-candidates.vertical {
   flex-direction: column;
-  gap: 4px 0;
 }
 
 .preview-candidates span {
-  padding: 3px 6px;
+  padding: 4px 8px;
   white-space: nowrap;
   transition: all var(--transition-fast);
   background: none;
   border: none;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
 }
 
 .preview-candidates span em {
@@ -1037,6 +1040,11 @@ button:active {
   font-size: 11px;
   margin-right: 1px;
   opacity: 0.5;
+}
+
+/* Make sure highlighted candidate fills row */
+.preview-candidates.vertical span {
+  padding: 5px 8px;
 }
 
 /* Dark mode preview */
