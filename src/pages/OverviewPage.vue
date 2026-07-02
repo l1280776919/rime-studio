@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
+import { ElMessage } from "element-plus";
+import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   Brush,
@@ -90,8 +92,41 @@ function formatBytes(value?: number) {
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
+const downloadingRime = ref(false);
+const downloadStatus = ref("");
+
 async function openRimeDownload() {
   await openUrl("https://rime.im/download/");
+}
+
+async function autoDownloadAndInstall() {
+  downloadingRime.value = true;
+  downloadStatus.value = "正在获取最新版本信息...";
+
+  try {
+    // Step 1: Download the installer
+    downloadStatus.value = "正在下载小狼毫安装包...";
+    const result = await invoke<{ success: boolean; installer_path?: string; message: string }>(
+      "download_rime_installer",
+    );
+
+    if (!result.success || !result.installer_path) {
+      ElMessage.warning("自动下载失败，将跳转到官网下载");
+      await openRimeDownload();
+      return;
+    }
+
+    // Step 2: Launch the installer
+    downloadStatus.value = "正在启动安装程序...";
+    await invoke("launch_rime_installer", { path: result.installer_path });
+    ElMessage.success("安装程序已启动，请按提示完成安装");
+    downloadStatus.value = "安装程序已启动 — 完成后返回此页面点击刷新";
+  } catch (error) {
+    ElMessage.warning(`自动安装失败: ${String(error)}，将跳转到官网`);
+    await openRimeDownload();
+  } finally {
+    downloadingRime.value = false;
+  }
 }
 </script>
 
@@ -119,11 +154,26 @@ async function openRimeDownload() {
             <span>安装后回到此页面，点击「重新部署」激活</span>
           </div>
         </div>
-        <el-button type="primary" size="large" :icon="Download" @click="openRimeDownload">
-          下载小狼毫输入法
-        </el-button>
+        <div class="onboarding-actions">
+          <el-button
+            type="primary"
+            size="large"
+            :icon="Download"
+            :loading="downloadingRime"
+            @click="autoDownloadAndInstall"
+          >
+            {{ downloadingRime ? downloadStatus : "自动下载安装" }}
+          </el-button>
+          <el-button
+            size="large"
+            :disabled="downloadingRime"
+            @click="openRimeDownload"
+          >
+            手动去官网下载
+          </el-button>
+        </div>
         <p class="onboarding-hint">
-          也可以手动指定已安装的 WeaselDeployer.exe 路径
+          自动下载从 GitHub 获取最新版本。手动下载可自行选择版本。
         </p>
       </div>
     </div>

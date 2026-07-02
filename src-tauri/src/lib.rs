@@ -1139,6 +1139,83 @@ fn get_dict_health_sync_wrapper(dict_name: String) -> Result<DictHealth, String>
     get_dict_health_sync(dict_name)
 }
 
+#[derive(Debug, Serialize)]
+struct RimeDownloadResult {
+    success: bool,
+    installer_path: Option<String>,
+    message: String,
+}
+
+fn download_rime_installer_sync() -> Result<RimeDownloadResult, String> {
+    // Fetch latest release info from GitHub API
+    let api_url = "https://api.github.com/repos/rime/weasel/releases/latest";
+    let response = ureq::get(api_url)
+        .set("User-Agent", "RimeStudio/0.1")
+        .set("Accept", "application/vnd.github+json")
+        .call()
+        .map_err(|err| format!("获取 Rime 发布信息失败: {err}"))?;
+
+    let json: serde_json::Value = response
+        .into_json()
+        .map_err(|err| format!("解析发布信息失败: {err}"))?;
+
+    // Find the .exe installer asset
+    let assets = json["assets"].as_array().ok_or("未找到发布资源")?;
+    let installer = assets
+        .iter()
+        .find_map(|asset| {
+            let name = asset["name"].as_str().unwrap_or("");
+            if name.ends_with(".exe") && name.contains("install") {
+                Some((name.to_string(), asset["browser_download_url"].as_str()?.to_string()))
+            } else if name.ends_with(".exe") {
+                Some((name.to_string(), asset["browser_download_url"].as_str()?.to_string()))
+            } else {
+                None
+            }
+        })
+        .ok_or("未找到合适的安装包")?;
+
+    let download_url = installer.1;
+    let filename = installer.0;
+
+    // Download to app data dir
+    let dest_dir = app_data_dir()?;
+    fs::create_dir_all(&dest_dir)
+        .map_err(|err| format!("创建下载目录失败: {err}"))?;
+    let dest_path = dest_dir.join(&filename);
+
+    // Download with progress
+    let response = ureq::get(&download_url)
+        .set("User-Agent", "RimeStudio/0.1")
+        .call()
+        .map_err(|err| format!("下载失败: {err}"))?;
+
+    let mut reader = response.into_reader();
+    let mut file = fs::File::create(&dest_path)
+        .map_err(|err| format!("创建文件失败: {err}"))?;
+    std::io::copy(&mut reader, &mut file)
+        .map_err(|err| format!("保存文件失败: {err}"))?;
+
+    Ok(RimeDownloadResult {
+        success: true,
+        installer_path: Some(dest_path.display().to_string()),
+        message: format!("已下载 {filename}"),
+    })
+}
+
+fn launch_installer_sync(path: String) -> Result<(), String> {
+    let installer_path = PathBuf::from(&path);
+    if !installer_path.exists() {
+        return Err("安装包文件不存在".to_string());
+    }
+
+    Command::new(&installer_path)
+        .spawn()
+        .map_err(|err| format!("启动安装程序失败: {err}"))?;
+
+    Ok(())
+}
+
 async fn run_blocking<T, F>(task: F) -> Result<T, String>
 where
     T: Send + 'static,
@@ -1224,6 +1301,16 @@ async fn get_dict_health(dict_name: String) -> Result<DictHealth, String> {
     run_blocking(move || get_dict_health_sync_wrapper(dict_name)).await
 }
 
+#[tauri::command]
+async fn download_rime_installer() -> Result<RimeDownloadResult, String> {
+    run_blocking(download_rime_installer_sync).await
+}
+
+#[tauri::command]
+async fn launch_rime_installer(path: String) -> Result<(), String> {
+    run_blocking(move || launch_installer_sync(path)).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1243,7 +1330,9 @@ pub fn run() {
             get_custom_phrases,
             save_custom_phrases,
             list_dictionaries,
-            get_dict_health
+            get_dict_health,
+            download_rime_installer,
+            launch_rime_installer
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
