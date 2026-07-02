@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Delete, FolderOpened, Open, RefreshLeft } from "@element-plus/icons-vue";
+import { formatTime } from "../utils";
 import type { BackupEntry } from "../types";
 
 defineProps<{
@@ -16,16 +17,6 @@ const emit = defineEmits<{
   deleteBackup: [backup: BackupEntry];
 }>();
 
-function formatBackupTime(value?: number) {
-  if (!value) return "未知时间";
-  return new Intl.DateTimeFormat("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value * 1000));
-}
 </script>
 
 <template>
@@ -53,7 +44,7 @@ function formatBackupTime(value?: number) {
             <div class="backup-main">
               <span>
                 <strong>{{ backup.name.replace("backup-rime-studio-", "") }}</strong>
-                <small>{{ formatBackupTime(backup.modified) }} · {{ backup.files }} 个文件</small>
+                <small>{{ formatTime(backup.modified) }} · {{ backup.files }} 个文件</small>
               </span>
               <div class="backup-actions">
                 <el-button link type="primary" :icon="Open" @click="emit('openBackup', backup)">

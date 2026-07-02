@@ -77,22 +77,7 @@ const installRecipes = [
   },
 ];
 
-function formatBackupTime(value?: number) {
-  if (!value) return "未知时间";
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value * 1000));
-}
-
-function formatBytes(value?: number) {
-  if (value === undefined) return "未找到";
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-  return `${(value / 1024 / 1024).toFixed(1)} MB`;
-}
+import { formatBytes, formatTime } from "../utils";
 
 const downloadingRime = ref(false);
 const downloadStatus = ref("");
@@ -337,7 +322,7 @@ async function autoDownloadAndInstall() {
             <div class="backup-main">
               <span>
                 <strong>{{ backup.name.replace("backup-rime-studio-", "") }}</strong>
-                <small>{{ formatBackupTime(backup.modified) }} · {{ backup.files }} 个文件</small>
+                <small>{{ formatTime(backup.modified) }} · {{ backup.files }} 个文件</small>
               </span>
               <div class="backup-actions">
                 <el-button link type="primary" :icon="Open" @click="emit('openBackup', backup)">

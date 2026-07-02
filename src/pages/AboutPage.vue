@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Collection, Connection, Link } from "@element-plus/icons-vue";
+import pkg from "../../package.json";
 </script>
 
 <template>
@@ -15,7 +16,7 @@ import { Collection, Connection, Link } from "@element-plus/icons-vue";
         <div class="about-intro">
           <div class="brand-mark" style="margin-bottom: 16px">R</div>
           <h3>Rime Studio</h3>
-          <p>小狼毫输入法配置工作台 v0.1.0</p>
+          <p>小狼毫输入法配置工作台 v{{ pkg.version }}</p>
           <p class="helper-text">
             基于 Tauri 2 + Vue 3 + Rust 构建的桌面应用，提供图形化界面来管理 Rime 输入法的外观主题、自定义短语、词库和配置备份。
           </p>

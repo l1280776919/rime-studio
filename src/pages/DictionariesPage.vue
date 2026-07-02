@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { invoke } from "@tauri-apps/api/core";
+import { formatBytes, formatTime } from "../utils";
 import {
   Collection,
   Delete,
@@ -27,23 +28,6 @@ const expandedDict = ref<string | null>(null);
 const dictHealth = ref<DictHealth | null>(null);
 const healthLoading = ref(false);
 const deletingDict = ref<string>();
-
-function formatBytes(value: number) {
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-  return `${(value / 1024 / 1024).toFixed(1)} MB`;
-}
-
-function formatTime(value?: number) {
-  if (!value) return "未知";
-  return new Intl.DateTimeFormat("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value * 1000));
-}
 
 async function loadDictionaries() {
   loading.value = true;
@@ -104,22 +88,14 @@ async function deleteDictionary(dict: DictInfo) {
   }
 }
 
-const totalEntries = ref(0);
-const totalSize = ref(0);
+const totalEntries = computed(() => dictionaries.value.reduce((s, d) => s + d.entry_count, 0));
+const totalSize = computed(() => dictionaries.value.reduce((s, d) => s + d.size_bytes, 0));
 
 async function loadAllStats() {
   await loadDictionaries();
-  totalEntries.value = dictionaries.value.reduce((s, d) => s + d.entry_count, 0);
-  totalSize.value = dictionaries.value.reduce((s, d) => s + d.size_bytes, 0);
 }
 
 onMounted(loadAllStats);
-
-// Recalc stats when dicts change
-watch(dictionaries, (dicts) => {
-  totalEntries.value = dicts.reduce((s, d) => s + d.entry_count, 0);
-  totalSize.value = dicts.reduce((s, d) => s + d.size_bytes, 0);
-});
 </script>
 
 <template>
@@ -172,6 +148,7 @@ watch(dictionaries, (dicts) => {
         <template v-else>
           <el-table
             :data="dictionaries"
+            v-loading="loading"
             stripe
             highlight-current-row
             max-height="calc(100dvh - 420px)"
