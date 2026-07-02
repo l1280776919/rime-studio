@@ -1947,6 +1947,109 @@ button:active {
   font-weight: 680;
 }
 
+/* ---- Onboarding hero (Rime not installed) ---- */
+.onboarding-hero {
+  flex: 0 0 auto;
+  margin-bottom: 16px;
+  padding: 32px 28px;
+  background: linear-gradient(135deg, #eff6ff 0%, #f0f9ff 40%, #fef3c7 100%);
+  border: 1px solid #bfdbfe;
+  border-radius: var(--radius-lg);
+  text-align: center;
+}
+
+.onboarding-body {
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.onboarding-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, #60a5fa, #2563eb);
+  border-radius: var(--radius-full);
+  color: #fff;
+  font-size: 28px;
+  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.3);
+}
+
+.onboarding-hero h3 {
+  margin: 0 0 8px;
+  color: var(--ink-900);
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.onboarding-hero p {
+  margin: 0 0 20px;
+  color: var(--ink-600);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.onboarding-steps {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+.onboard-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--ink-700);
+}
+
+.step-num {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  background: var(--brand-500);
+  color: #fff;
+  border-radius: var(--radius-full);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.onboarding-hint {
+  margin: 12px 0 0 !important;
+  color: var(--ink-400) !important;
+  font-size: 12px !important;
+}
+
+/* Dark mode onboarding */
+[data-theme="dark"] .onboarding-hero {
+  background: linear-gradient(135deg, #1e293b 0%, #1e3a5f 40%, #3b291e 100%);
+  border-color: #334155;
+}
+
+[data-theme="dark"] .onboard-step {
+  background: rgba(30, 41, 59, 0.7);
+  border-color: #334155;
+  color: var(--ink-600);
+}
+
+[data-theme="dark"] .onboarding-hero h3 {
+  color: var(--ink-800);
+}
+
+[data-theme="dark"] .onboarding-hero p {
+  color: var(--ink-500);
+}
+
 /* ---- Overview page wrapper (single-root fix) ---- */
 .overview-page {
   display: flex;

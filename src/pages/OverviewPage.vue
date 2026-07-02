@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   Brush,
   Check,
@@ -88,21 +89,47 @@ function formatBytes(value?: number) {
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
+
+async function openRimeDownload() {
+  await openUrl("https://rime.im/download/");
+}
 </script>
 
 <template>
   <div class="overview-page">
-    <el-alert
-      v-if="!hasDeployer && env"
-    class="setup-alert"
-    type="warning"
-    show-icon
-    title="未找到 WeaselDeployer.exe"
-    description="当前只能扫描和安装配置，重新部署需要先安装小狼毫或补充部署器路径。"
-    :closable="false"
-  />
+    <!-- Onboarding: Rime not installed -->
+    <div v-if="!hasDeployer && env" class="onboarding-hero">
+      <div class="onboarding-body">
+        <div class="onboarding-icon">
+          <el-icon><Download /></el-icon>
+        </div>
+        <h3>未检测到小狼毫输入法</h3>
+        <p>Rime Studio 是小狼毫的配置工作台，需要先安装输入法本体才能使用完整功能。</p>
+        <div class="onboarding-steps">
+          <div class="onboard-step">
+            <span class="step-num">1</span>
+            <span>下载小狼毫安装包</span>
+          </div>
+          <div class="onboard-step">
+            <span class="step-num">2</span>
+            <span>运行安装程序，按提示完成安装</span>
+          </div>
+          <div class="onboard-step">
+            <span class="step-num">3</span>
+            <span>安装后回到此页面，点击「重新部署」激活</span>
+          </div>
+        </div>
+        <el-button type="primary" size="large" :icon="Download" @click="openRimeDownload">
+          下载小狼毫输入法
+        </el-button>
+        <p class="onboarding-hint">
+          也可以手动指定已安装的 WeaselDeployer.exe 路径
+        </p>
+      </div>
+    </div>
 
-  <section class="compact-status">
+    <!-- Rime installed: show status bar -->
+    <section v-if="hasDeployer || !env" class="compact-status">
     <div class="status-cell primary">
       <el-icon><Setting /></el-icon>
       <span>方案</span>
