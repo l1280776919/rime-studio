@@ -91,8 +91,9 @@ function formatBytes(value?: number) {
 </script>
 
 <template>
-  <el-alert
-    v-if="!hasDeployer && env"
+  <div>
+    <el-alert
+      v-if="!hasDeployer && env"
     class="setup-alert"
     type="warning"
     show-icon
@@ -318,4 +319,5 @@ function formatBytes(value?: number) {
       </el-card>
     </aside>
   </section>
+  </div>
 </template>
