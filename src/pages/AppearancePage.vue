@@ -103,6 +103,39 @@ const presets = [
       hilited_candidate_back_color: "0xF6823B",
     },
   },
+  {
+    name: "rime_studio_dark",
+    label: "墨黑",
+    colors: {
+      back_color: "0x2E1A1A", border_color: "0x442D2D",
+      text_color: "0xD0C8C8", candidate_text_color: "0xD0C8C8",
+      comment_text_color: "0x806B6B", hilited_text_color: "0xFFFFFF",
+      hilited_back_color: "0xED3A7C", hilited_candidate_text_color: "0xFFFFFF",
+      hilited_candidate_back_color: "0xED3A7C",
+    },
+  },
+  {
+    name: "rime_studio_warm",
+    label: "暖橙",
+    colors: {
+      back_color: "0xEDF7FE", border_color: "0xD0E8FD",
+      text_color: "0x2E3D5C", candidate_text_color: "0x2E3D5C",
+      comment_text_color: "0x6A95B8", hilited_text_color: "0xFFFFFF",
+      hilited_back_color: "0x0B9EF5", hilited_candidate_text_color: "0xFFFFFF",
+      hilited_candidate_back_color: "0x0B9EF5",
+    },
+  },
+  {
+    name: "rime_studio_bamboo",
+    label: "竹绿",
+    colors: {
+      back_color: "0xF0FAF0", border_color: "0xDAEDD4",
+      text_color: "0x3E4A2D", candidate_text_color: "0x3E4A2D",
+      comment_text_color: "0x7A8B6B", hilited_text_color: "0xFFFFFF",
+      hilited_back_color: "0x699605", hilited_candidate_text_color: "0xFFFFFF",
+      hilited_candidate_back_color: "0x699605",
+    },
+  },
 ];
 
 const previewStyle = computed(() => ({
