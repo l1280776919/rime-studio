@@ -41,6 +41,11 @@ const toolsReady = computed(() => Boolean(props.env?.git_available && props.env?
 const hasDeployer = computed(() => Boolean(props.env?.deployer_path));
 const health = computed(() => props.env?.sogou_health);
 const customFiles = computed(() => props.env?.custom_files ?? []);
+const hasRimeIce = computed(() => {
+  return customFiles.value.some((file) =>
+    file.exists && ["rime_ice.schema.yaml", "rime_ice.dict.yaml", "rime_ice.custom.yaml"].includes(file.name),
+  );
+});
 const foundFiles = computed(() => customFiles.value.filter((file) => file.exists).length);
 const missingFiles = computed(() => customFiles.value.length - foundFiles.value);
 const fileCompletion = computed(() => {
@@ -66,9 +71,9 @@ const readinessItems = computed(() => [
 ]);
 const installRecipes = [
   {
-    name: "完整配置",
+    name: "完整雾凇",
     recipe: "iDvel/rime-ice:others/recipes/full",
-    description: "安装或更新雾凇拼音完整方案",
+    description: "安装、修复或更新雾凇拼音完整方案",
   },
   {
     name: "词库更新",
@@ -282,9 +287,9 @@ async function autoDownloadAndInstall() {
       <el-card class="panel action-panel compact-panel" shadow="never">
         <template #header>
           <div class="panel-title">
-            <span>安装 rime-ice</span>
-            <el-tag :type="toolsReady ? 'success' : 'warning'" effect="light">
-              {{ toolsReady ? "可安装" : "工具缺失" }}
+            <span>{{ hasRimeIce ? "雾凇维护" : "安装 rime-ice" }}</span>
+            <el-tag :type="!toolsReady ? 'warning' : hasRimeIce ? 'success' : 'info'" effect="light">
+              {{ !toolsReady ? "工具缺失" : hasRimeIce ? "已安装" : "可安装" }}
             </el-tag>
           </div>
         </template>
@@ -298,7 +303,9 @@ async function autoDownloadAndInstall() {
             @click="emit('install', recipe.recipe)"
           >
             <span>
-              <strong>{{ recipe.name }}</strong>
+              <strong>
+                {{ hasRimeIce && recipe.recipe.includes("full") ? "更新/修复雾凇" : recipe.name }}
+              </strong>
               <small>{{ recipe.description }}</small>
             </span>
             <el-icon v-if="installingRecipe === recipe.recipe" class="is-loading">

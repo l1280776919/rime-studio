@@ -163,10 +163,6 @@ const previewHighlightStyle = computed(() => ({
   color: rimeToCssColor(form.hilited_candidate_text_color),
   fontSize: `${form.font_point}px`,
 }));
-const showPreeditInCandidateWindow = computed({
-  get: () => !form.inline_preedit,
-  set: (value: boolean) => { form.inline_preedit = !value; },
-});
 
 function rimeToCssColor(value: string) {
   const n = value.replace(/^0x/i, "").padStart(6, "0").slice(-6);
@@ -339,9 +335,7 @@ onMounted(loadAppearance);
           <div>
             <strong>{{ form.theme_name }}</strong>
             <span>
-              {{ form.horizontal ? "横排" : "竖排" }} ·
-              {{ showPreeditInCandidateWindow ? "候选窗显示拼音" : "内嵌拼音" }} ·
-              {{ form.font_point }}px · {{ form.page_size }} 项
+              {{ form.font_point }}px · 圆角 {{ form.corner_radius }}px · 间距 {{ form.spacing }}px
             </span>
             <span v-if="userEdited" class="dirty-dot">已修改</span>
           </div>
@@ -360,9 +354,9 @@ onMounted(loadAppearance);
       <!-- Form -->
       <el-card class="panel appearance-form compact-panel" shadow="never">
         <el-form label-position="top">
-          <!-- All Schemes (presets + custom) -->
+          <!-- All themes (presets + custom) -->
           <div class="preset-section">
-            <h3>方案</h3>
+            <h3>主题</h3>
             <div class="preset-row">
               <button
                 v-for="scheme in allSchemes"
@@ -397,33 +391,14 @@ onMounted(loadAppearance);
             <section>
               <h3>基础设置</h3>
               <div class="form-grid compact-form-grid">
-                <el-form-item label="方案名称">
+                <el-form-item label="主题名称">
                   <el-input v-model="form.theme_name" size="small" :disabled="isLocked" />
-                </el-form-item>
-                <el-form-item label="候选格式">
-                  <el-input v-model="form.candidate_format" size="small" :disabled="isLocked" />
                 </el-form-item>
                 <el-form-item label="字体大小">
                   <el-input-number v-model="form.font_point" :min="10" :max="32" size="small" :disabled="isLocked" />
                 </el-form-item>
                 <el-form-item label="标签字号">
                   <el-input-number v-model="form.label_font_point" :min="8" :max="28" size="small" :disabled="isLocked" />
-                </el-form-item>
-                <el-form-item label="候选数量">
-                  <el-input-number v-model="form.page_size" :min="3" :max="12" size="small" :disabled="isLocked" />
-                </el-form-item>
-                <el-form-item label="候选布局">
-                  <el-switch v-model="form.horizontal" active-text="横排" inactive-text="竖排" inline-prompt size="small" :disabled="isLocked" />
-                </el-form-item>
-                <el-form-item label="候选窗显示拼音">
-                  <el-switch v-model="showPreeditInCandidateWindow" active-text="显示" inactive-text="隐藏" inline-prompt size="small" :disabled="isLocked" />
-                </el-form-item>
-                <el-form-item label="中英文切换键">
-                  <el-select v-model="form.switch_key" size="small" :disabled="isLocked">
-                    <el-option label="Shift" value="shift" />
-                    <el-option label="Ctrl+空格" value="ctrl_space" />
-                    <el-option label="无" value="none" />
-                  </el-select>
                 </el-form-item>
               </div>
 

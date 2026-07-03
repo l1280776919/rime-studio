@@ -2156,6 +2156,261 @@ button:active {
   font-weight: 600;
 }
 
+/* ---- Quick Settings Page ---- */
+.quick-settings-grid {
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) 300px;
+}
+
+.quick-settings-grid .el-card__body {
+  padding: 14px 18px;
+}
+
+.quick-settings-grid .panel .el-card__header {
+  padding: 12px 18px;
+}
+
+.quick-settings-grid .el-divider--horizontal {
+  margin: 10px 0 12px;
+}
+
+.quick-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+}
+
+.quick-hero > div:first-child {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 2px 12px;
+  align-items: center;
+}
+
+.quick-hero > div:first-child > .el-icon {
+  grid-row: span 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  color: var(--brand-600);
+  background: var(--brand-50);
+  border: 1px solid var(--brand-100);
+  border-radius: var(--radius-sm);
+  font-size: 17px;
+}
+
+.quick-hero > div:first-child > span {
+  color: var(--ink-500);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.quick-hero > div:first-child > strong {
+  color: var(--ink-900);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.quick-hero .form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.quick-hero .form-actions .el-button {
+  margin-left: 0;
+}
+
+.schema-choice-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.schema-choice {
+  display: grid;
+  gap: 4px;
+  min-height: 58px;
+  padding: 8px 10px;
+  text-align: left;
+  color: var(--ink-700);
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-sm);
+}
+
+.schema-choice:hover {
+  background: var(--color-surface);
+  border-color: var(--brand-300);
+}
+
+.schema-choice.active {
+  background: linear-gradient(135deg, var(--brand-50), #ffffff);
+  border-color: var(--brand-400);
+  box-shadow: var(--shadow-glow);
+}
+
+.schema-choice strong {
+  color: var(--ink-800);
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.schema-choice span {
+  color: var(--ink-500);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.quick-form .el-select,
+.quick-form .el-segmented {
+  width: 100%;
+}
+
+.quick-form .el-form-item {
+  margin-bottom: 8px;
+}
+
+.quick-settings-grid .compact-form-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 12px;
+}
+
+.quick-settings-grid .compact-form-grid .el-form-item__label {
+  margin-bottom: 4px;
+}
+
+.ice-toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ice-toggle {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-sm);
+}
+
+.ice-toggle span {
+  min-width: 0;
+}
+
+.ice-toggle strong,
+.ice-toggle small {
+  display: block;
+}
+
+.ice-toggle strong {
+  color: var(--ink-800);
+  font-size: 13px;
+  font-weight: 720;
+}
+
+.ice-toggle small {
+  margin-top: 2px;
+  color: var(--ink-500);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.ice-toggle .el-switch {
+  flex-shrink: 0;
+}
+
+.ice-toggle.select-toggle {
+  grid-column: span 2;
+}
+
+.ice-toggle.select-toggle .el-select {
+  width: 180px;
+  flex-shrink: 0;
+}
+
+.config-health-summary {
+  display: grid;
+  gap: 12px;
+}
+
+.health-actions,
+.health-empty-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.health-actions .el-button,
+.health-empty-actions .el-button {
+  margin-left: 0;
+}
+
+.config-health-summary > strong {
+  color: var(--ink-800);
+  font-size: 14px;
+}
+
+.config-health-list {
+  display: grid;
+  gap: 8px;
+}
+
+.config-health-item {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 8px;
+  align-items: flex-start;
+  padding: 9px 10px;
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-xs);
+  background: var(--color-surface-soft);
+}
+
+.config-health-item .el-icon {
+  margin-top: 2px;
+}
+
+.config-health-item.ok .el-icon {
+  color: var(--emerald-500);
+}
+
+.config-health-item.warning .el-icon {
+  color: var(--amber-500);
+}
+
+.config-health-item.error .el-icon {
+  color: var(--red-500);
+}
+
+.config-health-item strong,
+.config-health-item small {
+  display: block;
+}
+
+.config-health-item strong {
+  color: var(--ink-800);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.config-health-item small {
+  color: var(--ink-500);
+  font-size: 11px;
+  line-height: 1.45;
+  margin-top: 2px;
+}
+
 .phrase-actions {
   display: grid;
   gap: 10px;
@@ -2347,8 +2602,17 @@ button:active {
   .overview-compact-grid,
   .appearance-grid,
   .phrases-grid,
+  .quick-settings-grid,
   .dictionaries-grid {
     grid-template-columns: 1fr;
+  }
+
+  .ice-toggle-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ice-toggle.select-toggle {
+    grid-column: auto;
   }
 
   .side-column {
@@ -2478,6 +2742,7 @@ button:active {
 [data-theme="dark"] .path-chip,
 [data-theme="dark"] .health-list > div,
 [data-theme="dark"] .color-field,
+[data-theme="dark"] .schema-choice,
 [data-theme="dark"] .preset-button,
 [data-theme="dark"] .backup-item,
 [data-theme="dark"] .recipe-card {
@@ -2488,6 +2753,7 @@ button:active {
 [data-theme="dark"] .metric:hover,
 [data-theme="dark"] .status-row:hover,
 [data-theme="dark"] .health-list > div:hover,
+[data-theme="dark"] .schema-choice:hover,
 [data-theme="dark"] .backup-item:hover,
 [data-theme="dark"] .recipe-card:hover:not(:disabled) {
   background: rgba(51, 65, 85, 0.6);
@@ -2502,6 +2768,16 @@ button:active {
   background: linear-gradient(135deg, #1e3a8a, #1e293b);
   border-color: var(--brand-400);
   box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.15);
+}
+
+[data-theme="dark"] .schema-choice.active {
+  background: linear-gradient(135deg, #1e3a8a, #1e293b);
+  border-color: var(--brand-400);
+}
+
+[data-theme="dark"] .ice-toggle {
+  background: rgba(30, 41, 59, 0.5);
+  border-color: var(--color-line);
 }
 
 [data-theme="dark"] .weasel-preview {

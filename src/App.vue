@@ -8,6 +8,7 @@ import {
   EditPen,
   FolderOpened,
   InfoFilled,
+  MagicStick,
   Monitor,
   Moon,
   Refresh,
@@ -20,6 +21,7 @@ import BackupsPage from "./pages/BackupsPage.vue";
 import DictionariesPage from "./pages/DictionariesPage.vue";
 import OverviewPage from "./pages/OverviewPage.vue";
 import PhrasesPage from "./pages/PhrasesPage.vue";
+import QuickSettingsPage from "./pages/QuickSettingsPage.vue";
 import type {
   BackupEntry,
   DeployResult,
@@ -28,10 +30,11 @@ import type {
   RimeEnvironment,
 } from "./types";
 
-type PageKey = "overview" | "appearance" | "phrases" | "dictionaries" | "backups" | "about";
+type PageKey = "overview" | "quick" | "appearance" | "phrases" | "dictionaries" | "backups" | "about";
 
 const PAGE_KEYS: ReadonlySet<string> = new Set<PageKey>([
   "overview",
+  "quick",
   "appearance",
   "phrases",
   "dictionaries",
@@ -94,7 +97,8 @@ const hasDeployer = computed(() => Boolean(env.value?.deployer_path));
 const pageTitle = computed(() => {
   const titles: Record<PageKey, string> = {
     overview: "Rime 配置控制台",
-    appearance: "外观配置",
+    quick: "快速设置",
+    appearance: "主题配置",
     phrases: "短语管理",
     dictionaries: "词库管理",
     backups: "备份管理",
@@ -105,7 +109,8 @@ const pageTitle = computed(() => {
 const pageDescription = computed(() => {
   const descriptions: Record<PageKey, string> = {
     overview: "管理方案、外观、词库与部署状态。",
-    appearance: "调整小狼毫候选窗主题、字体和候选布局。",
+    quick: "集中调整雾凇方案、候选数量、按键和候选窗行为。",
+    appearance: "调整小狼毫候选窗主题、字号、边距和颜色。",
     phrases: "编辑自定义短语，支持添加、搜索、导入和批量管理。",
     dictionaries: "浏览和管理 Rime 词库文件，查看条目统计与健康状态。",
     backups: "查看、打开和恢复 Rime Studio 创建的配置备份。",
@@ -324,9 +329,13 @@ onMounted(() => {
             <el-icon><Monitor /></el-icon>
             <span>概览</span>
           </el-menu-item>
+          <el-menu-item index="quick">
+            <el-icon><MagicStick /></el-icon>
+            <span>快速设置</span>
+          </el-menu-item>
           <el-menu-item index="appearance">
             <el-icon><Brush /></el-icon>
-            <span>外观</span>
+            <span>主题</span>
           </el-menu-item>
           <el-menu-item index="phrases">
             <el-icon><EditPen /></el-icon>
@@ -404,6 +413,16 @@ onMounted(() => {
               @open-backup="openBackupDir"
               @restore-backup="restoreBackup"
               @delete-backup="deleteBackupEntry"
+            />
+
+            <QuickSettingsPage
+              v-else-if="activePage === 'quick'"
+              key="quick"
+              :env="env"
+              :installing-recipe="installingRecipe"
+              @saved="loadEnvironment"
+              @deploy="deploy"
+              @install="installRimeIce"
             />
 
             <AppearancePage

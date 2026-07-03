@@ -78,6 +78,35 @@ export type AppearanceConfig = {
   hilited_candidate_back_color: string;
 };
 
+export type QuickSettingsConfig = {
+  schema_id: string;
+  page_size: number;
+  switch_key: string;
+  paging_keys: string;
+  horizontal: boolean;
+  inline_preedit: boolean;
+};
+
+export type ConfigHealthCheck = {
+  name: string;
+  status: "ok" | "warning" | "error";
+  detail: string;
+};
+
+export type ConfigHealthReport = {
+  summary: string;
+  checks: ConfigHealthCheck[];
+};
+
+export type RimeIceSettings = {
+  emoji: boolean;
+  traditionalization: boolean;
+  ascii_punct: boolean;
+  full_shape: boolean;
+  search_single_char: boolean;
+  traditional_preset: string;
+};
+
 export type PhraseEntry = {
   text: string;
   code: string;
