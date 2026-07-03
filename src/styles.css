@@ -1574,22 +1574,22 @@ button:active {
 
 .appearance-toolbar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 260px;
-  gap: 16px;
-  padding: 12px;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 12px;
+  padding: 10px;
   align-items: center;
 }
 
 .appearance-toolbar .weasel-preview {
   border: 0;
   border-radius: var(--radius-sm);
-  padding: 8px;
-  min-height: 100px;
+  padding: 6px;
+  min-height: 80px;
 }
 
 .appearance-actions {
   display: grid;
-  gap: 12px;
+  gap: 8px;
 }
 
 .appearance-actions strong,
@@ -1599,19 +1599,19 @@ button:active {
 
 .appearance-actions strong {
   color: var(--ink-800);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
 }
 
 .appearance-actions span {
   color: var(--ink-500);
-  font-size: 12px;
-  margin-top: 2px;
+  font-size: 11px;
+  margin-top: 1px;
 }
 
 .appearance-actions .form-actions {
   display: grid;
-  gap: 6px;
+  gap: 4px;
   grid-template-columns: 1fr 1fr;
   margin-top: 0;
 }
@@ -1619,6 +1619,8 @@ button:active {
 .appearance-actions .form-actions .el-button {
   margin-left: 0;
   justify-content: center;
+  height: 30px;
+  font-size: 12px;
 }
 
 .preset-readonly-hint {
@@ -1640,22 +1642,22 @@ button:active {
 /* Appearance sections */
 .appearance-sections {
   display: grid;
-  gap: 18px;
-  grid-template-columns: minmax(0, 1fr) 310px;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) 280px;
 }
 
 .appearance-sections h3 {
-  margin: 0 0 6px;
+  margin: 0 0 4px;
   color: var(--ink-800);
-  font-size: 13px;
-  font-weight: 750;
+  font-size: 12px;
+  font-weight: 720;
 }
 
 .section-hint {
-  margin: -2px 0 10px;
+  margin: -2px 0 8px;
   color: var(--ink-500);
-  font-size: 12px;
-  line-height: 1.45;
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 .compact-form-grid {
@@ -2909,6 +2911,26 @@ button:active {
 [data-theme="dark"] .sidebar-card strong,
 [data-theme="dark"] .file-name {
   color: var(--ink-800);
+}
+
+/* Dark mode: improve helper text contrast */
+[data-theme="dark"] .helper-text {
+  color: var(--ink-500);
+}
+
+/* Dark mode: ensure disabled switches are visible */
+[data-theme="dark"] .el-switch.is-disabled {
+  opacity: 0.5;
+}
+
+/* Dark mode: card header subtle differentiation */
+[data-theme="dark"] .el-card__header {
+  color: var(--ink-700);
+}
+
+/* Dark mode: divider visibility */
+[data-theme="dark"] .el-divider--horizontal {
+  border-top-color: var(--color-line-soft);
 }
 
 /* ---- Theme toggle (sidebar footer) ---- */
