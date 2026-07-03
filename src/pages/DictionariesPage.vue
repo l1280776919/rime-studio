@@ -151,7 +151,7 @@ onMounted(loadAllStats);
             v-loading="loading"
             stripe
             highlight-current-row
-            max-height="calc(100dvh - 420px)"
+            max-height="calc(100dvh - 340px)"
             @row-click="toggleHealth"
           >
             <el-table-column label="文件名" min-width="240">
@@ -180,7 +180,7 @@ onMounted(loadAllStats);
             <el-table-column label="操作" width="120" align="center">
               <template #default="{ row }: { row: DictInfo }">
                 <el-button link type="primary" :icon="Open" @click.stop="openFileLocation(row)">
-                  打开
+                  定位
                 </el-button>
                 <el-button
                   link type="danger" :icon="Delete"
@@ -194,7 +194,7 @@ onMounted(loadAllStats);
           </el-table>
 
           <!-- Expandable health section -->
-          <Transition name="page">
+          <Transition name="el-fade-in-linear">
             <div v-if="expandedDict && dictHealth" class="dict-health-detail">
               <el-divider />
               <div class="panel-title" style="margin-bottom: 10px">

@@ -127,7 +127,7 @@ function parseImportText() {
     parsedImport.value.push({
       text: parts[0].trim(),
       code: (parts[1] ?? "").trim(),
-      weight: parseInt(parts[2] ?? "1", 10) || 1,
+      weight: (() => { const p = parseInt(parts[2] ?? "1", 10); return Number.isNaN(p) ? 1 : p; })(),
     });
   }
   if (!parsedImport.value.length) {
@@ -189,7 +189,7 @@ onMounted(loadPhrases);
           </el-button>
         </el-empty>
 
-        <el-table v-else :data="filteredEntries" v-loading="loading" stripe max-height="calc(100dvh - 340px)" highlight-current-row @sort-change="(sort:any) => { if(sort.prop === 'text') entries.sort((a,b) => (sort.order==='ascending'?1:-1) * a.text.localeCompare(b.text)); if(sort.prop==='code') entries.sort((a,b) => (sort.order==='ascending'?1:-1) * (a.code||'').localeCompare(b.code||'')); if(sort.prop==='weight') entries.sort((a,b) => (sort.order==='ascending'?1:-1) * (a.weight-b.weight)); }">
+        <el-table v-else :data="filteredEntries" v-loading="loading" stripe max-height="calc(100dvh - 280px)" highlight-current-row @sort-change="(sort:any) => { if(sort.prop === 'text') entries.sort((a,b) => (sort.order==='ascending'?1:-1) * a.text.localeCompare(b.text)); if(sort.prop==='code') entries.sort((a,b) => (sort.order==='ascending'?1:-1) * (a.code||'').localeCompare(b.code||'')); if(sort.prop==='weight') entries.sort((a,b) => (sort.order==='ascending'?1:-1) * (a.weight-b.weight)); }">
           <el-table-column label="#" type="index" width="56" />
           <el-table-column label="短语" min-width="200" prop="text" sortable="custom">
             <template #default="{ row, $index }: { row: PhraseEntry; $index: number }">

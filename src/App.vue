@@ -407,6 +407,7 @@ onMounted(() => {
               :backing-up="backingUp"
               :restoring-backup="restoringBackup"
               :installing-recipe="installingRecipe"
+              :deleting-backup="deletingBackup"
               @create-backup="createManualBackup"
               @open-path="openKnownPath"
               @install="installRimeIce"

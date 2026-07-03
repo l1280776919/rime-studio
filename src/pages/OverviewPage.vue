@@ -25,6 +25,7 @@ const props = defineProps<{
   scanning: boolean;
   backingUp: boolean;
   restoringBackup?: string;
+  deletingBackup?: string;
   installingRecipe?: string;
 }>();
 
@@ -170,8 +171,10 @@ async function autoDownloadAndInstall() {
       </div>
     </div>
 
+    <!-- Loading skeleton -->
+    <el-skeleton v-if="!env" :rows="1" animated style="margin-bottom: 14px" />
     <!-- Rime installed: show status bar -->
-    <section v-if="hasDeployer || !env" class="compact-status">
+    <section v-else-if="hasDeployer" class="compact-status">
     <div class="status-cell primary">
       <el-icon><Setting /></el-icon>
       <span>方案</span>
@@ -233,7 +236,7 @@ async function autoDownloadAndInstall() {
             <span class="panel-caption">{{ env?.build_dir ?? "build 目录待扫描" }}</span>
           </div>
         </template>
-        <el-table :data="customFiles" stripe>
+        <el-table :data="customFiles" stripe max-height="280">
           <el-table-column label="文件" min-width="280">
             <template #default="{ row }: { row: FileStatus }">
               <strong class="file-name">{{ row.name }}</strong>
@@ -348,6 +351,7 @@ async function autoDownloadAndInstall() {
                   link
                   type="danger"
                   :icon="Delete"
+                  :loading="deletingBackup === backup.name"
                   @click="emit('deleteBackup', backup)"
                 >
                   删除
@@ -366,20 +370,21 @@ async function autoDownloadAndInstall() {
         <template #header>
           <span>词库健康</span>
         </template>
-        <div class="health-list">
+        <div v-if="health" class="health-list">
           <div>
             <span>条目</span>
-            <strong>{{ health?.entries ?? 0 }}</strong>
+            <strong>{{ health.entries.toLocaleString() }}</strong>
           </div>
           <div>
             <span>重复行</span>
-            <strong>{{ health?.duplicate_exact_lines ?? 0 }}</strong>
+            <strong :class="health.duplicate_exact_lines ? 'warn-text' : ''">{{ health.duplicate_exact_lines.toLocaleString() }}</strong>
           </div>
           <div>
             <span>长低权重项</span>
-            <strong>{{ health?.long_low_weight_entries ?? 0 }}</strong>
+            <strong :class="health.long_low_weight_entries ? 'warn-text' : ''">{{ health.long_low_weight_entries.toLocaleString() }}</strong>
           </div>
         </div>
+        <p v-else class="helper-text">暂无词库健康数据，安装雾凇后可查看。</p>
       </el-card>
 
       <el-card class="panel path-panel compact-panel" shadow="never">

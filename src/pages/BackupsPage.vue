@@ -38,8 +38,12 @@ const emit = defineEmits<{
           </div>
         </template>
 
-        <el-empty v-if="!backups.length" description="还没有备份" />
-        <div v-else class="backup-list full">
+        <el-empty v-if="!backups.length" description="还没有备份">
+          <el-button type="primary" :icon="FolderOpened" :loading="backingUp" @click="emit('createBackup')">
+            创建第一个备份
+          </el-button>
+        </el-empty>
+        <div v-else class="backup-list full" style="max-height: calc(100dvh - 260px); overflow-y: auto;">
           <div v-for="backup in backups" :key="backup.path" class="backup-item">
             <div class="backup-main">
               <span>
