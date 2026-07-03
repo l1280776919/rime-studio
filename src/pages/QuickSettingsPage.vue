@@ -45,7 +45,8 @@ const form = reactive<QuickSettingsConfig>({
   schema_id: "rime_ice",
   page_size: 7,
   switch_key: "shift",
-  paging_keys: "default",
+  paging_keys: "comma_period",
+  navigation_keys: "up_down",
   horizontal: true,
   inline_preedit: true,
 });
@@ -311,9 +312,15 @@ onBeforeUnmount(() => {
             </el-form-item>
             <el-form-item label="翻页键">
               <el-select v-model="form.paging_keys">
-                <el-option label="保留当前配置" value="default" />
-                <el-option label=", / ." value="comma_period" />
-                <el-option label="- / =" value="minus_equal" />
+                <el-option label="逗号句号 (, .)" value="comma_period" />
+                <el-option label="减号等号 (- =)" value="minus_equal" />
+                <el-option label="上下箭头 (↑↓)" value="arrow_keys" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="候选选择键">
+              <el-select v-model="form.navigation_keys">
+                <el-option label="上下键 (↑↓)" value="up_down" />
+                <el-option label="左右键 (←→)" value="left_right" />
               </el-select>
             </el-form-item>
           </div>
@@ -338,42 +345,42 @@ onBeforeUnmount(() => {
         </template>
 
         <div class="ice-toggle-grid">
-          <label class="ice-toggle">
+          <div class="ice-toggle">
             <span>
               <strong>Emoji</strong>
               <small>默认启用候选 Emoji 转换</small>
             </span>
             <el-switch v-model="iceSettings.emoji" :disabled="!hasRimeIce" />
-          </label>
-          <label class="ice-toggle">
+          </div>
+          <div class="ice-toggle">
             <span>
               <strong>繁体输出</strong>
               <small>默认进入简繁转换状态</small>
             </span>
             <el-switch v-model="iceSettings.traditionalization" :disabled="!hasRimeIce" />
-          </label>
-          <label class="ice-toggle">
+          </div>
+          <div class="ice-toggle">
             <span>
               <strong>英文标点</strong>
               <small>默认使用英文标点状态</small>
             </span>
             <el-switch v-model="iceSettings.ascii_punct" :disabled="!hasRimeIce" />
-          </label>
-          <label class="ice-toggle">
+          </div>
+          <div class="ice-toggle">
             <span>
               <strong>全角字符</strong>
               <small>默认进入全角输入状态</small>
             </span>
             <el-switch v-model="iceSettings.full_shape" :disabled="!hasRimeIce" />
-          </label>
-          <label class="ice-toggle">
+          </div>
+          <div class="ice-toggle">
             <span>
               <strong>辅码单字优先</strong>
               <small>部件/拼音反查时更偏向单字</small>
             </span>
             <el-switch v-model="iceSettings.search_single_char" :disabled="!hasRimeIce" />
-          </label>
-          <label class="ice-toggle select-toggle">
+          </div>
+          <div class="ice-toggle select-toggle">
             <span>
               <strong>繁体地区</strong>
               <small>选择简繁转换 OpenCC 预设</small>
@@ -384,7 +391,7 @@ onBeforeUnmount(() => {
               <el-option label="台湾繁体含词汇" value="s2twp.json" />
               <el-option label="香港繁体" value="s2hk.json" />
             </el-select>
-          </label>
+          </div>
         </div>
 
         <p v-if="!hasRimeIce" class="helper-text">

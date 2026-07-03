@@ -117,6 +117,7 @@ struct QuickSettingsConfig {
     page_size: u32,
     switch_key: String,
     paging_keys: String,
+    navigation_keys: String,
     horizontal: bool,
     inline_preedit: bool,
 }
@@ -1107,6 +1108,26 @@ fn get_appearance_config_sync() -> Result<AppearanceConfig, String> {
     Ok(read_appearance_config(&user_dir))
 }
 
+fn detect_paging_keys(contents: &str) -> String {
+    if contents.contains("accept: Up") && contents.contains("send: Page_Up") {
+        return "arrow_keys".to_string();
+    }
+    if contents.contains("accept: minus") && contents.contains("send: Page_Up") {
+        return "minus_equal".to_string();
+    }
+    "comma_period".to_string()
+}
+
+fn detect_navigation_keys(contents: &str) -> String {
+    // left_right when Left→Up (synthesize Up for selection) OR Left→Page_Up (extra paging)
+    let left_sends_up = contents.contains("accept: Left") && contents.contains("send: Up");
+    let left_sends_page = contents.contains("accept: Left") && contents.contains("send: Page_Up");
+    if left_sends_up || left_sends_page {
+        return "left_right".to_string();
+    }
+    "up_down".to_string()
+}
+
 fn get_quick_settings_sync() -> Result<QuickSettingsConfig, String> {
     let user_dir = rime_user_dir()?;
     let default_custom = read_to_string(&user_dir.join("default.custom.yaml"));
@@ -1118,8 +1139,9 @@ fn get_quick_settings_sync() -> Result<QuickSettingsConfig, String> {
     } else {
         "none"
     };
-    let paging_keys = parse_list_value_after_key(&default_custom, "key_binder/bindings")
-        .unwrap_or_else(|| "default".to_string());
+    let paging_keys = detect_paging_keys(&default_custom);
+
+    let navigation_keys = detect_navigation_keys(&default_custom);
 
     Ok(QuickSettingsConfig {
         schema_id: parse_schema(&default_custom).unwrap_or_else(|| "rime_ice".to_string()),
@@ -1127,6 +1149,7 @@ fn get_quick_settings_sync() -> Result<QuickSettingsConfig, String> {
             .unwrap_or(appearance.page_size),
         switch_key: switch_key.to_string(),
         paging_keys,
+        navigation_keys,
         horizontal: appearance.horizontal,
         inline_preedit: appearance.inline_preedit,
     })
@@ -1157,20 +1180,34 @@ fn save_quick_settings_sync(config: QuickSettingsConfig) -> Result<QuickSettings
         format!("  \"ascii_composer/switch_key/Shift_L\": {switch_value}"),
         format!("  \"ascii_composer/switch_key/Shift_R\": {switch_value}"),
     ];
-    match config.paging_keys.as_str() {
-        "comma_period" => {
-            default_contents.push("  \"key_binder/bindings\":".to_string());
-            default_contents.push("    - {when: paging, accept: comma, send: Page_Up}".to_string());
-            default_contents
-                .push("    - {when: has_menu, accept: period, send: Page_Down}".to_string());
-        }
-        "minus_equal" => {
-            default_contents.push("  \"key_binder/bindings\":".to_string());
-            default_contents.push("    - {when: paging, accept: minus, send: Page_Up}".to_string());
-            default_contents
-                .push("    - {when: has_menu, accept: equal, send: Page_Down}".to_string());
-        }
-        _ => {}
+    // Build key_binder bindings for paging and navigation
+    let mut bindings: Vec<String> = Vec::new();
+    let arrow_paging = config.paging_keys == "arrow_keys";
+    let left_right_nav = config.navigation_keys == "left_right";
+
+    if arrow_paging && left_right_nav {
+        // Full arrow swap: Up/Down page, Left/Right synthesize Up/Down for selection
+        bindings.push("    - {when: paging, accept: Up, send: Page_Up}".to_string());
+        bindings.push("    - {when: has_menu, accept: Down, send: Page_Down}".to_string());
+        bindings.push("    - {when: has_menu, accept: Left, send: Up}".to_string());
+        bindings.push("    - {when: has_menu, accept: Right, send: Down}".to_string());
+    } else if arrow_paging {
+        // Up/Down page only
+        bindings.push("    - {when: paging, accept: Up, send: Page_Up}".to_string());
+        bindings.push("    - {when: has_menu, accept: Down, send: Page_Down}".to_string());
+    } else if left_right_nav {
+        // Left/Right as additional paging keys (Up/Down still select)
+        bindings.push("    - {when: has_menu, accept: Left, send: Page_Up}".to_string());
+        bindings.push("    - {when: has_menu, accept: Right, send: Page_Down}".to_string());
+    } else if config.paging_keys == "minus_equal" {
+        // Minus/equal paging
+        bindings.push("    - {when: paging, accept: minus, send: Page_Up}".to_string());
+        bindings.push("    - {when: has_menu, accept: equal, send: Page_Down}".to_string());
+    }
+
+    if !bindings.is_empty() {
+        default_contents.push("  \"key_binder/bindings\":".to_string());
+        default_contents.extend(bindings);
     }
     default_contents.push(String::new());
     fs::write(&default_custom_path, default_contents.join("\n"))
@@ -1509,7 +1546,8 @@ fn repair_config_health_sync() -> Result<ConfigHealthReport, String> {
         schema_id: "luna_pinyin_simp".to_string(),
         page_size: 5,
         switch_key: "shift".to_string(),
-        paging_keys: "default".to_string(),
+        paging_keys: "comma_period".to_string(),
+        navigation_keys: "up_down".to_string(),
         horizontal: true,
         inline_preedit: true,
     });

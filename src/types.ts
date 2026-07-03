@@ -83,6 +83,7 @@ export type QuickSettingsConfig = {
   page_size: number;
   switch_key: string;
   paging_keys: string;
+  navigation_keys: string;
   horizontal: boolean;
   inline_preedit: boolean;
 };
