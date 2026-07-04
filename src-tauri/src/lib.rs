@@ -13,6 +13,7 @@ struct FileStatus {
     path: String,
     exists: bool,
     size: Option<u64>,
+    modified: Option<u64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -168,16 +169,29 @@ fn file_status(user_dir: &Path, name: &str) -> FileStatus {
         name: name.to_string(),
         path: path.display().to_string(),
         exists: metadata.is_some(),
-        size: metadata.map(|meta| meta.len()),
+        size: metadata.as_ref().map(|meta| meta.len()),
+        modified: metadata
+            .and_then(|meta| meta.modified().ok())
+            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|duration| duration.as_secs()),
     }
 }
 
 fn parse_schema(default_custom: &str) -> Option<String> {
+    parse_schema_list(default_custom).into_iter().next()
+}
+
+fn parse_schema_list(default_custom: &str) -> Vec<String> {
     default_custom
         .lines()
-        .find_map(|line| line.split("{schema:").nth(1))
-        .and_then(|rest| rest.split('}').next())
-        .map(|schema| schema.trim().to_string())
+        .filter_map(|line| {
+            line.split("{schema:")
+                .nth(1)
+                .and_then(|rest| rest.split('}').next())
+                .map(|schema| schema.trim().to_string())
+                .filter(|schema| !schema.is_empty())
+        })
+        .collect()
 }
 
 fn parse_list_value_after_key(contents: &str, key: &str) -> Option<String> {
@@ -800,7 +814,6 @@ fn get_custom_phrases_sync() -> Result<Vec<PhraseEntry>, String> {
 fn save_custom_phrases_sync(phrases: Vec<PhraseEntry>) -> Result<(), String> {
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
-    backup_user_config(&user_dir)?;
 
     let path = user_dir.join("custom_phrase.txt");
 
@@ -933,6 +946,19 @@ fn open_in_explorer(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn reveal_in_explorer(path: &Path) -> Result<(), String> {
+    if !path.exists() {
+        return Err(format!("路径不存在: {}", path.display()));
+    }
+
+    Command::new("explorer")
+        .arg("/select,")
+        .arg(path)
+        .spawn()
+        .map_err(|err| format!("打开资源管理器失败: {err}"))?;
+    Ok(())
+}
+
 fn run_command(mut command: Command) -> Result<(bool, String), String> {
     let output = command
         .output()
@@ -1052,7 +1078,6 @@ fn install_rime_ice_sync(recipe: Option<String>) -> Result<InstallResult, String
     let recipe = recipe.unwrap_or_else(|| "iDvel/rime-ice:others/recipes/full".to_string());
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
-    let backup_dir = backup_user_config(&user_dir)?;
     let plum_dir = app_data_dir()?.join("plum");
 
     let mut log = String::new();
@@ -1075,7 +1100,7 @@ fn install_rime_ice_sync(recipe: Option<String>) -> Result<InstallResult, String
         return Ok(InstallResult {
             success: false,
             recipe,
-            backup_dir: Some(backup_dir.display().to_string()),
+            backup_dir: None,
             log,
         });
     }
@@ -1087,7 +1112,7 @@ fn install_rime_ice_sync(recipe: Option<String>) -> Result<InstallResult, String
             Ok(InstallResult {
                 success: result.success,
                 recipe,
-                backup_dir: Some(backup_dir.display().to_string()),
+                backup_dir: None,
                 log,
             })
         }
@@ -1096,7 +1121,7 @@ fn install_rime_ice_sync(recipe: Option<String>) -> Result<InstallResult, String
             Ok(InstallResult {
                 success: false,
                 recipe,
-                backup_dir: Some(backup_dir.display().to_string()),
+                backup_dir: None,
                 log,
             })
         }
@@ -1158,7 +1183,6 @@ fn get_quick_settings_sync() -> Result<QuickSettingsConfig, String> {
 fn save_quick_settings_sync(config: QuickSettingsConfig) -> Result<QuickSettingsConfig, String> {
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
-    backup_user_config(&user_dir)?;
 
     let default_custom_path = user_dir.join("default.custom.yaml");
     let schema_id = config
@@ -1615,7 +1639,6 @@ fn render_rime_ice_custom(settings: &RimeIceSettings) -> String {
 fn save_rime_ice_settings_sync(settings: RimeIceSettings) -> Result<RimeIceSettings, String> {
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
-    backup_user_config(&user_dir)?;
     fs::write(
         user_dir.join("rime_ice.custom.yaml"),
         render_rime_ice_custom(&settings),
@@ -1627,7 +1650,6 @@ fn save_rime_ice_settings_sync(settings: RimeIceSettings) -> Result<RimeIceSetti
 fn save_appearance_config_sync(config: AppearanceConfig) -> Result<AppearanceConfig, String> {
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
-    backup_user_config(&user_dir)?;
     write_appearance_config(&user_dir, &config, false)?;
 
     Ok(read_appearance_config(&user_dir))
@@ -1656,6 +1678,29 @@ fn create_backup_sync() -> Result<BackupEntry, String> {
 
 fn open_rime_user_dir_sync() -> Result<(), String> {
     open_in_explorer(&rime_user_dir()?)
+}
+
+fn open_config_file_sync(name: String) -> Result<(), String> {
+    let allowed = [
+        "default.custom.yaml",
+        "weasel.custom.yaml",
+        "rime_ice.custom.yaml",
+        "custom_phrase.txt",
+        "rime_ice.schema.yaml",
+        "rime_ice.dict.yaml",
+        "rime_ice_ext.dict.yaml",
+        "sogou_ext.dict.yaml",
+    ];
+    if !allowed.contains(&name.as_str()) {
+        return Err("不支持打开这个配置文件".to_string());
+    }
+
+    let path = rime_user_dir()?.join(name);
+    if !path.exists() || !path.is_file() {
+        return Err("配置文件不存在".to_string());
+    }
+
+    reveal_in_explorer(&path)
 }
 
 fn open_plum_dir_sync() -> Result<(), String> {
@@ -1792,12 +1837,14 @@ struct SchemaInfo {
     path: String,
     is_system: bool,
     is_active: bool,
+    is_enabled: bool,
 }
 
 fn list_schemas_sync() -> Result<Vec<SchemaInfo>, String> {
     let user_dir = rime_user_dir()?;
     let active_schema = read_to_string(&user_dir.join("default.custom.yaml"));
     let active = parse_schema(&active_schema);
+    let enabled = parse_schema_list(&active_schema);
     let mut schemas = Vec::new();
 
     // Find system schemas from Weasel data directory
@@ -1844,6 +1891,7 @@ fn list_schemas_sync() -> Result<Vec<SchemaInfo>, String> {
                 schemas.push(SchemaInfo {
                     is_system: true,
                     is_active: active.as_ref() == Some(&id),
+                    is_enabled: enabled.iter().any(|schema_id| schema_id == &id),
                     id,
                     name: schema_name,
                     description,
@@ -1891,6 +1939,7 @@ fn list_schemas_sync() -> Result<Vec<SchemaInfo>, String> {
                 schemas.push(SchemaInfo {
                     is_system: false,
                     is_active: active.as_ref() == Some(&id),
+                    is_enabled: enabled.iter().any(|schema_id| schema_id == &id),
                     id,
                     name: schema_name,
                     description,
@@ -1951,10 +2000,8 @@ fn copy_schema_sync(schema_id: String) -> Result<String, String> {
     let dest_name = format!("{safe_id}.custom.yaml");
     let dest = user_dir.join(&dest_name);
 
-    // If dest already exists, back it up
     if dest.exists() {
-        let backup = user_dir.join(format!("{dest_name}.bak"));
-        fs::copy(&dest, &backup).map_err(|err| format!("备份旧文件失败: {err}"))?;
+        return Err(format!("{dest_name} 已存在，未自动覆盖"));
     }
 
     // Add a header comment
@@ -1965,6 +2012,139 @@ fn copy_schema_sync(schema_id: String) -> Result<String, String> {
 
     fs::write(&dest, patched).map_err(|err| format!("写入方案文件失败: {err}"))?;
     Ok(dest.display().to_string())
+}
+
+fn sanitize_schema_id(schema_id: &str) -> String {
+    schema_id
+        .replace('/', "")
+        .replace('\\', "")
+        .replace("..", "")
+        .trim()
+        .to_string()
+}
+
+fn sanitize_schema_ids(schema_ids: Vec<String>) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    schema_ids
+        .into_iter()
+        .map(|schema_id| sanitize_schema_id(&schema_id))
+        .filter(|schema_id| !schema_id.is_empty())
+        .filter(|schema_id| seen.insert(schema_id.clone()))
+        .collect()
+}
+
+fn render_default_custom_with_schema_list(
+    config: &QuickSettingsConfig,
+    schema_ids: &[String],
+) -> String {
+    let switch_value = if config.switch_key == "shift" {
+        "commit_code"
+    } else {
+        "noop"
+    };
+    let mut default_contents = vec![
+        "# Managed by Rime Studio. Previous versions are kept in RimeStudio backups.".to_string(),
+        "patch:".to_string(),
+        "  \"schema_list\":".to_string(),
+    ];
+
+    for schema_id in schema_ids {
+        default_contents.push(format!("    - {{schema: {schema_id}}}"));
+    }
+
+    default_contents.extend([
+        format!("  \"menu/page_size\": {}", config.page_size),
+        format!("  \"ascii_composer/switch_key/Shift_L\": {switch_value}"),
+        format!("  \"ascii_composer/switch_key/Shift_R\": {switch_value}"),
+    ]);
+
+    let mut bindings: Vec<String> = Vec::new();
+    let arrow_paging = config.paging_keys == "arrow_keys";
+    let left_right_nav = config.navigation_keys == "left_right";
+
+    if arrow_paging && left_right_nav {
+        bindings.push("    - {when: paging, accept: Up, send: Page_Up}".to_string());
+        bindings.push("    - {when: has_menu, accept: Down, send: Page_Down}".to_string());
+        bindings.push("    - {when: has_menu, accept: Left, send: Up}".to_string());
+        bindings.push("    - {when: has_menu, accept: Right, send: Down}".to_string());
+    } else if arrow_paging {
+        bindings.push("    - {when: paging, accept: Up, send: Page_Up}".to_string());
+        bindings.push("    - {when: has_menu, accept: Down, send: Page_Down}".to_string());
+    } else if left_right_nav {
+        bindings.push("    - {when: has_menu, accept: Left, send: Page_Up}".to_string());
+        bindings.push("    - {when: has_menu, accept: Right, send: Page_Down}".to_string());
+    } else if config.paging_keys == "minus_equal" {
+        bindings.push("    - {when: paging, accept: minus, send: Page_Up}".to_string());
+        bindings.push("    - {when: has_menu, accept: equal, send: Page_Down}".to_string());
+    }
+
+    if !bindings.is_empty() {
+        default_contents.push("  \"key_binder/bindings\":".to_string());
+        default_contents.extend(bindings);
+    }
+    default_contents.push(String::new());
+    default_contents.join("\n")
+}
+
+fn save_active_schema_list_sync(schema_ids: Vec<String>) -> Result<QuickSettingsConfig, String> {
+    let user_dir = rime_user_dir()?;
+    fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
+    let safe_schema_ids = sanitize_schema_ids(schema_ids);
+    if safe_schema_ids.is_empty() {
+        return Err("至少需要启用一个输入方案".to_string());
+    }
+
+    let mut config = get_quick_settings_sync()?;
+    config.schema_id = safe_schema_ids[0].clone();
+    fs::write(
+        user_dir.join("default.custom.yaml"),
+        render_default_custom_with_schema_list(&config, &safe_schema_ids),
+    )
+    .map_err(|err| format!("写入 default.custom.yaml 失败: {err}"))?;
+
+    get_quick_settings_sync()
+}
+
+fn set_active_schema_sync(schema_id: String) -> Result<QuickSettingsConfig, String> {
+    let safe_id = sanitize_schema_id(&schema_id);
+    if safe_id.is_empty() {
+        return Err("方案 ID 不能为空".to_string());
+    }
+
+    let user_dir = rime_user_dir()?;
+    let mut schema_ids = parse_schema_list(&read_to_string(&user_dir.join("default.custom.yaml")));
+    schema_ids.retain(|id| id != &safe_id);
+    schema_ids.insert(0, safe_id);
+    save_active_schema_list_sync(schema_ids)
+}
+
+fn validate_schema_path(path: String) -> Result<PathBuf, String> {
+    let path = PathBuf::from(path);
+    if !path.exists() || !path.is_file() {
+        return Err("方案文件不存在".to_string());
+    }
+
+    let Some(name) = path.file_name().and_then(OsStr::to_str) else {
+        return Err("方案文件名无效".to_string());
+    };
+    if !name.ends_with(".schema.yaml") && !name.ends_with(".custom.yaml") {
+        return Err("只能打开 Rime 方案文件".to_string());
+    }
+
+    Ok(path)
+}
+
+fn open_schema_file_sync(path: String) -> Result<(), String> {
+    let path = validate_schema_path(path)?;
+    reveal_in_explorer(&path)
+}
+
+fn open_schema_dir_sync(path: String) -> Result<(), String> {
+    let path = validate_schema_path(path)?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| "方案文件目录无效".to_string())?;
+    open_in_explorer(parent)
 }
 
 async fn run_blocking<T, F>(task: F) -> Result<T, String>
@@ -2048,6 +2228,11 @@ async fn open_rime_user_dir() -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn open_config_file(name: String) -> Result<(), String> {
+    run_blocking(move || open_config_file_sync(name)).await
+}
+
+#[tauri::command]
 async fn open_plum_dir() -> Result<(), String> {
     run_blocking(open_plum_dir_sync).await
 }
@@ -2112,6 +2297,26 @@ async fn copy_schema(schema_id: String) -> Result<String, String> {
     run_blocking(move || copy_schema_sync(schema_id)).await
 }
 
+#[tauri::command]
+async fn set_active_schema(schema_id: String) -> Result<QuickSettingsConfig, String> {
+    run_blocking(move || set_active_schema_sync(schema_id)).await
+}
+
+#[tauri::command]
+async fn save_active_schema_list(schema_ids: Vec<String>) -> Result<QuickSettingsConfig, String> {
+    run_blocking(move || save_active_schema_list_sync(schema_ids)).await
+}
+
+#[tauri::command]
+async fn open_schema_file(path: String) -> Result<(), String> {
+    run_blocking(move || open_schema_file_sync(path)).await
+}
+
+#[tauri::command]
+async fn open_schema_dir(path: String) -> Result<(), String> {
+    run_blocking(move || open_schema_dir_sync(path)).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -2131,6 +2336,7 @@ pub fn run() {
             list_backups,
             create_backup,
             open_rime_user_dir,
+            open_config_file,
             open_plum_dir,
             open_backup_dir,
             restore_backup,
@@ -2143,7 +2349,11 @@ pub fn run() {
             download_rime_installer,
             launch_rime_installer,
             list_schemas,
-            copy_schema
+            copy_schema,
+            set_active_schema,
+            save_active_schema_list,
+            open_schema_file,
+            open_schema_dir
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

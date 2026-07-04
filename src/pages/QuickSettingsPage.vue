@@ -446,7 +446,7 @@ onBeforeUnmount(() => {
           </el-button>
         </div>
         <p class="helper-text">
-          安装前会自动备份当前 Rime 用户目录，安装完成后可直接部署生效。
+          安装会写入当前 Rime 用户目录；需要留档时请先到「配置」或「备份」页手动备份。
         </p>
       </el-card>
 

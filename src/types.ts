@@ -3,6 +3,7 @@ export type FileStatus = {
   path: string;
   exists: boolean;
   size?: number;
+  modified?: number;
 };
 
 export type DictHealth = {
@@ -121,6 +122,7 @@ export type SchemaInfo = {
   path: string;
   is_system: boolean;
   is_active: boolean;
+  is_enabled: boolean;
 };
 
 export type DictInfo = {

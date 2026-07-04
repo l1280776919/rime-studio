@@ -5,7 +5,9 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   Brush,
   Collection,
+  Document,
   EditPen,
+  Files,
   FolderOpened,
   InfoFilled,
   MagicStick,
@@ -18,10 +20,12 @@ import {
 import AboutPage from "./pages/AboutPage.vue";
 import AppearancePage from "./pages/AppearancePage.vue";
 import BackupsPage from "./pages/BackupsPage.vue";
+import ConfigFilesPage from "./pages/ConfigFilesPage.vue";
 import DictionariesPage from "./pages/DictionariesPage.vue";
 import OverviewPage from "./pages/OverviewPage.vue";
 import PhrasesPage from "./pages/PhrasesPage.vue";
 import QuickSettingsPage from "./pages/QuickSettingsPage.vue";
+import SchemasPage from "./pages/SchemasPage.vue";
 import type {
   BackupEntry,
   DeployResult,
@@ -30,11 +34,13 @@ import type {
   RimeEnvironment,
 } from "./types";
 
-type PageKey = "overview" | "quick" | "appearance" | "phrases" | "dictionaries" | "backups" | "about";
+type PageKey = "overview" | "quick" | "schemas" | "configs" | "appearance" | "phrases" | "dictionaries" | "backups" | "about";
 
 const PAGE_KEYS: ReadonlySet<string> = new Set<PageKey>([
   "overview",
   "quick",
+  "schemas",
+  "configs",
   "appearance",
   "phrases",
   "dictionaries",
@@ -98,6 +104,8 @@ const pageTitle = computed(() => {
   const titles: Record<PageKey, string> = {
     overview: "Rime 配置控制台",
     quick: "快速设置",
+    schemas: "方案管理",
+    configs: "配置文件",
     appearance: "主题配置",
     phrases: "短语管理",
     dictionaries: "词库管理",
@@ -110,6 +118,8 @@ const pageDescription = computed(() => {
   const descriptions: Record<PageKey, string> = {
     overview: "管理方案、外观、词库与部署状态。",
     quick: "集中调整雾凇方案、候选数量、按键和候选窗行为。",
+    schemas: "查看、启用、复制和定位本机 Rime 输入方案。",
+    configs: "集中查看、定位和备份 Rime 配置文件。",
     appearance: "调整小狼毫候选窗主题、字号、边距和颜色。",
     phrases: "编辑自定义短语，支持添加、搜索、导入和批量管理。",
     dictionaries: "浏览和管理 Rime 词库文件，查看条目统计与健康状态。",
@@ -175,7 +185,7 @@ async function openBackupDir(backup: BackupEntry) {
 async function restoreBackup(backup: BackupEntry) {
   try {
     await ElMessageBox.confirm(
-      `将恢复备份 ${backup.name} 中的 ${backup.files} 个文件。当前配置会先自动再备份一次。`,
+      `将恢复备份 ${backup.name} 中的 ${backup.files} 个文件。恢复前会先为当前配置创建一份安全备份。`,
       "恢复备份",
       {
         confirmButtonText: "恢复",
@@ -255,8 +265,8 @@ async function installRimeIce(recipe: string) {
     const result = await invoke<InstallResult>("install_rime_ice", { recipe });
     await loadEnvironment();
     status.value = result.success
-      ? `已安装 ${result.recipe}，备份目录：${result.backup_dir ?? "无"}`
-      : `安装失败，备份目录：${result.backup_dir ?? "无"}`;
+      ? `已安装 ${result.recipe}`
+      : `安装失败：${result.recipe}`;
     log.value = result.log;
     ElMessage({
       type: result.success ? "success" : "error",
@@ -332,6 +342,14 @@ onMounted(() => {
           <el-menu-item index="quick">
             <el-icon><MagicStick /></el-icon>
             <span>快速设置</span>
+          </el-menu-item>
+          <el-menu-item index="schemas">
+            <el-icon><Files /></el-icon>
+            <span>方案</span>
+          </el-menu-item>
+          <el-menu-item index="configs">
+            <el-icon><Document /></el-icon>
+            <span>配置</span>
           </el-menu-item>
           <el-menu-item index="appearance">
             <el-icon><Brush /></el-icon>
@@ -424,6 +442,23 @@ onMounted(() => {
               @saved="loadEnvironment"
               @deploy="deploy"
               @install="installRimeIce"
+            />
+
+            <SchemasPage
+              v-else-if="activePage === 'schemas'"
+              key="schemas"
+              :env="env"
+              @saved="loadEnvironment"
+              @deploy="deploy"
+            />
+
+            <ConfigFilesPage
+              v-else-if="activePage === 'configs'"
+              key="configs"
+              :env="env"
+              :backing-up="backingUp"
+              @refresh="loadEnvironment"
+              @create-backup="createManualBackup"
             />
 
             <AppearancePage

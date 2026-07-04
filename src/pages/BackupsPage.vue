@@ -1,9 +1,15 @@
 <script setup lang="ts">
-import { Delete, FolderOpened, Open, RefreshLeft } from "@element-plus/icons-vue";
+import { computed } from "vue";
+import {
+  Delete,
+  FolderOpened,
+  Open,
+  RefreshLeft,
+} from "@element-plus/icons-vue";
 import { formatTime } from "../utils";
 import type { BackupEntry } from "../types";
 
-defineProps<{
+const props = defineProps<{
   backups: BackupEntry[];
   backingUp: boolean;
   restoringBackup?: string;
@@ -17,65 +23,87 @@ const emit = defineEmits<{
   deleteBackup: [backup: BackupEntry];
 }>();
 
+const latestBackup = computed(() => props.backups[0]);
+const totalFiles = computed(() => props.backups.reduce((total, backup) => total + backup.files, 0));
+
+function backupLabel(backup: BackupEntry) {
+  const raw = backup.name.replace("backup-rime-studio-", "");
+  return raw.replaceAll("-", " ").replaceAll("_", " ");
+}
 </script>
 
 <template>
-  <section class="content-grid backups-grid">
+  <section class="content-grid backups-grid backup-manager-grid">
     <section class="main-column">
-      <el-card class="panel" shadow="never">
+      <div class="backup-hero panel">
+        <div>
+          <span>手动备份</span>
+          <strong>{{ latestBackup ? formatTime(latestBackup.modified) : "还没有备份" }}</strong>
+          <small>普通保存不会创建备份。需要留档时，在这里手动创建。</small>
+        </div>
+        <el-button
+          type="primary"
+          :icon="FolderOpened"
+          :loading="backingUp"
+          @click="emit('createBackup')"
+        >
+          创建备份
+        </el-button>
+      </div>
+
+      <div class="backup-summary-row">
+        <div>
+          <span>备份数量</span>
+          <strong>{{ backups.length }}</strong>
+        </div>
+        <div>
+          <span>备份文件</span>
+          <strong>{{ totalFiles }}</strong>
+        </div>
+        <div>
+          <span>最近备份</span>
+          <strong>{{ latestBackup ? formatTime(latestBackup.modified) : "无" }}</strong>
+        </div>
+      </div>
+
+      <el-card class="panel backup-list-panel" shadow="never">
         <template #header>
           <div class="panel-title">
-            <span>备份列表</span>
-            <el-button
-              type="primary"
-              plain
-              :icon="FolderOpened"
-              :loading="backingUp"
-              @click="emit('createBackup')"
-            >
-              创建备份
-            </el-button>
+            <span>备份记录</span>
+            <span class="schema-count">{{ backups.length }} 项</span>
           </div>
         </template>
 
-        <el-empty v-if="!backups.length" description="还没有备份">
+        <div v-if="!backups.length" class="backup-empty-state">
+          <el-icon><FolderOpened /></el-icon>
+          <strong>还没有手动备份</strong>
+          <span>创建一个备份后，当前 Rime 配置文件会被保存到应用数据目录。</span>
           <el-button type="primary" :icon="FolderOpened" :loading="backingUp" @click="emit('createBackup')">
             创建第一个备份
           </el-button>
-        </el-empty>
-        <div v-else class="backup-list full" style="max-height: calc(100dvh - 260px); overflow-y: auto;">
-          <div v-for="backup in backups" :key="backup.path" class="backup-item">
-            <div class="backup-main">
-              <span>
-                <strong>{{ backup.name.replace("backup-rime-studio-", "") }}</strong>
-                <small>{{ formatTime(backup.modified) }} · {{ backup.files }} 个文件</small>
-              </span>
-              <div class="backup-actions">
-                <el-button link type="primary" :icon="Open" @click="emit('openBackup', backup)">
-                  打开
-                </el-button>
-                <el-button
-                  link
-                  type="warning"
-                  :icon="RefreshLeft"
-                  :loading="restoringBackup === backup.name"
-                  @click="emit('restoreBackup', backup)"
-                >
-                  恢复
-                </el-button>
-                <el-button
-                  link
-                  type="danger"
-                  :icon="Delete"
-                  :loading="deletingBackup === backup.name"
-                  @click="emit('deleteBackup', backup)"
-                >
-                  删除
-                </el-button>
-              </div>
+        </div>
+
+        <div v-else class="backup-manual-list">
+          <article v-for="backup in backups" :key="backup.path" class="backup-manual-item">
+            <div class="backup-manual-main">
+              <strong>{{ backupLabel(backup) }}</strong>
+              <span>{{ formatTime(backup.modified) }} · {{ backup.files }} 个文件</span>
             </div>
-            <code>{{ backup.path }}</code>
-          </div>
+            <div class="backup-manual-note">
+              <span>恢复前会先创建安全备份</span>
+            </div>
+            <div class="backup-manual-actions">
+              <el-button link type="warning" :icon="RefreshLeft" :loading="restoringBackup === backup.name" @click="emit('restoreBackup', backup)">
+                恢复
+              </el-button>
+              <el-button link type="primary" :icon="Open" @click="emit('openBackup', backup)">
+                打开
+              </el-button>
+              <el-button link type="info" :icon="Delete" :loading="deletingBackup === backup.name" @click="emit('deleteBackup', backup)">
+                删除
+              </el-button>
+            </div>
+          </article>
         </div>
       </el-card>
     </section>

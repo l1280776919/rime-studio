@@ -450,7 +450,7 @@ onMounted(loadAppearance);
           <el-icon><Brush /></el-icon>
           <span>{{ env?.user_dir ? `${env.user_dir}\\weasel.custom.yaml` : "等待扫描 Rime 目录" }}</span>
         </div>
-        <p class="helper-text">保存时自动备份旧文件，再写入 style 和 preset_color_schemes 配置。</p>
+        <p class="helper-text">保存后会写入 style 和 preset_color_schemes 配置。需要留档时请先手动备份。</p>
       </el-card>
     </aside>
   </section>
