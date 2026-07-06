@@ -929,7 +929,7 @@ fn list_backup_dirs(_user_dir: &Path) -> Result<Vec<BackupEntry>, String> {
         });
     }
 
-    backups.sort_by(|left, right| right.modified.cmp(&left.modified));
+    backups.sort_by_key(|right| std::cmp::Reverse(right.modified));
     Ok(backups)
 }
 
@@ -1045,7 +1045,7 @@ fn save_custom_phrases_sync(phrases: Vec<PhraseEntry>) -> Result<(), String> {
     };
 
     let mut sorted = phrases;
-    sorted.sort_by(|a, b| b.weight.cmp(&a.weight));
+    sorted.sort_by_key(|b| std::cmp::Reverse(b.weight));
 
     for phrase in &sorted {
         contents.push_str(&format!(
@@ -1618,7 +1618,7 @@ fn parse_sogou_bin_entries(data: &[u8]) -> Result<(Vec<DictionaryEntry>, usize),
         }
 
         let index_len = read_u16_le(data, offset + 4).map(usize::from).unwrap_or(0);
-        if index_len == 0 || index_len % 2 != 0 || index_len > 80 {
+        if index_len == 0 || !index_len.is_multiple_of(2) || index_len > 80 {
             offset += 1;
             continue;
         }
@@ -1630,7 +1630,7 @@ fn parse_sogou_bin_entries(data: &[u8]) -> Result<(Vec<DictionaryEntry>, usize),
             .unwrap_or(0);
         let word_offset = meta_offset + 4;
         if word_len == 0
-            || word_len % 2 != 0
+            || !word_len.is_multiple_of(2)
             || word_len > 160
             || word_offset + word_len + 2 + index_len > data.len()
         {
