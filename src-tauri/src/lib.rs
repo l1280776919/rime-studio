@@ -7,6 +7,12 @@ use std::{
     process::Command,
 };
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 #[derive(Debug, Serialize)]
 struct FileStatus {
     name: String,
@@ -161,6 +167,14 @@ fn read_to_string(path: &Path) -> String {
     fs::read_to_string(path).unwrap_or_default()
 }
 
+fn suppress_console_window(command: &mut Command) -> &mut Command {
+    #[cfg(windows)]
+    {
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    command
+}
+
 fn file_status(user_dir: &Path, name: &str) -> FileStatus {
     let path = user_dir.join(name);
     let metadata = fs::metadata(&path).ok();
@@ -313,10 +327,9 @@ fn resolve_windows_shortcut(path: &Path) -> Option<PathBuf> {
         "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{}'); $s.TargetPath",
         path.display().to_string().replace('\'', "''")
     );
-    Command::new("powershell")
-        .arg("-NoProfile")
-        .arg("-Command")
-        .arg(script)
+    let mut command = Command::new("powershell");
+    command.arg("-NoProfile").arg("-Command").arg(script);
+    suppress_console_window(&mut command)
         .output()
         .ok()
         .filter(|output| output.status.success())
@@ -360,24 +373,27 @@ fn locate_deployer() -> Option<PathBuf> {
 }
 
 fn command_success(path: &Path, arg: &str) -> bool {
-    Command::new(path)
-        .arg(arg)
+    let mut command = Command::new(path);
+    command.arg(arg);
+    suppress_console_window(&mut command)
         .output()
         .map(|output| output.status.success())
         .unwrap_or(false)
 }
 
 fn command_path_success(command: &str, arg: &str) -> bool {
-    Command::new(command)
-        .arg(arg)
+    let mut command = Command::new(command);
+    command.arg(arg);
+    suppress_console_window(&mut command)
         .output()
         .map(|output| output.status.success())
         .unwrap_or(false)
 }
 
 fn locate_from_where(command: &str) -> Vec<PathBuf> {
-    Command::new("where")
-        .arg(command)
+    let mut where_command = Command::new("where");
+    where_command.arg(command);
+    suppress_console_window(&mut where_command)
         .output()
         .ok()
         .filter(|output| output.status.success())
@@ -960,7 +976,7 @@ fn reveal_in_explorer(path: &Path) -> Result<(), String> {
 }
 
 fn run_command(mut command: Command) -> Result<(bool, String), String> {
-    let output = command
+    let output = suppress_console_window(&mut command)
         .output()
         .map_err(|err| format!("运行命令失败: {err}"))?;
 
@@ -1008,13 +1024,13 @@ fn ensure_plum(plum_dir: &Path) -> Result<String, String> {
 fn deploy_rime_internal() -> Result<DeployResult, String> {
     let deployer_path = locate_deployer().ok_or_else(|| "未找到 WeaselDeployer.exe".to_string())?;
 
-    Command::new(&deployer_path)
-        .arg("/deploy")
-        .current_dir(
-            deployer_path
-                .parent()
-                .ok_or_else(|| "部署器路径异常".to_string())?,
-        )
+    let mut command = Command::new(&deployer_path);
+    command.arg("/deploy").current_dir(
+        deployer_path
+            .parent()
+            .ok_or_else(|| "部署器路径异常".to_string())?,
+    );
+    suppress_console_window(&mut command)
         .spawn()
         .map_err(|err| format!("运行部署器失败: {err}"))?;
 
