@@ -3371,6 +3371,21 @@ button:active {
   font-size: 13px;
 }
 
+.dict-row-actions {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.dict-actions-column .cell {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  white-space: nowrap;
+}
+
 .dictionaries-grid .el-table__row {
   cursor: pointer;
   transition: padding-left var(--transition-fast);

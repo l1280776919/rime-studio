@@ -132,3 +132,34 @@ export type DictInfo = {
   size_bytes: number;
   modified?: number;
 };
+
+export type DictionaryImportResult = {
+  name: string;
+  reference: string;
+  path: string;
+  imported_entries: number;
+  skipped_entries: number;
+};
+
+export type DictionaryExportResult = {
+  name: string;
+  contents: string;
+};
+
+export type DictionaryReference = {
+  reference: string;
+  path?: string;
+  exists: boolean;
+  entry_count?: number;
+  size_bytes?: number;
+};
+
+export type DictionaryConfig = {
+  schema_id?: string;
+  schema_name?: string;
+  main_dictionary?: string;
+  main_dictionary_path?: string;
+  enabled: DictionaryReference[];
+  available: DictInfo[];
+  missing: DictionaryReference[];
+};

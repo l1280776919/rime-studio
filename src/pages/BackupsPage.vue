@@ -28,7 +28,7 @@ const totalFiles = computed(() => props.backups.reduce((total, backup) => total 
 
 function backupLabel(backup: BackupEntry) {
   const raw = backup.name.replace("backup-rime-studio-", "");
-  return raw.replaceAll("-", " ").replaceAll("_", " ");
+  return raw.replace(/[-_]/g, " ");
 }
 </script>
 

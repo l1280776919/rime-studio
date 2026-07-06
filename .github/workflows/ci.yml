@@ -26,8 +26,8 @@ jobs:
           cache: npm
 
       - run: npm ci
-      - run: npx vue-tsc --noEmit || true
-      - run: npx vite build
+      - run: npm run typecheck
+      - run: npm run build
 
   # ── Backend check ──
   backend:
@@ -43,6 +43,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+
+      - name: Cargo fmt
+        run: cargo fmt --check
+        working-directory: src-tauri
+
+      - name: Cargo clippy
+        run: cargo clippy --all-targets -- -D warnings
+        working-directory: src-tauri
 
       - name: Cargo check
         run: cargo check

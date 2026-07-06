@@ -1,10 +1,11 @@
 use serde::{Deserialize, Serialize};
+use serde_yaml::{Mapping, Value};
 use std::{
     env,
     ffi::OsStr,
     fs, io,
     path::{Path, PathBuf},
-    process::Command,
+    process::{self, Command},
 };
 
 #[cfg(windows)]
@@ -12,6 +13,44 @@ use std::os::windows::process::CommandExt;
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+type DictionaryEntry = (String, String, i32);
+
+const SOGOU_BIN_PINYIN: &[&str] = &[
+    "a", "ai", "an", "ang", "ao", "ba", "bai", "ban", "bang", "bao", "bei", "ben", "beng", "bi",
+    "bian", "biao", "bie", "bin", "bing", "bo", "bu", "ca", "cai", "can", "cang", "cao", "ce",
+    "cen", "ceng", "cha", "chai", "chan", "chang", "chao", "che", "chen", "cheng", "chi", "chong",
+    "chou", "chu", "chua", "chuai", "chuan", "chuang", "chui", "chun", "chuo", "ci", "cong", "cou",
+    "cu", "cuan", "cui", "cun", "cuo", "da", "dai", "dan", "dang", "dao", "de", "dei", "den",
+    "deng", "di", "dia", "dian", "diao", "die", "ding", "diu", "dong", "dou", "du", "duan", "dui",
+    "dun", "duo", "e", "ei", "en", "eng", "er", "fa", "fan", "fang", "fei", "fen", "feng", "fiao",
+    "fo", "fou", "fu", "ga", "gai", "gan", "gang", "gao", "ge", "gei", "gen", "geng", "gong",
+    "gou", "gu", "gua", "guai", "guan", "guang", "gui", "gun", "guo", "ha", "hai", "han", "hang",
+    "hao", "he", "hei", "hen", "heng", "hong", "hou", "hu", "hua", "huai", "huan", "huang", "hui",
+    "hun", "huo", "ji", "jia", "jian", "jiang", "jiao", "jie", "jin", "jing", "jiong", "jiu", "ju",
+    "juan", "jue", "jun", "ka", "kai", "kan", "kang", "kao", "ke", "kei", "ken", "keng", "kong",
+    "kou", "ku", "kua", "kuai", "kuan", "kuang", "kui", "kun", "kuo", "la", "lai", "lan", "lang",
+    "lao", "le", "lei", "leng", "li", "lia", "lian", "liang", "liao", "lie", "lin", "ling", "liu",
+    "lo", "long", "lou", "lu", "luan", "lve", "lun", "luo", "lv", "ma", "mai", "man", "mang",
+    "mao", "me", "mei", "men", "meng", "mi", "mian", "miao", "mie", "min", "ming", "miu", "mo",
+    "mou", "mu", "na", "nai", "nan", "nang", "nao", "ne", "nei", "nen", "neng", "ni", "nian",
+    "niang", "niao", "nie", "nin", "ning", "niu", "nong", "nou", "nu", "nuan", "nve", "nun", "nuo",
+    "nv", "o", "ou", "pa", "pai", "pan", "pang", "pao", "pei", "pen", "peng", "pi", "pian", "piao",
+    "pie", "pin", "ping", "po", "pou", "pu", "qi", "qia", "qian", "qiang", "qiao", "qie", "qin",
+    "qing", "qiong", "qiu", "qu", "quan", "que", "qun", "ran", "rang", "rao", "re", "ren", "reng",
+    "ri", "rong", "rou", "ru", "rua", "ruan", "rui", "run", "ruo", "sa", "sai", "san", "sang",
+    "sao", "se", "sen", "seng", "sha", "shai", "shan", "shang", "shao", "she", "shei", "shen",
+    "sheng", "shi", "shou", "shu", "shua", "shuai", "shuan", "shuang", "shui", "shun", "shuo",
+    "si", "song", "sou", "su", "suan", "sui", "sun", "suo", "ta", "tai", "tan", "tang", "tao",
+    "te", "tei", "teng", "ti", "tian", "tiao", "tie", "ting", "tong", "tou", "tu", "tuan", "tui",
+    "tun", "tuo", "wa", "wai", "wan", "wang", "wei", "wen", "weng", "wo", "wu", "xi", "xia",
+    "xian", "xiang", "xiao", "xie", "xin", "xing", "xiong", "xiu", "xu", "xuan", "xue", "xun",
+    "ya", "yan", "yang", "yao", "ye", "yi", "yin", "ying", "yo", "yong", "you", "yu", "yuan",
+    "yue", "yun", "za", "zai", "zan", "zang", "zao", "ze", "zei", "zen", "zeng", "zha", "zhai",
+    "zhan", "zhang", "zhao", "zhe", "zhei", "zhen", "zheng", "zhi", "zhong", "zhou", "zhu", "zhua",
+    "zhuai", "zhuan", "zhuang", "zhui", "zhun", "zhuo", "zi", "zong", "zou", "zu", "zuan", "zui",
+    "zun", "zuo",
+];
 
 #[derive(Debug, Serialize)]
 struct FileStatus {
@@ -92,6 +131,21 @@ struct DictInfo {
     modified: Option<u64>,
 }
 
+#[derive(Debug, Serialize)]
+struct DictionaryImportResult {
+    name: String,
+    reference: String,
+    path: String,
+    imported_entries: usize,
+    skipped_entries: usize,
+}
+
+#[derive(Debug, Serialize)]
+struct DictionaryExportResult {
+    name: String,
+    contents: String,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 struct AppearanceConfig {
     theme_name: String,
@@ -152,6 +206,26 @@ struct RimeIceSettings {
     traditional_preset: String,
 }
 
+#[derive(Debug, Serialize)]
+struct DictionaryReference {
+    reference: String,
+    path: Option<String>,
+    exists: bool,
+    entry_count: Option<usize>,
+    size_bytes: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+struct DictionaryConfig {
+    schema_id: Option<String>,
+    schema_name: Option<String>,
+    main_dictionary: Option<String>,
+    main_dictionary_path: Option<String>,
+    enabled: Vec<DictionaryReference>,
+    available: Vec<DictInfo>,
+    missing: Vec<DictionaryReference>,
+}
+
 fn rime_user_dir() -> Result<PathBuf, String> {
     let appdata = env::var("APPDATA").map_err(|_| "APPDATA 环境变量不可用".to_string())?;
     Ok(PathBuf::from(appdata).join("Rime"))
@@ -165,6 +239,49 @@ fn app_data_dir() -> Result<PathBuf, String> {
 
 fn read_to_string(path: &Path) -> String {
     fs::read_to_string(path).unwrap_or_default()
+}
+
+fn yaml_mapping_get<'a>(mapping: &'a Mapping, key: &str) -> Option<&'a Value> {
+    mapping.get(Value::String(key.to_string()))
+}
+
+fn yaml_path_get<'a>(value: &'a Value, key_path: &str) -> Option<&'a Value> {
+    let mut current = value;
+    for key in key_path.split('/') {
+        let Value::Mapping(mapping) = current else {
+            return None;
+        };
+        current = yaml_mapping_get(mapping, key)?;
+    }
+    Some(current)
+}
+
+fn yaml_value_to_string(value: &Value) -> Option<String> {
+    match value {
+        Value::String(value) => Some(value.clone()),
+        Value::Number(value) => Some(value.to_string()),
+        Value::Bool(value) => Some(value.to_string()),
+        _ => None,
+    }
+}
+
+fn yaml_lookup(contents: &str, key: &str) -> Option<Value> {
+    let key = key.trim_matches('"').trim_end_matches(':');
+    let document = serde_yaml::from_str::<Value>(contents).ok()?;
+
+    yaml_path_get(&document, key)
+        .or_else(|| {
+            let patch = yaml_path_get(&document, "patch")?;
+            match patch {
+                Value::Mapping(mapping) => yaml_mapping_get(mapping, key),
+                _ => None,
+            }
+        })
+        .or_else(|| {
+            let patch = yaml_path_get(&document, "patch")?;
+            yaml_path_get(patch, key)
+        })
+        .cloned()
 }
 
 fn suppress_console_window(command: &mut Command) -> &mut Command {
@@ -196,6 +313,21 @@ fn parse_schema(default_custom: &str) -> Option<String> {
 }
 
 fn parse_schema_list(default_custom: &str) -> Vec<String> {
+    if let Some(Value::Sequence(schema_list)) = yaml_lookup(default_custom, "schema_list") {
+        let schemas = schema_list
+            .iter()
+            .filter_map(|item| match item {
+                Value::Mapping(mapping) => yaml_mapping_get(mapping, "schema"),
+                _ => None,
+            })
+            .filter_map(yaml_value_to_string)
+            .filter(|schema| !schema.is_empty())
+            .collect::<Vec<_>>();
+        if !schemas.is_empty() {
+            return schemas;
+        }
+    }
+
     default_custom
         .lines()
         .filter_map(|line| {
@@ -208,22 +340,14 @@ fn parse_schema_list(default_custom: &str) -> Vec<String> {
         .collect()
 }
 
-fn parse_list_value_after_key(contents: &str, key: &str) -> Option<String> {
-    contents.lines().find_map(|line| {
-        let trimmed = line.trim().trim_matches('"');
-        if !trimmed.starts_with(key) {
-            return None;
-        }
-
-        trimmed
-            .split_once(':')
-            .map(|(_, value)| value.split('#').next().unwrap_or(value).trim())
-            .map(str::to_string)
-            .filter(|value| !value.is_empty())
-    })
-}
-
 fn parse_u32_after_key(contents: &str, key: &str) -> Option<u32> {
+    if let Some(value) = yaml_lookup(contents, key)
+        .and_then(|value| yaml_value_to_string(&value))
+        .and_then(|value| value.parse::<u32>().ok())
+    {
+        return Some(value);
+    }
+
     contents.lines().find_map(|line| {
         if !line.contains(key) {
             return None;
@@ -237,6 +361,10 @@ fn parse_u32_after_key(contents: &str, key: &str) -> Option<u32> {
 }
 
 fn parse_quoted_value(contents: &str, key: &str) -> Option<String> {
+    if let Some(value) = yaml_lookup(contents, key).and_then(|value| yaml_value_to_string(&value)) {
+        return Some(value);
+    }
+
     contents.lines().find_map(|line| {
         if !line.contains(key) {
             return None;
@@ -250,6 +378,18 @@ fn parse_quoted_value(contents: &str, key: &str) -> Option<String> {
 }
 
 fn parse_bool_after_key(contents: &str, key: &str) -> Option<bool> {
+    if let Some(value) = yaml_lookup(contents, key) {
+        match value {
+            Value::Bool(value) => return Some(value),
+            Value::String(value) => match value.as_str() {
+                "true" | "True" | "yes" => return Some(true),
+                "false" | "False" | "no" => return Some(false),
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+
     contents.lines().find_map(|line| {
         let trimmed = line.trim().trim_matches('"');
         if !trimmed.starts_with(key) {
@@ -270,6 +410,13 @@ fn parse_bool_after_key(contents: &str, key: &str) -> Option<bool> {
 }
 
 fn parse_string_after_key(contents: &str, key: &str) -> Option<String> {
+    if let Some(value) = yaml_lookup(contents, key)
+        .and_then(|value| yaml_value_to_string(&value))
+        .filter(|value| !value.is_empty())
+    {
+        return Some(value);
+    }
+
     contents.lines().find_map(|line| {
         let trimmed = line.trim().trim_matches('"');
         if !trimmed.starts_with(key) {
@@ -611,8 +758,7 @@ fn write_appearance_config(
     fs::create_dir_all(user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
     let path = user_dir.join("weasel.custom.yaml");
     let _ = include_behavior;
-    fs::write(&path, render_weasel_custom(config))
-        .map_err(|err| format!("写入外观配置文件失败: {err}"))
+    write_text_file(&path, &render_weasel_custom(config), "写入外观配置文件失败")
 }
 
 fn analyze_sogou(path: &Path) -> Option<DictHealth> {
@@ -669,6 +815,50 @@ fn copy_if_exists(source: &Path, target: &Path) -> io::Result<()> {
     Ok(())
 }
 
+fn write_text_file(path: &Path, contents: &str, context: &str) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("{context}: 目标路径无效"))?;
+    fs::create_dir_all(parent).map_err(|err| format!("{context}: 创建目录失败: {err}"))?;
+
+    let file_name = path
+        .file_name()
+        .and_then(OsStr::to_str)
+        .ok_or_else(|| format!("{context}: 文件名无效"))?;
+    let temp_path = parent.join(format!(
+        ".{file_name}.{}.{}.tmp",
+        process::id(),
+        timestamp()
+    ));
+
+    fs::write(&temp_path, contents).map_err(|err| format!("{context}: {err}"))?;
+    if let Err(rename_err) = fs::rename(&temp_path, path) {
+        if path.exists() {
+            fs::remove_file(path).map_err(|remove_err| {
+                let _ = fs::remove_file(&temp_path);
+                format!("{context}: 替换旧文件失败: {remove_err}")
+            })?;
+            fs::rename(&temp_path, path).map_err(|retry_err| {
+                let _ = fs::remove_file(&temp_path);
+                format!("{context}: {retry_err}")
+            })?;
+        } else {
+            let _ = fs::remove_file(&temp_path);
+            return Err(format!("{context}: {rename_err}"));
+        }
+    }
+
+    Ok(())
+}
+
+fn is_managed_config_file(name: &str) -> bool {
+    name.ends_with(".custom.yaml")
+        || name.ends_with(".dict.yaml")
+        || name == "custom_phrase.txt"
+        || name == "default.yaml"
+        || name == "weasel.yaml"
+}
+
 fn backup_user_config(user_dir: &Path) -> Result<PathBuf, String> {
     let backup_root = app_data_dir()?;
     let backup_dir = backup_root.join(format!("backup-rime-studio-{}", timestamp()));
@@ -685,13 +875,7 @@ fn backup_user_config(user_dir: &Path) -> Result<PathBuf, String> {
             continue;
         };
 
-        let should_backup = name.ends_with(".custom.yaml")
-            || name.ends_with(".dict.yaml")
-            || name == "custom_phrase.txt"
-            || name == "default.yaml"
-            || name == "weasel.yaml";
-
-        if should_backup {
+        if is_managed_config_file(name) {
             copy_if_exists(&path, &backup_dir.join(name))
                 .map_err(|err| format!("备份 {name} 失败: {err}"))?;
         }
@@ -781,6 +965,9 @@ fn restore_backup_dir(user_dir: &Path, backup_dir: &Path) -> Result<RestoreResul
         let Some(name) = source.file_name().and_then(OsStr::to_str) else {
             continue;
         };
+        if !is_managed_config_file(name) {
+            continue;
+        }
 
         fs::copy(&source, user_dir.join(name)).map_err(|err| format!("恢复 {name} 失败: {err}"))?;
         restored_files += 1;
@@ -867,7 +1054,7 @@ fn save_custom_phrases_sync(phrases: Vec<PhraseEntry>) -> Result<(), String> {
         ));
     }
 
-    fs::write(&path, contents).map_err(|err| format!("写入自定义短语文件失败: {err}"))
+    write_text_file(&path, &contents, "写入自定义短语文件失败")
 }
 
 fn list_dictionaries_sync() -> Result<Vec<DictInfo>, String> {
@@ -877,77 +1064,736 @@ fn list_dictionaries_sync() -> Result<Vec<DictInfo>, String> {
     }
 
     let mut dicts = Vec::new();
-    let entries = fs::read_dir(&user_dir).map_err(|err| format!("读取 Rime 目录失败: {err}"))?;
+    let mut pending_dirs = vec![user_dir.clone()];
 
-    for entry in entries {
-        let entry = entry.map_err(|err| format!("检查文件失败: {err}"))?;
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
+    while let Some(dir) = pending_dirs.pop() {
+        let entries = fs::read_dir(&dir).map_err(|err| format!("读取 Rime 目录失败: {err}"))?;
 
-        let Some(name) = path.file_name().and_then(OsStr::to_str) else {
-            continue;
-        };
-
-        if !name.ends_with(".dict.yaml") {
-            continue;
-        }
-
-        let metadata = entry.metadata().ok();
-        let size_bytes = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
-        let modified = metadata
-            .and_then(|m| m.modified().ok())
-            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|duration| duration.as_secs());
-
-        let contents = fs::read_to_string(&path).unwrap_or_default();
-        let mut entry_count = 0usize;
-        let mut past_header = false;
-
-        for line in contents.lines() {
-            let trimmed = line.trim();
-            if trimmed == "..." {
-                past_header = true;
+        for entry in entries {
+            let entry = entry.map_err(|err| format!("检查文件失败: {err}"))?;
+            let path = entry.path();
+            if path.is_dir() {
+                pending_dirs.push(path);
                 continue;
             }
-            if !past_header {
-                continue;
-            }
-            if trimmed.is_empty() || trimmed.starts_with('#') {
-                continue;
-            }
-            if trimmed.contains('\t') {
-                entry_count += 1;
-            }
-        }
 
-        dicts.push(DictInfo {
-            name: name.to_string(),
-            path: path.display().to_string(),
-            entry_count,
-            size_bytes,
-            modified,
-        });
+            if !path.is_file() {
+                continue;
+            }
+
+            let Some(name) = path.file_name().and_then(OsStr::to_str) else {
+                continue;
+            };
+
+            if !name.ends_with(".dict.yaml") {
+                continue;
+            }
+
+            let metadata = entry.metadata().ok();
+            let size_bytes = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
+            let modified = metadata
+                .and_then(|m| m.modified().ok())
+                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|duration| duration.as_secs());
+
+            let contents = fs::read_to_string(&path).unwrap_or_default();
+            let mut entry_count = 0usize;
+            let mut past_header = false;
+
+            for line in contents.lines() {
+                let trimmed = line.trim();
+                if trimmed == "..." {
+                    past_header = true;
+                    continue;
+                }
+                if !past_header {
+                    continue;
+                }
+                if trimmed.is_empty() || trimmed.starts_with('#') {
+                    continue;
+                }
+                if trimmed.contains('\t') {
+                    entry_count += 1;
+                }
+            }
+
+            let display_name = path
+                .strip_prefix(&user_dir)
+                .ok()
+                .map(|relative| relative.display().to_string().replace('\\', "/"))
+                .unwrap_or_else(|| name.to_string());
+
+            dicts.push(DictInfo {
+                name: display_name,
+                path: path.display().to_string(),
+                entry_count,
+                size_bytes,
+                modified,
+            });
+        }
     }
 
     dicts.sort_by(|a, b| b.name.cmp(&a.name));
     Ok(dicts)
 }
 
-fn get_dict_health_sync(dict_name: String) -> Result<DictHealth, String> {
-    let user_dir = rime_user_dir()?;
-    let valid_name = dict_name
-        .replace('/', "")
-        .replace('\\', "")
-        .replace("..", "");
-    let path = user_dir.join(&valid_name);
-
-    if !path.exists() {
-        return Err(format!("词库不存在: {valid_name}"));
+fn validate_dictionary_path(user_dir: &Path, dict_name: &str) -> Result<PathBuf, String> {
+    if !dict_name.ends_with(".dict.yaml") {
+        return Err("只能操作 .dict.yaml 词库文件".to_string());
     }
 
+    let relative = PathBuf::from(dict_name.replace('\\', "/"));
+    if relative.components().any(|component| {
+        matches!(
+            component,
+            std::path::Component::Prefix(_)
+                | std::path::Component::RootDir
+                | std::path::Component::ParentDir
+        )
+    }) {
+        return Err("词库路径无效".to_string());
+    }
+
+    let path = user_dir.join(relative);
+    if !path.exists() || !path.is_file() {
+        return Err("词库文件不存在".to_string());
+    }
+
+    Ok(path)
+}
+
+fn dictionary_reference_from_name(name: &str) -> String {
+    name.trim_end_matches(".dict.yaml").replace('\\', "/")
+}
+
+fn dictionary_file_name_from_reference(reference: &str) -> String {
+    format!("{}.dict.yaml", reference.trim_end_matches(".dict.yaml"))
+}
+
+fn parse_import_tables(contents: &str) -> Vec<String> {
+    if let Some(Value::Sequence(items)) = yaml_lookup(contents, "import_tables") {
+        let imports = items
+            .iter()
+            .filter_map(yaml_value_to_string)
+            .map(|value| {
+                value
+                    .trim()
+                    .trim_end_matches(".dict.yaml")
+                    .replace('\\', "/")
+            })
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>();
+        if !imports.is_empty() {
+            return imports;
+        }
+    }
+
+    let mut imports = Vec::new();
+    let mut in_import_tables = false;
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("import_tables:") || trimmed.starts_with("\"import_tables\":") {
+            in_import_tables = true;
+            continue;
+        }
+        if !in_import_tables {
+            continue;
+        }
+        if let Some(value) = trimmed.strip_prefix("- ") {
+            let value = value
+                .split('#')
+                .next()
+                .unwrap_or(value)
+                .trim()
+                .trim_matches('"')
+                .trim_end_matches(".dict.yaml")
+                .replace('\\', "/");
+            if !value.is_empty() {
+                imports.push(value);
+            }
+        } else if !trimmed.is_empty() && !trimmed.starts_with('#') {
+            break;
+        }
+    }
+    imports
+}
+
+fn resolve_schema_path(user_dir: &Path, schema_id: &str) -> Option<PathBuf> {
+    let user_schema = user_dir.join(format!("{schema_id}.schema.yaml"));
+    if user_schema.exists() {
+        return Some(user_schema);
+    }
+
+    locate_deployer()
+        .and_then(|d| d.parent().map(|p| p.join("data")))
+        .into_iter()
+        .chain(std::iter::once(PathBuf::from(
+            r"C:\Program Files\Rime\weasel-0.17.4\data",
+        )))
+        .chain(std::iter::once(PathBuf::from(
+            r"C:\Program Files (x86)\Rime\weasel-0.17.4\data",
+        )))
+        .map(|dir| dir.join(format!("{schema_id}.schema.yaml")))
+        .find(|path| path.exists())
+}
+
+fn current_schema_dictionary(user_dir: &Path) -> (Option<String>, Option<String>, Option<String>) {
+    let schema_id = parse_schema(&read_to_string(&user_dir.join("default.custom.yaml")));
+    let Some(schema_id_value) = schema_id.as_deref() else {
+        return (schema_id, None, None);
+    };
+
+    let schema_path = resolve_schema_path(user_dir, schema_id_value);
+    let schema_contents = schema_path
+        .as_deref()
+        .map(read_to_string)
+        .unwrap_or_default();
+    let schema_name = parse_quoted_value(&schema_contents, "schema/name")
+        .or_else(|| parse_string_after_key(&schema_contents, "name:"));
+    let dictionary = parse_string_after_key(&schema_contents, "translator/dictionary")
+        .or_else(|| parse_string_after_key(&schema_contents, "dictionary:"))
+        .or_else(|| Some(schema_id_value.to_string()));
+
+    (schema_id, schema_name, dictionary)
+}
+
+fn dict_info_to_reference(info: &DictInfo) -> String {
+    dictionary_reference_from_name(&info.name)
+}
+
+fn read_dictionary_config_sync() -> Result<DictionaryConfig, String> {
+    let user_dir = rime_user_dir()?;
+    let dictionaries = list_dictionaries_sync()?;
+    let (schema_id, schema_name, main_dictionary) = current_schema_dictionary(&user_dir);
+
+    let Some(main_dictionary_value) = main_dictionary.clone() else {
+        return Ok(DictionaryConfig {
+            schema_id,
+            schema_name,
+            main_dictionary: None,
+            main_dictionary_path: None,
+            enabled: Vec::new(),
+            available: dictionaries,
+            missing: Vec::new(),
+        });
+    };
+
+    let main_path = user_dir.join(dictionary_file_name_from_reference(&main_dictionary_value));
+    let imports = parse_import_tables(&read_to_string(&main_path));
+    let dict_by_ref = dictionaries
+        .iter()
+        .map(|dict| (dict_info_to_reference(dict), dict))
+        .collect::<std::collections::HashMap<_, _>>();
+
+    let mut enabled = Vec::new();
+    let mut missing = Vec::new();
+    for reference in imports {
+        if let Some(dict) = dict_by_ref.get(&reference) {
+            enabled.push(DictionaryReference {
+                reference,
+                path: Some(dict.path.clone()),
+                exists: true,
+                entry_count: Some(dict.entry_count),
+                size_bytes: Some(dict.size_bytes),
+            });
+        } else {
+            missing.push(DictionaryReference {
+                reference,
+                path: None,
+                exists: false,
+                entry_count: None,
+                size_bytes: None,
+            });
+        }
+    }
+
+    let enabled_refs = enabled
+        .iter()
+        .map(|entry| entry.reference.clone())
+        .collect::<std::collections::HashSet<_>>();
+    let available = dictionaries
+        .into_iter()
+        .filter(|dict| dict_info_to_reference(dict) != main_dictionary_value)
+        .filter(|dict| !enabled_refs.contains(&dict_info_to_reference(dict)))
+        .collect();
+
+    Ok(DictionaryConfig {
+        schema_id,
+        schema_name,
+        main_dictionary: Some(main_dictionary_value),
+        main_dictionary_path: if main_path.exists() {
+            Some(main_path.display().to_string())
+        } else {
+            None
+        },
+        enabled,
+        available,
+        missing,
+    })
+}
+
+fn render_main_dictionary(dictionary_id: &str, imports: &[String]) -> String {
+    let mut contents = vec![
+        "---".to_string(),
+        format!("name: {dictionary_id}"),
+        format!("version: \"{}\"", timestamp()),
+        "sort: by_weight".to_string(),
+        "import_tables:".to_string(),
+    ];
+    for reference in imports {
+        contents.push(format!("  - {reference}"));
+    }
+    contents.push("...".to_string());
+    contents.push(String::new());
+    contents.join("\n")
+}
+
+fn save_dictionary_imports_sync(imports: Vec<String>) -> Result<DictionaryConfig, String> {
+    let user_dir = rime_user_dir()?;
+    fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
+    let (_, _, main_dictionary) = current_schema_dictionary(&user_dir);
+    let main_dictionary = main_dictionary.ok_or_else(|| "当前方案未找到主词库".to_string())?;
+
+    let mut seen = std::collections::HashSet::new();
+    let cleaned = imports
+        .into_iter()
+        .map(|reference| {
+            reference
+                .trim()
+                .trim_end_matches(".dict.yaml")
+                .replace('\\', "/")
+        })
+        .filter(|reference| !reference.is_empty())
+        .filter(|reference| !reference.contains("..") && !reference.starts_with('/'))
+        .filter(|reference| seen.insert(reference.clone()))
+        .collect::<Vec<_>>();
+
+    let path = user_dir.join(dictionary_file_name_from_reference(&main_dictionary));
+    write_text_file(
+        &path,
+        &render_main_dictionary(&main_dictionary, &cleaned),
+        "写入主词库配置失败",
+    )?;
+
+    read_dictionary_config_sync()
+}
+
+fn add_dictionary_to_current_schema_sync(reference: String) -> Result<DictionaryConfig, String> {
+    let config = read_dictionary_config_sync()?;
+    let reference = reference
+        .trim()
+        .trim_end_matches(".dict.yaml")
+        .replace('\\', "/");
+    if reference.is_empty() {
+        return Err("词库引用不能为空".to_string());
+    }
+
+    let mut imports = config
+        .enabled
+        .iter()
+        .map(|entry| entry.reference.clone())
+        .chain(config.missing.iter().map(|entry| entry.reference.clone()))
+        .collect::<Vec<_>>();
+    if !imports.iter().any(|item| item == &reference) {
+        imports.push(reference);
+    }
+    save_dictionary_imports_sync(imports)
+}
+
+fn remove_dictionary_from_current_schema_sync(
+    reference: String,
+) -> Result<DictionaryConfig, String> {
+    let config = read_dictionary_config_sync()?;
+    let reference = reference
+        .trim()
+        .trim_end_matches(".dict.yaml")
+        .replace('\\', "/");
+    let imports = config
+        .enabled
+        .iter()
+        .map(|entry| entry.reference.clone())
+        .chain(config.missing.iter().map(|entry| entry.reference.clone()))
+        .filter(|item| item != &reference)
+        .collect::<Vec<_>>();
+    save_dictionary_imports_sync(imports)
+}
+
+fn get_dict_health_sync(dict_name: String) -> Result<DictHealth, String> {
+    let user_dir = rime_user_dir()?;
+    let path = validate_dictionary_path(&user_dir, &dict_name)?;
+
     analyze_sogou(&path).ok_or_else(|| "词库分析失败".to_string())
+}
+
+fn sanitize_dict_id(source_name: &str) -> String {
+    let stem = Path::new(source_name)
+        .file_stem()
+        .and_then(OsStr::to_str)
+        .unwrap_or("imported");
+    let mut id = String::new();
+    for ch in stem.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
+            id.push(ch.to_ascii_lowercase());
+        } else if ch.is_whitespace() || ch == '.' {
+            id.push('_');
+        }
+    }
+    let id = id.trim_matches('_').replace('-', "_");
+    if id.is_empty() {
+        "imported".to_string()
+    } else {
+        id
+    }
+}
+
+fn sanitize_dict_file_name(source_name: &str) -> String {
+    let id = sanitize_dict_id(source_name);
+    if id.ends_with(".dict") {
+        format!("{id}.yaml")
+    } else if id.ends_with("_dict") {
+        format!("{}.yaml", id.replace("_dict", ".dict"))
+    } else {
+        format!("{id}.dict.yaml")
+    }
+}
+
+fn read_u16_le(data: &[u8], offset: usize) -> Option<u16> {
+    let bytes = data.get(offset..offset + 2)?;
+    Some(u16::from_le_bytes([bytes[0], bytes[1]]))
+}
+
+fn decode_utf16_le(data: &[u8]) -> String {
+    let units = data
+        .chunks_exact(2)
+        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+        .collect::<Vec<_>>();
+    String::from_utf16_lossy(&units)
+        .trim_matches(char::from(0))
+        .trim()
+        .to_string()
+}
+
+fn parse_scel_entries(data: &[u8]) -> Result<(Vec<DictionaryEntry>, usize), String> {
+    const PINYIN_TABLE_OFFSET: usize = 0x1540;
+    const WORD_TABLE_OFFSET: usize = 0x2628;
+
+    if data.len() <= WORD_TABLE_OFFSET {
+        return Err("搜狗 .scel 文件过小或格式不正确".to_string());
+    }
+
+    let mut pinyin_table = std::collections::HashMap::<u16, String>::new();
+    let mut offset = PINYIN_TABLE_OFFSET;
+    while offset + 4 <= data.len() && offset < WORD_TABLE_OFFSET {
+        let Some(index) = read_u16_le(data, offset) else {
+            break;
+        };
+        let Some(byte_len) = read_u16_le(data, offset + 2).map(usize::from) else {
+            break;
+        };
+        offset += 4;
+        if byte_len == 0 || offset + byte_len > data.len() || offset + byte_len > WORD_TABLE_OFFSET
+        {
+            break;
+        }
+
+        let value = decode_utf16_le(&data[offset..offset + byte_len]);
+        if !value.is_empty() {
+            pinyin_table.insert(index, value);
+        }
+        offset += byte_len;
+    }
+
+    let mut entries = Vec::new();
+    let mut skipped = 0usize;
+    offset = WORD_TABLE_OFFSET;
+
+    while offset + 4 <= data.len() {
+        let Some(same_pinyin_count) = read_u16_le(data, offset).map(usize::from) else {
+            break;
+        };
+        let Some(pinyin_byte_len) = read_u16_le(data, offset + 2).map(usize::from) else {
+            break;
+        };
+        offset += 4;
+        if same_pinyin_count == 0 || pinyin_byte_len == 0 || offset + pinyin_byte_len > data.len() {
+            break;
+        }
+
+        let pinyin_indexes = data[offset..offset + pinyin_byte_len]
+            .chunks_exact(2)
+            .filter_map(|chunk| {
+                let index = u16::from_le_bytes([chunk[0], chunk[1]]);
+                pinyin_table.get(&index).cloned()
+            })
+            .collect::<Vec<_>>();
+        let code = pinyin_indexes.join(" ");
+        offset += pinyin_byte_len;
+
+        for _ in 0..same_pinyin_count {
+            if offset + 4 > data.len() {
+                skipped += 1;
+                break;
+            }
+
+            let word_byte_len = read_u16_le(data, offset).map(usize::from).unwrap_or(0);
+            offset += 2;
+            if word_byte_len == 0 || offset + word_byte_len > data.len() {
+                skipped += 1;
+                break;
+            }
+            let word = decode_utf16_le(&data[offset..offset + word_byte_len]);
+            offset += word_byte_len;
+
+            let ext_len = read_u16_le(data, offset).map(usize::from).unwrap_or(0);
+            offset += 2;
+            if offset + ext_len > data.len() {
+                skipped += 1;
+                break;
+            }
+            offset += ext_len;
+
+            if word.is_empty() {
+                skipped += 1;
+            } else {
+                entries.push((word, code.clone(), 1));
+            }
+        }
+    }
+
+    if entries.is_empty() {
+        Err("未能从搜狗 .scel 文件中解析出词条".to_string())
+    } else {
+        Ok((entries, skipped))
+    }
+}
+
+fn is_sogou_bin_word(value: &str) -> bool {
+    !value.is_empty()
+        && value.chars().count() <= 80
+        && value.chars().all(|ch| {
+            let code = ch as u32;
+            (0x4e00..=0x9fff).contains(&code)
+                || (0x3400..=0x4dbf).contains(&code)
+                || (0x20..=0x7e).contains(&code)
+        })
+}
+
+fn sogou_bin_code_from_indexes(index_bytes: &[u8]) -> Option<String> {
+    let mut syllables = Vec::new();
+    for chunk in index_bytes.chunks_exact(2) {
+        let index = u16::from_le_bytes([chunk[0], chunk[1]]) as usize;
+        let syllable = SOGOU_BIN_PINYIN.get(index).copied().unwrap_or_default();
+        if syllable.is_empty() {
+            return None;
+        }
+        syllables.push(syllable);
+    }
+
+    if syllables.is_empty() {
+        None
+    } else {
+        Some(syllables.join(" "))
+    }
+}
+
+fn parse_sogou_bin_entries(data: &[u8]) -> Result<(Vec<DictionaryEntry>, usize), String> {
+    if !data.starts_with(b"SGPU") {
+        return Err("不是支持的搜狗用户词库 .bin 备份文件".to_string());
+    }
+
+    let mut weighted = std::collections::BTreeMap::<(String, String), i32>::new();
+    let mut skipped = 0usize;
+    let mut offset = 0usize;
+
+    while offset + 20 < data.len() {
+        if data.get(offset..offset + 3) != Some(&[0, 1, 0]) {
+            offset += 1;
+            continue;
+        }
+
+        let record_kind = data[offset + 3];
+        if record_kind != 2 && record_kind != 3 {
+            offset += 1;
+            continue;
+        }
+
+        let index_len = read_u16_le(data, offset + 4).map(usize::from).unwrap_or(0);
+        if index_len == 0 || index_len % 2 != 0 || index_len > 80 {
+            offset += 1;
+            continue;
+        }
+
+        let index_offset = offset + 6;
+        let meta_offset = index_offset + index_len;
+        let word_len = read_u16_le(data, meta_offset + 2)
+            .map(usize::from)
+            .unwrap_or(0);
+        let word_offset = meta_offset + 4;
+        if word_len == 0
+            || word_len % 2 != 0
+            || word_len > 160
+            || word_offset + word_len + 2 + index_len > data.len()
+        {
+            offset += 1;
+            continue;
+        }
+
+        let repeated_word_len = read_u16_le(data, word_offset + word_len)
+            .map(usize::from)
+            .unwrap_or(0);
+        if repeated_word_len != word_len {
+            offset += 1;
+            continue;
+        }
+
+        let word = decode_utf16_le(&data[word_offset..word_offset + word_len]);
+        if !is_sogou_bin_word(&word) {
+            skipped += 1;
+            offset += 1;
+            continue;
+        }
+
+        let Some(code) = sogou_bin_code_from_indexes(&data[index_offset..index_offset + index_len])
+        else {
+            skipped += 1;
+            offset = word_offset + word_len + 2 + index_len;
+            continue;
+        };
+
+        *weighted.entry((word, code)).or_insert(0) += 1;
+        offset = word_offset + word_len + 2 + index_len;
+    }
+
+    if weighted.is_empty() {
+        return Err("未能从搜狗 .bin 备份中解析出可导入词条".to_string());
+    }
+
+    let entries = weighted
+        .into_iter()
+        .map(|((word, code), weight)| (word, code, weight))
+        .collect();
+    Ok((entries, skipped))
+}
+
+fn parse_text_dictionary_entries(contents: &str) -> (Vec<DictionaryEntry>, usize) {
+    let mut entries = Vec::new();
+    let mut skipped = 0usize;
+    let mut past_header = !contents.lines().any(|line| line.trim() == "...");
+
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        if trimmed == "..." {
+            past_header = true;
+            continue;
+        }
+        if !past_header || trimmed.is_empty() || trimmed.starts_with('#') || trimmed == "---" {
+            continue;
+        }
+
+        let parts = trimmed.split('\t').map(str::trim).collect::<Vec<_>>();
+        if parts.is_empty() || parts[0].is_empty() {
+            skipped += 1;
+            continue;
+        }
+
+        let text = parts[0].to_string();
+        let code = parts.get(1).copied().unwrap_or_default().to_string();
+        let weight = parts
+            .get(2)
+            .and_then(|value| value.parse::<i32>().ok())
+            .unwrap_or(1);
+        entries.push((text, code, weight));
+    }
+
+    (entries, skipped)
+}
+
+fn render_rime_dictionary(dict_id: &str, entries: &[DictionaryEntry]) -> String {
+    let mut contents = vec![
+        "# Imported by Rime Studio.".to_string(),
+        "---".to_string(),
+        format!("name: {dict_id}"),
+        format!("version: \"{}\"", timestamp()),
+        "sort: by_weight".to_string(),
+        "...".to_string(),
+    ];
+
+    for (text, code, weight) in entries {
+        contents.push(format!("{text}\t{code}\t{weight}"));
+    }
+    contents.push(String::new());
+    contents.join("\n")
+}
+
+fn import_dictionary_sync(
+    source_name: String,
+    data: Vec<u8>,
+) -> Result<DictionaryImportResult, String> {
+    if data.is_empty() {
+        return Err("导入文件为空".to_string());
+    }
+    if data.len() > 64 * 1024 * 1024 {
+        return Err("导入文件超过 64MB".to_string());
+    }
+
+    let user_dir = rime_user_dir()?;
+    fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
+
+    let dict_name = sanitize_dict_file_name(&source_name);
+    let dict_id = dict_name.trim_end_matches(".dict.yaml");
+    let lower_name = source_name.to_lowercase();
+    let (entries, skipped_entries, rendered_contents) = if lower_name.ends_with(".scel") {
+        let (entries, skipped) = parse_scel_entries(&data)?;
+        let rendered = render_rime_dictionary(dict_id, &entries);
+        (entries, skipped, rendered)
+    } else if lower_name.ends_with(".bin") {
+        let (entries, skipped) = parse_sogou_bin_entries(&data)?;
+        let rendered = render_rime_dictionary(dict_id, &entries);
+        (entries, skipped, rendered)
+    } else {
+        let contents = String::from_utf8(data).map_err(|_| {
+            "文本词库需要使用 UTF-8 编码；搜狗二进制词库请导入 .scel 文件".to_string()
+        })?;
+        let (entries, skipped) = parse_text_dictionary_entries(&contents);
+        let rendered = if lower_name.ends_with(".dict.yaml")
+            && contents.lines().any(|line| line.trim() == "...")
+        {
+            contents
+        } else {
+            render_rime_dictionary(dict_id, &entries)
+        };
+        (entries, skipped, rendered)
+    };
+
+    if entries.is_empty() {
+        return Err("未解析到有效词条".to_string());
+    }
+
+    let path = user_dir.join(&dict_name);
+    write_text_file(&path, &rendered_contents, "写入导入词库失败")?;
+
+    Ok(DictionaryImportResult {
+        reference: dictionary_reference_from_name(&dict_name),
+        name: dict_name,
+        path: path.display().to_string(),
+        imported_entries: entries.len(),
+        skipped_entries,
+    })
+}
+
+fn export_dictionary_sync(dict_name: String) -> Result<DictionaryExportResult, String> {
+    let user_dir = rime_user_dir()?;
+    let path = validate_dictionary_path(&user_dir, &dict_name)?;
+
+    let contents = fs::read_to_string(&path).map_err(|err| format!("读取词库失败: {err}"))?;
+    Ok(DictionaryExportResult {
+        name: path
+            .file_name()
+            .and_then(OsStr::to_str)
+            .unwrap_or("dictionary.dict.yaml")
+            .to_string(),
+        contents,
+    })
 }
 
 fn open_in_explorer(path: &Path) -> Result<(), String> {
@@ -1201,11 +2047,7 @@ fn save_quick_settings_sync(config: QuickSettingsConfig) -> Result<QuickSettings
     fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
 
     let default_custom_path = user_dir.join("default.custom.yaml");
-    let schema_id = config
-        .schema_id
-        .replace('/', "")
-        .replace('\\', "")
-        .replace("..", "");
+    let schema_id = config.schema_id.replace(['/', '\\'], "").replace("..", "");
     let switch_value = if config.switch_key == "shift" {
         "commit_code"
     } else {
@@ -1250,8 +2092,11 @@ fn save_quick_settings_sync(config: QuickSettingsConfig) -> Result<QuickSettings
         default_contents.extend(bindings);
     }
     default_contents.push(String::new());
-    fs::write(&default_custom_path, default_contents.join("\n"))
-        .map_err(|err| format!("写入 default.custom.yaml 失败: {err}"))?;
+    write_text_file(
+        &default_custom_path,
+        &default_contents.join("\n"),
+        "写入 default.custom.yaml 失败",
+    )?;
 
     let mut appearance = read_appearance_config(&user_dir);
     appearance.page_size = config.page_size;
@@ -1655,11 +2500,11 @@ fn render_rime_ice_custom(settings: &RimeIceSettings) -> String {
 fn save_rime_ice_settings_sync(settings: RimeIceSettings) -> Result<RimeIceSettings, String> {
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
-    fs::write(
-        user_dir.join("rime_ice.custom.yaml"),
-        render_rime_ice_custom(&settings),
-    )
-    .map_err(|err| format!("写入 rime_ice.custom.yaml 失败: {err}"))?;
+    write_text_file(
+        &user_dir.join("rime_ice.custom.yaml"),
+        &render_rime_ice_custom(&settings),
+        "写入 rime_ice.custom.yaml 失败",
+    )?;
     Ok(settings)
 }
 
@@ -1743,17 +2588,7 @@ fn delete_backup_sync(backup_name: String) -> Result<(), String> {
 
 fn delete_dictionary_sync(dict_name: String) -> Result<(), String> {
     let user_dir = rime_user_dir()?;
-    let safe_name = dict_name
-        .replace('/', "")
-        .replace('\\', "")
-        .replace("..", "");
-    let path = user_dir.join(&safe_name);
-    if !path.exists() || !path.is_file() {
-        return Err("词库文件不存在".to_string());
-    }
-    if !safe_name.ends_with(".dict.yaml") {
-        return Err("只能删除 .dict.yaml 词库文件".to_string());
-    }
+    let path = validate_dictionary_path(&user_dir, &dict_name)?;
     fs::remove_file(&path).map_err(|err| format!("删除词库失败: {err}"))
 }
 
@@ -1789,14 +2624,9 @@ fn download_rime_installer_sync() -> Result<RimeDownloadResult, String> {
     let assets = json["assets"].as_array().ok_or("未找到发布资源")?;
     let installer = assets
         .iter()
-        .find_map(|asset| {
+        .filter_map(|asset| {
             let name = asset["name"].as_str().unwrap_or("");
-            if name.ends_with(".exe") && name.contains("install") {
-                Some((
-                    name.to_string(),
-                    asset["browser_download_url"].as_str()?.to_string(),
-                ))
-            } else if name.ends_with(".exe") {
+            if name.ends_with(".exe") {
                 Some((
                     name.to_string(),
                     asset["browser_download_url"].as_str()?.to_string(),
@@ -1805,6 +2635,7 @@ fn download_rime_installer_sync() -> Result<RimeDownloadResult, String> {
                 None
             }
         })
+        .max_by_key(|(name, _)| name.contains("install"))
         .ok_or("未找到合适的安装包")?;
 
     let download_url = installer.1;
@@ -1832,11 +2663,32 @@ fn download_rime_installer_sync() -> Result<RimeDownloadResult, String> {
     })
 }
 
-fn launch_installer_sync(path: String) -> Result<(), String> {
-    let installer_path = PathBuf::from(&path);
-    if !installer_path.exists() {
+fn validate_downloaded_installer_path(path: String) -> Result<PathBuf, String> {
+    let installer_path = PathBuf::from(path);
+    if !installer_path.exists() || !installer_path.is_file() {
         return Err("安装包文件不存在".to_string());
     }
+    if installer_path.extension().and_then(OsStr::to_str) != Some("exe") {
+        return Err("只能启动 Rime Studio 下载的 .exe 安装包".to_string());
+    }
+
+    let app_dir = app_data_dir()?;
+    let canonical_app_dir = app_dir
+        .canonicalize()
+        .map_err(|err| format!("读取下载目录失败: {err}"))?;
+    let canonical_installer = installer_path
+        .canonicalize()
+        .map_err(|err| format!("读取安装包路径失败: {err}"))?;
+
+    if !canonical_installer.starts_with(canonical_app_dir) {
+        return Err("只能启动 Rime Studio 下载目录内的安装包".to_string());
+    }
+
+    Ok(canonical_installer)
+}
+
+fn launch_installer_sync(path: String) -> Result<(), String> {
+    let installer_path = validate_downloaded_installer_path(path)?;
 
     Command::new(&installer_path)
         .spawn()
@@ -1978,10 +2830,7 @@ fn copy_schema_sync(schema_id: String) -> Result<String, String> {
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
 
-    let safe_id = schema_id
-        .replace('/', "")
-        .replace('\\', "")
-        .replace("..", "");
+    let safe_id = schema_id.replace(['/', '\\'], "").replace("..", "");
 
     // Find the source schema file
     let system_dirs = [
@@ -2026,14 +2875,13 @@ fn copy_schema_sync(schema_id: String) -> Result<String, String> {
         safe_id, contents
     );
 
-    fs::write(&dest, patched).map_err(|err| format!("写入方案文件失败: {err}"))?;
+    write_text_file(&dest, &patched, "写入方案文件失败")?;
     Ok(dest.display().to_string())
 }
 
 fn sanitize_schema_id(schema_id: &str) -> String {
     schema_id
-        .replace('/', "")
-        .replace('\\', "")
+        .replace(['/', '\\'], "")
         .replace("..", "")
         .trim()
         .to_string()
@@ -2112,11 +2960,11 @@ fn save_active_schema_list_sync(schema_ids: Vec<String>) -> Result<QuickSettings
 
     let mut config = get_quick_settings_sync()?;
     config.schema_id = safe_schema_ids[0].clone();
-    fs::write(
-        user_dir.join("default.custom.yaml"),
-        render_default_custom_with_schema_list(&config, &safe_schema_ids),
-    )
-    .map_err(|err| format!("写入 default.custom.yaml 失败: {err}"))?;
+    write_text_file(
+        &user_dir.join("default.custom.yaml"),
+        &render_default_custom_with_schema_list(&config, &safe_schema_ids),
+        "写入 default.custom.yaml 失败",
+    )?;
 
     get_quick_settings_sync()
 }
@@ -2161,6 +3009,124 @@ fn open_schema_dir_sync(path: String) -> Result<(), String> {
         .parent()
         .ok_or_else(|| "方案文件目录无效".to_string())?;
     open_in_explorer(parent)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_schema_list_from_yaml_patch() {
+        let contents = r#"
+patch:
+  schema_list:
+    - schema: rime_ice
+    - schema: luna_pinyin
+"#;
+
+        assert_eq!(
+            parse_schema_list(contents),
+            vec!["rime_ice".to_string(), "luna_pinyin".to_string()]
+        );
+        assert_eq!(parse_schema(contents), Some("rime_ice".to_string()));
+    }
+
+    #[test]
+    fn parses_patch_values_from_yaml() {
+        let contents = r#"
+patch:
+  "menu/page_size": 9
+  "style/horizontal": false
+  "style/color_scheme": rime_studio_blue
+"#;
+
+        assert_eq!(parse_u32_after_key(contents, "menu/page_size"), Some(9));
+        assert_eq!(
+            parse_bool_after_key(contents, "style/horizontal"),
+            Some(false)
+        );
+        assert_eq!(
+            parse_string_after_key(contents, "style/color_scheme"),
+            Some("rime_studio_blue".to_string())
+        );
+    }
+
+    #[test]
+    fn limits_managed_backup_file_names() {
+        assert!(is_managed_config_file("default.custom.yaml"));
+        assert!(is_managed_config_file("sogou_ext.dict.yaml"));
+        assert!(is_managed_config_file("custom_phrase.txt"));
+        assert!(!is_managed_config_file("installer.exe"));
+        assert!(!is_managed_config_file("notes.txt"));
+    }
+
+    #[test]
+    fn write_text_file_replaces_existing_contents() {
+        let dir = env::temp_dir().join(format!(
+            "rime-studio-test-{}-{}",
+            process::id(),
+            timestamp()
+        ));
+        let path = dir.join("default.custom.yaml");
+
+        write_text_file(&path, "old", "测试写入").expect("initial write");
+        write_text_file(&path, "new", "测试写入").expect("replacement write");
+
+        assert_eq!(fs::read_to_string(&path).expect("read result"), "new");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn parses_tab_separated_dictionary_entries() {
+        let contents = "深度学习\tshen du xue xi\t10\n# comment\n空行\tkong hang\n";
+        let (entries, skipped) = parse_text_dictionary_entries(contents);
+
+        assert_eq!(skipped, 0);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(
+            entries[0],
+            ("深度学习".to_string(), "shen du xue xi".to_string(), 10)
+        );
+        assert_eq!(entries[1], ("空行".to_string(), "kong hang".to_string(), 1));
+    }
+
+    #[test]
+    fn sanitizes_dictionary_file_names() {
+        assert_eq!(sanitize_dict_file_name("sogou.scel"), "sogou.dict.yaml");
+        assert_eq!(
+            sanitize_dict_file_name("custom.dict.yaml"),
+            "custom.dict.yaml"
+        );
+        assert_eq!(
+            sanitize_dict_file_name("../bad name.txt"),
+            "bad_name.dict.yaml"
+        );
+    }
+
+    #[test]
+    fn parses_sogou_bin_record() {
+        let mut data = b"SGPU".to_vec();
+        data.resize(32, 0);
+        data.extend([0, 1, 0, 3]);
+        data.extend(6u16.to_le_bytes());
+        data.extend(0u16.to_le_bytes());
+        data.extend(173u16.to_le_bytes());
+        data.extend(0u16.to_le_bytes());
+        data.extend(16u16.to_le_bytes());
+        data.extend(6u16.to_le_bytes());
+        data.extend("阿里啊".encode_utf16().flat_map(u16::to_le_bytes));
+        data.extend(6u16.to_le_bytes());
+        data.extend(0u16.to_le_bytes());
+        data.extend(173u16.to_le_bytes());
+        data.extend(0u16.to_le_bytes());
+
+        let (entries, skipped) = parse_sogou_bin_entries(&data).expect("parse sogou bin");
+        assert_eq!(skipped, 0);
+        assert_eq!(
+            entries,
+            vec![("阿里啊".to_string(), "a li a".to_string(), 1)]
+        );
+    }
 }
 
 async fn run_blocking<T, F>(task: F) -> Result<T, String>
@@ -2294,6 +3260,41 @@ async fn get_dict_health(dict_name: String) -> Result<DictHealth, String> {
 }
 
 #[tauri::command]
+async fn get_dictionary_config() -> Result<DictionaryConfig, String> {
+    run_blocking(read_dictionary_config_sync).await
+}
+
+#[tauri::command]
+async fn add_dictionary_to_current_schema(reference: String) -> Result<DictionaryConfig, String> {
+    run_blocking(move || add_dictionary_to_current_schema_sync(reference)).await
+}
+
+#[tauri::command]
+async fn remove_dictionary_from_current_schema(
+    reference: String,
+) -> Result<DictionaryConfig, String> {
+    run_blocking(move || remove_dictionary_from_current_schema_sync(reference)).await
+}
+
+#[tauri::command]
+async fn save_dictionary_imports(imports: Vec<String>) -> Result<DictionaryConfig, String> {
+    run_blocking(move || save_dictionary_imports_sync(imports)).await
+}
+
+#[tauri::command]
+async fn import_dictionary(
+    source_name: String,
+    data: Vec<u8>,
+) -> Result<DictionaryImportResult, String> {
+    run_blocking(move || import_dictionary_sync(source_name, data)).await
+}
+
+#[tauri::command]
+async fn export_dictionary(dict_name: String) -> Result<DictionaryExportResult, String> {
+    run_blocking(move || export_dictionary_sync(dict_name)).await
+}
+
+#[tauri::command]
 async fn download_rime_installer() -> Result<RimeDownloadResult, String> {
     run_blocking(download_rime_installer_sync).await
 }
@@ -2362,6 +3363,12 @@ pub fn run() {
             save_custom_phrases,
             list_dictionaries,
             get_dict_health,
+            get_dictionary_config,
+            add_dictionary_to_current_schema,
+            remove_dictionary_from_current_schema,
+            save_dictionary_imports,
+            import_dictionary,
+            export_dictionary,
             download_rime_installer,
             launch_rime_installer,
             list_schemas,

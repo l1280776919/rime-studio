@@ -55,14 +55,6 @@ const filteredSchemas = computed(() => {
   );
 });
 
-function schemaKind(schema: SchemaInfo) {
-  return schema.is_system ? "系统" : "用户";
-}
-
-function schemaKindType(schema: SchemaInfo) {
-  return schema.is_system ? "info" : "success";
-}
-
 function selectSchema(schema: SchemaInfo) {
   selectedId.value = schema.id;
 }

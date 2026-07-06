@@ -4,7 +4,6 @@ import { ElMessage } from "element-plus";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
-  Brush,
   Check,
   Connection,
   Delete,
@@ -49,10 +48,6 @@ const hasRimeIce = computed(() => {
 });
 const foundFiles = computed(() => customFiles.value.filter((file) => file.exists).length);
 const missingFiles = computed(() => customFiles.value.length - foundFiles.value);
-const fileCompletion = computed(() => {
-  if (!customFiles.value.length) return 0;
-  return Math.round((foundFiles.value / customFiles.value.length) * 100);
-});
 const readinessItems = computed(() => [
   {
     label: "部署器",

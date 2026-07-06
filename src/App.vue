@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, defineAsyncComponent, onMounted, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -17,15 +17,6 @@ import {
   Sunny,
   UploadFilled,
 } from "@element-plus/icons-vue";
-import AboutPage from "./pages/AboutPage.vue";
-import AppearancePage from "./pages/AppearancePage.vue";
-import BackupsPage from "./pages/BackupsPage.vue";
-import ConfigFilesPage from "./pages/ConfigFilesPage.vue";
-import DictionariesPage from "./pages/DictionariesPage.vue";
-import OverviewPage from "./pages/OverviewPage.vue";
-import PhrasesPage from "./pages/PhrasesPage.vue";
-import QuickSettingsPage from "./pages/QuickSettingsPage.vue";
-import SchemasPage from "./pages/SchemasPage.vue";
 import type {
   BackupEntry,
   DeployResult,
@@ -33,6 +24,16 @@ import type {
   RestoreResult,
   RimeEnvironment,
 } from "./types";
+
+const AboutPage = defineAsyncComponent(() => import("./pages/AboutPage.vue"));
+const AppearancePage = defineAsyncComponent(() => import("./pages/AppearancePage.vue"));
+const BackupsPage = defineAsyncComponent(() => import("./pages/BackupsPage.vue"));
+const ConfigFilesPage = defineAsyncComponent(() => import("./pages/ConfigFilesPage.vue"));
+const DictionariesPage = defineAsyncComponent(() => import("./pages/DictionariesPage.vue"));
+const OverviewPage = defineAsyncComponent(() => import("./pages/OverviewPage.vue"));
+const PhrasesPage = defineAsyncComponent(() => import("./pages/PhrasesPage.vue"));
+const QuickSettingsPage = defineAsyncComponent(() => import("./pages/QuickSettingsPage.vue"));
+const SchemasPage = defineAsyncComponent(() => import("./pages/SchemasPage.vue"));
 
 type PageKey = "overview" | "quick" | "schemas" | "configs" | "appearance" | "phrases" | "dictionaries" | "backups" | "about";
 
@@ -482,6 +483,7 @@ onMounted(() => {
               key="dictionaries"
               :env="env"
               @open-path="openKnownPath"
+              @deploy="deploy"
             />
 
             <BackupsPage

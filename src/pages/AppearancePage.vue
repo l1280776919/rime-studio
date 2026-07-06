@@ -20,7 +20,9 @@ const userEdited = ref(false);
 let programmaticChange = false;
 
 // Track custom schemes created by copying presets
-interface CustomScheme { name: string; label: string; colors: Partial<AppearanceConfig> }
+type ColorKey = (typeof colorFields)[number]["key"];
+type SchemeColors = Record<ColorKey, string>;
+interface CustomScheme { name: string; label: string; colors: SchemeColors }
 const customSchemes = ref<CustomScheme[]>([]);
 
 // Merge presets + custom schemes for display
@@ -214,7 +216,7 @@ function copyPreset(preset: (typeof presets)[number]) {
   nextTick(() => { programmaticChange = false; });
 }
 
-function selectScheme(scheme: { name: string; colors: Record<string,string>; isSystem?: boolean }) {
+function selectScheme(scheme: { name: string; colors: SchemeColors; isSystem?: boolean }) {
   if (scheme.isSystem) {
     const preset = presets.find((p) => p.name === scheme.name);
     if (preset) { applyPreset(preset); return; }
