@@ -101,6 +101,17 @@ export type ConfigHealthReport = {
   checks: ConfigHealthCheck[];
 };
 
+export type ConfigPreviewFile = {
+  name: string;
+  path: string;
+  changed: boolean;
+  diff_lines: string[];
+};
+
+export type ConfigPreview = {
+  files: ConfigPreviewFile[];
+};
+
 export type RimeIceSettings = {
   emoji: boolean;
   traditionalization: boolean;
@@ -140,6 +151,22 @@ export type DictionaryImportResult = {
   path: string;
   imported_entries: number;
   skipped_entries: number;
+};
+
+export type DictionaryPreviewEntry = {
+  text: string;
+  code: string;
+  weight: number;
+};
+
+export type DictionaryImportPreview = {
+  name: string;
+  reference: string;
+  path: string;
+  imported_entries: number;
+  skipped_entries: number;
+  sample_entries: DictionaryPreviewEntry[];
+  will_overwrite: boolean;
 };
 
 export type DictionaryExportResult = {

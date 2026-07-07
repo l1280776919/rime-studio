@@ -12,7 +12,9 @@ import {
   UploadFilled,
 } from "@element-plus/icons-vue";
 import type {
+  ConfigHealthCheck,
   ConfigHealthReport,
+  ConfigPreview,
   QuickSettingsConfig,
   RimeEnvironment,
   RimeIceSettings,
@@ -35,10 +37,14 @@ const saving = ref(false);
 const deploying = ref(false);
 const checkingHealth = ref(false);
 const repairingHealth = ref(false);
+const repairingHealthItem = ref<string>();
 const postDeployChecking = ref(false);
 const savingIceSettings = ref(false);
+const previewing = ref(false);
+const showPreviewDialog = ref(false);
 const schemas = ref<SchemaInfo[]>([]);
 const healthReport = ref<ConfigHealthReport>();
+const configPreview = ref<ConfigPreview>();
 let postDeployTimer: ReturnType<typeof setTimeout> | undefined;
 
 const form = reactive<QuickSettingsConfig>({
@@ -149,6 +155,20 @@ async function saveQuickSettings(shouldDeploy = false) {
   }
 }
 
+async function previewQuickSettings() {
+  previewing.value = true;
+  try {
+    configPreview.value = await invoke<ConfigPreview>("preview_quick_settings", {
+      config: { ...form },
+    });
+    showPreviewDialog.value = true;
+  } catch (error) {
+    ElMessage.error(String(error));
+  } finally {
+    previewing.value = false;
+  }
+}
+
 async function inspectHealth() {
   checkingHealth.value = true;
   try {
@@ -180,6 +200,24 @@ async function repairHealth() {
   }
 }
 
+async function repairHealthItem(check: ConfigHealthCheck) {
+  repairingHealthItem.value = check.name;
+  try {
+    healthReport.value = await invoke<ConfigHealthReport>("repair_config_health_item", {
+      name: check.name,
+    });
+    emit("saved");
+    if (check.name === "主题合并" || check.name === "候选数量合并") {
+      schedulePostDeployCheck();
+    }
+    ElMessage.success(`已修复 ${check.name}`);
+  } catch (error) {
+    ElMessage.error(String(error));
+  } finally {
+    repairingHealthItem.value = undefined;
+  }
+}
+
 async function saveIceSettings() {
   savingIceSettings.value = true;
   try {
@@ -200,6 +238,12 @@ async function saveIceSettings() {
 
 function chooseSchema(id: string) {
   form.schema_id = id;
+}
+
+function diffLineClass(line: string) {
+  if (line.startsWith("+ ")) return "added";
+  if (line.startsWith("- ")) return "removed";
+  return "";
 }
 
 onMounted(loadQuickSettings);
@@ -223,6 +267,9 @@ onBeforeUnmount(() => {
         <div class="form-actions">
           <el-button :icon="Refresh" :loading="loading" @click="loadQuickSettings">
             刷新
+          </el-button>
+          <el-button :icon="Warning" :loading="previewing" @click="previewQuickSettings">
+            预览变更
           </el-button>
           <el-button type="primary" :icon="Check" :loading="saving" @click="saveQuickSettings(false)">
             保存
@@ -503,6 +550,15 @@ onBeforeUnmount(() => {
                 <strong>{{ check.name }}</strong>
                 <small>{{ check.detail }}</small>
               </span>
+              <el-button
+                v-if="check.status !== 'ok'"
+                link
+                type="warning"
+                :loading="repairingHealthItem === check.name"
+                @click="repairHealthItem(check)"
+              >
+                修复此项
+              </el-button>
             </div>
           </div>
         </div>
@@ -518,5 +574,45 @@ onBeforeUnmount(() => {
         </el-empty>
       </el-card>
     </aside>
+
+    <el-dialog v-model="showPreviewDialog" title="快速设置变更预览" width="760px">
+      <div class="config-preview-dialog">
+        <p class="helper-text">
+          这里展示保存快速设置会写入的文件变更。实际保存前仍会自动创建保存前备份。
+        </p>
+        <div v-if="configPreview?.files.some((file) => file.changed)" class="config-preview-list">
+          <section
+            v-for="file in configPreview.files"
+            :key="file.name"
+            class="config-preview-file"
+            :class="{ unchanged: !file.changed }"
+          >
+            <header>
+              <strong>{{ file.name }}</strong>
+              <el-tag :type="file.changed ? 'warning' : 'success'" effect="light" size="small">
+                {{ file.changed ? '将更新' : '无变化' }}
+              </el-tag>
+            </header>
+            <code>{{ file.path }}</code>
+            <pre v-if="file.changed"><span
+              v-for="(line, index) in file.diff_lines"
+              :key="`${file.name}-${index}`"
+              :class="diffLineClass(line)"
+            >{{ line }}</span></pre>
+            <p v-else class="helper-text">这个文件内容不会变化。</p>
+          </section>
+        </div>
+        <el-empty v-else description="没有检测到配置变更" :image-size="64" />
+      </div>
+      <template #footer>
+        <el-button @click="showPreviewDialog = false">关闭</el-button>
+        <el-button type="primary" @click="showPreviewDialog = false; saveQuickSettings(false)">
+          保存
+        </el-button>
+        <el-button type="primary" plain @click="showPreviewDialog = false; saveQuickSettings(true)">
+          保存并部署
+        </el-button>
+      </template>
+    </el-dialog>
   </section>
 </template>

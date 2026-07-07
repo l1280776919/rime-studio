@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import {
   Delete,
   FolderOpened,
@@ -23,8 +23,20 @@ const emit = defineEmits<{
   deleteBackup: [backup: BackupEntry];
 }>();
 
+const activeFilter = ref<"all" | "manual" | "auto">("all");
 const latestBackup = computed(() => props.backups[0]);
 const totalFiles = computed(() => props.backups.reduce((total, backup) => total + backup.files, 0));
+const manualCount = computed(() => props.backups.filter((backup) => backup.kind === "manual").length);
+const autoCount = computed(() => props.backups.length - manualCount.value);
+const visibleBackups = computed(() => {
+  if (activeFilter.value === "manual") {
+    return props.backups.filter((backup) => backup.kind === "manual");
+  }
+  if (activeFilter.value === "auto") {
+    return props.backups.filter((backup) => backup.kind !== "manual");
+  }
+  return props.backups;
+});
 
 function backupLabel(backup: BackupEntry) {
   const raw = backup.name
@@ -76,6 +88,14 @@ function backupKindType(kind: string) {
           <strong>{{ backups.length }}</strong>
         </div>
         <div>
+          <span>手动备份</span>
+          <strong>{{ manualCount }}</strong>
+        </div>
+        <div>
+          <span>自动备份</span>
+          <strong>{{ autoCount }}</strong>
+        </div>
+        <div>
           <span>备份文件</span>
           <strong>{{ totalFiles }}</strong>
         </div>
@@ -89,9 +109,21 @@ function backupKindType(kind: string) {
         <template #header>
           <div class="panel-title">
             <span>备份记录</span>
-            <span class="schema-count">{{ backups.length }} 项</span>
+            <span class="schema-count">{{ visibleBackups.length }} / {{ backups.length }} 项</span>
           </div>
         </template>
+
+        <div v-if="backups.length" class="backup-filter-row">
+          <el-segmented
+            v-model="activeFilter"
+            :options="[
+              { label: '全部', value: 'all' },
+              { label: '手动', value: 'manual' },
+              { label: '自动', value: 'auto' },
+            ]"
+          />
+          <span>自动备份仅保留最近 30 个；手动备份不会自动清理。</span>
+        </div>
 
         <div v-if="!backups.length" class="backup-empty-state">
           <el-icon><FolderOpened /></el-icon>
@@ -102,8 +134,14 @@ function backupKindType(kind: string) {
           </el-button>
         </div>
 
+        <div v-else-if="!visibleBackups.length" class="backup-empty-state compact">
+          <el-icon><FolderOpened /></el-icon>
+          <strong>当前筛选没有备份</strong>
+          <span>切换筛选条件查看其他类型的备份。</span>
+        </div>
+
         <div v-else class="backup-manual-list">
-          <article v-for="backup in backups" :key="backup.path" class="backup-manual-item">
+          <article v-for="backup in visibleBackups" :key="backup.path" class="backup-manual-item">
             <div class="backup-manual-main">
               <strong>
                 <el-tag size="small" effect="light" :type="backupKindType(backup.kind)">

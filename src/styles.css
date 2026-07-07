@@ -2927,7 +2927,7 @@ button:active {
 
 .backup-summary-row {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 10px;
 }
 
@@ -2956,6 +2956,22 @@ button:active {
   padding: 0;
 }
 
+.backup-filter-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-line-soft);
+}
+
+.backup-filter-row > span {
+  color: var(--ink-500);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: right;
+}
+
 .backup-empty-state {
   display: grid;
   gap: 10px;
@@ -2963,6 +2979,10 @@ button:active {
   padding: 52px 20px;
   color: var(--ink-500);
   text-align: center;
+}
+
+.backup-empty-state.compact {
+  padding: 34px 20px;
 }
 
 .backup-empty-state .el-icon {
@@ -3041,6 +3061,81 @@ button:active {
 
 .quick-settings-grid .el-divider--horizontal {
   margin: 8px 0 10px;
+}
+
+.config-preview-dialog {
+  display: grid;
+  gap: 12px;
+}
+
+.config-preview-list {
+  display: grid;
+  gap: 12px;
+  max-height: 62dvh;
+  overflow: auto;
+}
+
+.config-preview-file {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.config-preview-file.unchanged {
+  opacity: 0.75;
+}
+
+.config-preview-file header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.config-preview-file header strong {
+  color: var(--ink-800);
+  font-size: 13px;
+}
+
+.config-preview-file > code {
+  color: var(--ink-500);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.config-preview-file pre {
+  display: grid;
+  gap: 1px;
+  max-height: 320px;
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  color: var(--ink-700);
+  background: var(--color-bg);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.config-preview-file pre span {
+  display: block;
+  min-width: max-content;
+  white-space: pre;
+}
+
+.config-preview-file pre span.added {
+  color: #127243;
+  background: rgba(24, 160, 88, 0.12);
+}
+
+.config-preview-file pre span.removed {
+  color: #9f2d2d;
+  background: rgba(216, 80, 80, 0.12);
 }
 
 .quick-hero {
@@ -3281,7 +3376,7 @@ button:active {
 
 .config-health-item {
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr);
+  grid-template-columns: 20px minmax(0, 1fr) auto;
   gap: 8px;
   align-items: flex-start;
   padding: 9px 10px;
@@ -3322,6 +3417,15 @@ button:active {
   font-size: 11px;
   line-height: 1.45;
   margin-top: 2px;
+}
+
+.config-health-item .el-button {
+  align-self: center;
+}
+
+.dictionary-import-preview {
+  display: grid;
+  gap: 14px;
 }
 
 .phrase-actions {

@@ -15,6 +15,7 @@ use std::os::windows::process::CommandExt;
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 type DictionaryEntry = (String, String, i32);
+const AUTO_BACKUP_KEEP_LIMIT: usize = 30;
 
 const SOGOU_BIN_PINYIN: &[&str] = &[
     "a", "ai", "an", "ang", "ao", "ba", "bai", "ban", "bang", "bao", "bei", "ben", "beng", "bi",
@@ -142,6 +143,24 @@ struct DictionaryImportResult {
 }
 
 #[derive(Debug, Serialize)]
+struct DictionaryPreviewEntry {
+    text: String,
+    code: String,
+    weight: i32,
+}
+
+#[derive(Debug, Serialize)]
+struct DictionaryImportPreview {
+    name: String,
+    reference: String,
+    path: String,
+    imported_entries: usize,
+    skipped_entries: usize,
+    sample_entries: Vec<DictionaryPreviewEntry>,
+    will_overwrite: bool,
+}
+
+#[derive(Debug, Serialize)]
 struct DictionaryExportResult {
     name: String,
     contents: String,
@@ -204,6 +223,19 @@ struct ConfigHealthCheck {
 struct ConfigHealthReport {
     summary: String,
     checks: Vec<ConfigHealthCheck>,
+}
+
+#[derive(Debug, Serialize)]
+struct ConfigPreviewFile {
+    name: String,
+    path: String,
+    changed: bool,
+    diff_lines: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct ConfigPreview {
+    files: Vec<ConfigPreviewFile>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -883,6 +915,55 @@ fn create_unique_backup_dir(backup_root: &Path, kind: BackupKind) -> Result<Path
     Err("创建备份目录失败: 无法生成唯一目录名".to_string())
 }
 
+fn is_auto_backup_kind(kind: &str) -> bool {
+    matches!(kind, "before-save" | "before-restore" | "before-install")
+}
+
+fn backup_dir_modified(path: &Path) -> Option<u64> {
+    fs::metadata(path)
+        .ok()
+        .and_then(|metadata| metadata.modified().ok())
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|duration| duration.as_secs())
+}
+
+fn prune_old_auto_backups(backup_root: &Path, keep_limit: usize) -> Result<usize, String> {
+    if !backup_root.exists() {
+        return Ok(0);
+    }
+
+    let mut auto_backups = Vec::new();
+    for entry in fs::read_dir(backup_root).map_err(|err| format!("读取备份目录失败: {err}"))?
+    {
+        let entry = entry.map_err(|err| format!("检查备份目录失败: {err}"))?;
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+
+        let Some(name) = path.file_name().and_then(OsStr::to_str) else {
+            continue;
+        };
+        if !name.starts_with("backup-rime-studio-") {
+            continue;
+        }
+        if !is_auto_backup_kind(&backup_kind_from_name(name)) {
+            continue;
+        }
+
+        auto_backups.push((backup_dir_modified(&path), name.to_string(), path));
+    }
+
+    auto_backups.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.cmp(&a.1)));
+    let mut removed = 0usize;
+    for (_, _, path) in auto_backups.into_iter().skip(keep_limit) {
+        fs::remove_dir_all(&path).map_err(|err| format!("清理旧自动备份失败: {err}"))?;
+        removed += 1;
+    }
+
+    Ok(removed)
+}
+
 fn write_text_file(path: &Path, contents: &str, context: &str) -> Result<(), String> {
     let parent = path
         .parent()
@@ -947,6 +1028,10 @@ fn backup_user_config(user_dir: &Path, kind: BackupKind) -> Result<PathBuf, Stri
             copy_if_exists(&path, &backup_dir.join(name))
                 .map_err(|err| format!("备份 {name} 失败: {err}"))?;
         }
+    }
+
+    if !matches!(kind, BackupKind::Manual) {
+        let _ = prune_old_auto_backups(&backup_root, AUTO_BACKUP_KEEP_LIMIT);
     }
 
     Ok(backup_dir)
@@ -1844,19 +1929,16 @@ fn render_rime_dictionary(dict_id: &str, entries: &[DictionaryEntry]) -> String 
     contents.join("\n")
 }
 
-fn import_dictionary_sync(
+fn parse_dictionary_import_payload(
     source_name: String,
     data: Vec<u8>,
-) -> Result<DictionaryImportResult, String> {
+) -> Result<(String, String, Vec<DictionaryEntry>, usize, String), String> {
     if data.is_empty() {
         return Err("导入文件为空".to_string());
     }
     if data.len() > 64 * 1024 * 1024 {
         return Err("导入文件超过 64MB".to_string());
     }
-
-    let user_dir = rime_user_dir()?;
-    fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
 
     let dict_name = sanitize_dict_file_name(&source_name);
     let dict_id = dict_name.trim_end_matches(".dict.yaml");
@@ -1888,11 +1970,59 @@ fn import_dictionary_sync(
         return Err("未解析到有效词条".to_string());
     }
 
+    let reference = dictionary_reference_from_name(dict_id);
+    Ok((
+        dict_name,
+        reference,
+        entries,
+        skipped_entries,
+        rendered_contents,
+    ))
+}
+
+fn preview_dictionary_import_sync(
+    source_name: String,
+    data: Vec<u8>,
+) -> Result<DictionaryImportPreview, String> {
+    let user_dir = rime_user_dir()?;
+    let (dict_name, reference, entries, skipped_entries, _) =
+        parse_dictionary_import_payload(source_name, data)?;
+    let path = user_dir.join(&dict_name);
+    let sample_entries = entries
+        .iter()
+        .take(20)
+        .map(|(text, code, weight)| DictionaryPreviewEntry {
+            text: text.clone(),
+            code: code.clone(),
+            weight: *weight,
+        })
+        .collect();
+
+    Ok(DictionaryImportPreview {
+        reference,
+        name: dict_name,
+        path: path.display().to_string(),
+        imported_entries: entries.len(),
+        skipped_entries,
+        sample_entries,
+        will_overwrite: path.exists(),
+    })
+}
+
+fn import_dictionary_sync(
+    source_name: String,
+    data: Vec<u8>,
+) -> Result<DictionaryImportResult, String> {
+    let user_dir = rime_user_dir()?;
+    fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
+
+    let (dict_name, reference, entries, skipped_entries, rendered_contents) =
+        parse_dictionary_import_payload(source_name, data)?;
     let path = user_dir.join(&dict_name);
     write_text_file(&path, &rendered_contents, "写入导入词库失败")?;
 
     Ok(DictionaryImportResult {
-        reference: dictionary_reference_from_name(&dict_name),
+        reference,
         name: dict_name,
         path: path.display().to_string(),
         imported_entries: entries.len(),
@@ -2166,12 +2296,7 @@ fn get_quick_settings_sync() -> Result<QuickSettingsConfig, String> {
     })
 }
 
-fn save_quick_settings_sync(config: QuickSettingsConfig) -> Result<QuickSettingsConfig, String> {
-    let user_dir = rime_user_dir()?;
-    fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
-    backup_user_config(&user_dir, BackupKind::BeforeSave)?;
-
-    let default_custom_path = user_dir.join("default.custom.yaml");
+fn render_quick_default_custom(config: &QuickSettingsConfig) -> String {
     let schema_id = config.schema_id.replace(['/', '\\'], "").replace("..", "");
     let switch_value = if config.switch_key == "shift" {
         "commit_code"
@@ -2187,27 +2312,23 @@ fn save_quick_settings_sync(config: QuickSettingsConfig) -> Result<QuickSettings
         format!("  \"ascii_composer/switch_key/Shift_L\": {switch_value}"),
         format!("  \"ascii_composer/switch_key/Shift_R\": {switch_value}"),
     ];
-    // Build key_binder bindings for paging and navigation
+
     let mut bindings: Vec<String> = Vec::new();
     let arrow_paging = config.paging_keys == "arrow_keys";
     let left_right_nav = config.navigation_keys == "left_right";
 
     if arrow_paging && left_right_nav {
-        // Full arrow swap: Up/Down page, Left/Right synthesize Up/Down for selection
         bindings.push("    - {when: paging, accept: Up, send: Page_Up}".to_string());
         bindings.push("    - {when: has_menu, accept: Down, send: Page_Down}".to_string());
         bindings.push("    - {when: has_menu, accept: Left, send: Up}".to_string());
         bindings.push("    - {when: has_menu, accept: Right, send: Down}".to_string());
     } else if arrow_paging {
-        // Up/Down page only
         bindings.push("    - {when: paging, accept: Up, send: Page_Up}".to_string());
         bindings.push("    - {when: has_menu, accept: Down, send: Page_Down}".to_string());
     } else if left_right_nav {
-        // Left/Right as additional paging keys (Up/Down still select)
         bindings.push("    - {when: has_menu, accept: Left, send: Page_Up}".to_string());
         bindings.push("    - {when: has_menu, accept: Right, send: Page_Down}".to_string());
     } else if config.paging_keys == "minus_equal" {
-        // Minus/equal paging
         bindings.push("    - {when: paging, accept: minus, send: Page_Up}".to_string());
         bindings.push("    - {when: has_menu, accept: equal, send: Page_Down}".to_string());
     }
@@ -2217,9 +2338,81 @@ fn save_quick_settings_sync(config: QuickSettingsConfig) -> Result<QuickSettings
         default_contents.extend(bindings);
     }
     default_contents.push(String::new());
+    default_contents.join("\n")
+}
+
+fn build_text_diff(old_contents: &str, new_contents: &str) -> Vec<String> {
+    if old_contents == new_contents {
+        return Vec::new();
+    }
+
+    let old_lines = old_contents.lines().collect::<Vec<_>>();
+    let new_lines = new_contents.lines().collect::<Vec<_>>();
+    let max_len = old_lines.len().max(new_lines.len());
+    let mut diff = Vec::new();
+
+    for index in 0..max_len {
+        match (old_lines.get(index), new_lines.get(index)) {
+            (Some(old), Some(new)) if old == new => {}
+            (Some(old), Some(new)) => {
+                diff.push(format!("- {}", old));
+                diff.push(format!("+ {}", new));
+            }
+            (Some(old), None) => diff.push(format!("- {}", old)),
+            (None, Some(new)) => diff.push(format!("+ {}", new)),
+            (None, None) => {}
+        }
+    }
+
+    diff
+}
+
+fn preview_file(user_dir: &Path, name: &str, new_contents: String) -> ConfigPreviewFile {
+    let path = user_dir.join(name);
+    let old_contents = read_to_string(&path);
+    let diff_lines = build_text_diff(&old_contents, &new_contents);
+
+    ConfigPreviewFile {
+        name: name.to_string(),
+        path: path.display().to_string(),
+        changed: !diff_lines.is_empty(),
+        diff_lines,
+    }
+}
+
+fn preview_quick_settings_sync(config: QuickSettingsConfig) -> Result<ConfigPreview, String> {
+    let user_dir = rime_user_dir()?;
+    let mut appearance = read_appearance_config(&user_dir);
+    appearance.page_size = config.page_size;
+    appearance.switch_key = config.switch_key.clone();
+    appearance.horizontal = config.horizontal;
+    appearance.inline_preedit = config.inline_preedit;
+
+    Ok(ConfigPreview {
+        files: vec![
+            preview_file(
+                &user_dir,
+                "default.custom.yaml",
+                render_quick_default_custom(&config),
+            ),
+            preview_file(
+                &user_dir,
+                "weasel.custom.yaml",
+                render_weasel_custom(&appearance),
+            ),
+        ],
+    })
+}
+
+fn save_quick_settings_sync(config: QuickSettingsConfig) -> Result<QuickSettingsConfig, String> {
+    let user_dir = rime_user_dir()?;
+    fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
+    backup_user_config(&user_dir, BackupKind::BeforeSave)?;
+
+    let default_custom_path = user_dir.join("default.custom.yaml");
     write_text_file(
         &default_custom_path,
-        &default_contents.join("\n"),
+        &render_quick_default_custom(&config),
         "写入 default.custom.yaml 失败",
     )?;
 
@@ -2566,6 +2759,43 @@ fn repair_config_health_sync() -> Result<ConfigHealthReport, String> {
     save_quick_settings_sync(quick)?;
     save_appearance_config_sync(appearance)?;
     let _ = deploy_rime_internal();
+
+    inspect_config_health_sync()
+}
+
+fn repair_config_health_item_sync(name: String) -> Result<ConfigHealthReport, String> {
+    let name = name.trim();
+    match name {
+        "default.custom.yaml" | "方案列表" | "候选数量合并" => {
+            let quick = get_quick_settings_sync().unwrap_or(QuickSettingsConfig {
+                schema_id: "luna_pinyin_simp".to_string(),
+                page_size: 5,
+                switch_key: "shift".to_string(),
+                paging_keys: "comma_period".to_string(),
+                navigation_keys: "up_down".to_string(),
+                horizontal: true,
+                inline_preedit: true,
+            });
+            save_quick_settings_sync(quick)?;
+            if name == "候选数量合并" {
+                let _ = deploy_rime_internal();
+            }
+        }
+        "weasel.custom.yaml" | "主题配置" | "主题合并" => {
+            let appearance = get_appearance_config_sync()?;
+            save_appearance_config_sync(appearance)?;
+            if name == "主题合并" {
+                let _ = deploy_rime_internal();
+            }
+        }
+        "雾凇组件配置" | "繁体预设" => {
+            let settings = get_rime_ice_settings_sync()?;
+            save_rime_ice_settings_sync(settings)?;
+        }
+        _ => {
+            return Err(format!("暂不支持单项修复: {name}"));
+        }
+    }
 
     inspect_config_health_sync()
 }
@@ -3239,6 +3469,57 @@ patch:
     }
 
     #[test]
+    fn prunes_only_old_auto_backups() {
+        let dir = env::temp_dir().join(format!(
+            "rime-studio-auto-backup-prune-test-{}-{}",
+            process::id(),
+            timestamp()
+        ));
+        fs::create_dir_all(&dir).expect("create test dir");
+
+        for name in [
+            "backup-rime-studio-before-save-100",
+            "backup-rime-studio-before-save-101",
+            "backup-rime-studio-before-install-102",
+            "backup-rime-studio-before-restore-103",
+            "backup-rime-studio-manual-104",
+            "backup-rime-studio-legacy",
+        ] {
+            fs::create_dir_all(dir.join(name)).expect("create backup dir");
+        }
+
+        let removed = prune_old_auto_backups(&dir, 2).expect("prune auto backups");
+        let remaining = fs::read_dir(&dir)
+            .expect("read test dir")
+            .filter_map(Result::ok)
+            .filter(|entry| entry.path().is_dir())
+            .filter_map(|entry| entry.file_name().into_string().ok())
+            .collect::<Vec<_>>();
+        let auto_remaining = remaining
+            .iter()
+            .filter(|name| is_auto_backup_kind(&backup_kind_from_name(name)))
+            .count();
+
+        assert_eq!(removed, 2);
+        assert_eq!(auto_remaining, 2);
+        assert!(remaining.contains(&"backup-rime-studio-manual-104".to_string()));
+        assert!(remaining.contains(&"backup-rime-studio-legacy".to_string()));
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn builds_line_diff_for_changed_text() {
+        let diff = build_text_diff("a\nb\nc\n", "a\nx\nc\nd\n");
+
+        assert_eq!(
+            diff,
+            vec!["- b".to_string(), "+ x".to_string(), "+ d".to_string()]
+        );
+        assert!(build_text_diff("same\n", "same\n").is_empty());
+    }
+
+    #[test]
     fn write_text_file_replaces_existing_contents() {
         let dir = env::temp_dir().join(format!(
             "rime-studio-test-{}-{}",
@@ -3376,6 +3657,11 @@ async fn save_quick_settings(config: QuickSettingsConfig) -> Result<QuickSetting
 }
 
 #[tauri::command]
+async fn preview_quick_settings(config: QuickSettingsConfig) -> Result<ConfigPreview, String> {
+    run_blocking(move || preview_quick_settings_sync(config)).await
+}
+
+#[tauri::command]
 async fn inspect_config_health() -> Result<ConfigHealthReport, String> {
     run_blocking(inspect_config_health_sync).await
 }
@@ -3383,6 +3669,11 @@ async fn inspect_config_health() -> Result<ConfigHealthReport, String> {
 #[tauri::command]
 async fn repair_config_health() -> Result<ConfigHealthReport, String> {
     run_blocking(repair_config_health_sync).await
+}
+
+#[tauri::command]
+async fn repair_config_health_item(name: String) -> Result<ConfigHealthReport, String> {
+    run_blocking(move || repair_config_health_item_sync(name)).await
 }
 
 #[tauri::command]
@@ -3493,6 +3784,14 @@ async fn save_dictionary_imports(imports: Vec<String>) -> Result<DictionaryConfi
 }
 
 #[tauri::command]
+async fn preview_dictionary_import(
+    source_name: String,
+    data: Vec<u8>,
+) -> Result<DictionaryImportPreview, String> {
+    run_blocking(move || preview_dictionary_import_sync(source_name, data)).await
+}
+
+#[tauri::command]
 async fn import_dictionary(
     source_name: String,
     data: Vec<u8>,
@@ -3556,8 +3855,10 @@ pub fn run() {
             get_appearance_config,
             get_quick_settings,
             save_quick_settings,
+            preview_quick_settings,
             inspect_config_health,
             repair_config_health,
+            repair_config_health_item,
             get_rime_ice_settings,
             save_rime_ice_settings,
             save_appearance_config,
@@ -3579,6 +3880,7 @@ pub fn run() {
             add_dictionary_to_current_schema,
             remove_dictionary_from_current_schema,
             save_dictionary_imports,
+            preview_dictionary_import,
             import_dictionary,
             export_dictionary,
             download_rime_installer,

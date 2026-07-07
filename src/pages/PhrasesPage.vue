@@ -28,7 +28,7 @@ const searchQuery = ref("");
 const loading = ref(false);
 const saving = ref(false);
 const deploying = ref(false);
-const editingIndex = ref<number | null>(null);
+const editingEntry = ref<PhraseEntry | null>(null);
 const editDraft = ref<PhraseEntry>({ text: "", code: "", weight: 0 });
 const showAddDialog = ref(false);
 const showImportDialog = ref(false);
@@ -45,6 +45,40 @@ const filteredEntries = computed(() => {
     (e) => e.text.toLowerCase().includes(q) || e.code.toLowerCase().includes(q),
   );
 });
+const duplicateCount = computed(() => countDuplicatePhrases(entries.value));
+const parsedDuplicateCount = computed(() => countDuplicatePhrases([...entries.value, ...parsedImport.value]));
+
+function phraseKey(entry: PhraseEntry) {
+  return `${entry.text.trim()}\t${entry.code.trim()}`.toLowerCase();
+}
+
+function countDuplicatePhrases(phrases: PhraseEntry[]) {
+  const seen = new Set<string>();
+  let duplicates = 0;
+  for (const phrase of phrases) {
+    const key = phraseKey(phrase);
+    if (!key.trim()) continue;
+    if (seen.has(key)) {
+      duplicates++;
+    } else {
+      seen.add(key);
+    }
+  }
+  return duplicates;
+}
+
+function dedupePhrases(phrases: PhraseEntry[]) {
+  const byKey = new Map<string, PhraseEntry>();
+  for (const phrase of phrases) {
+    const key = phraseKey(phrase);
+    if (!key.trim()) continue;
+    const current = byKey.get(key);
+    if (!current || phrase.weight > current.weight) {
+      byKey.set(key, { ...phrase });
+    }
+  }
+  return Array.from(byKey.values());
+}
 
 async function loadPhrases() {
   loading.value = true;
@@ -77,28 +111,39 @@ async function savePhrases(shouldDeploy: boolean) {
   }
 }
 
-function startEdit(index: number) {
-  editingIndex.value = index;
-  editDraft.value = { ...entries.value[index] };
+function startEdit(entry: PhraseEntry) {
+  editingEntry.value = entry;
+  editDraft.value = { ...entry };
 }
 
 function cancelEdit() {
-  editingIndex.value = null;
+  editingEntry.value = null;
 }
 
-async function confirmEdit(index: number) {
+async function confirmEdit(entry: PhraseEntry) {
+  const index = entries.value.indexOf(entry);
+  if (index < 0) {
+    ElMessage.error("未找到要编辑的短语，请刷新后重试");
+    editingEntry.value = null;
+    return;
+  }
   entries.value[index] = { ...editDraft.value };
-  editingIndex.value = null;
+  editingEntry.value = null;
 }
 
-async function deleteEntry(index: number) {
+async function deleteEntry(entry: PhraseEntry) {
   try {
-    await ElMessageBox.confirm(`确定删除短语「${entries.value[index].text}」？`, "删除确认", {
+    await ElMessageBox.confirm(`确定删除短语「${entry.text}」？`, "删除确认", {
       confirmButtonText: "删除",
       cancelButtonText: "取消",
       type: "warning",
     });
   } catch {
+    return;
+  }
+  const index = entries.value.indexOf(entry);
+  if (index < 0) {
+    ElMessage.error("未找到要删除的短语，请刷新后重试");
     return;
   }
   entries.value.splice(index, 1);
@@ -144,12 +189,49 @@ function confirmImport() {
   ElMessage.success(`已导入 ${count} 条短语，记得保存`);
 }
 
+function confirmImportAndDedupe() {
+  const before = entries.value.length + parsedImport.value.length;
+  entries.value = dedupePhrases([...entries.value, ...parsedImport.value]);
+  const removed = before - entries.value.length;
+  const imported = parsedImport.value.length;
+  parsedImport.value = [];
+  importText.value = "";
+  showImportDialog.value = false;
+  ElMessage.success(
+    removed
+      ? `已导入 ${imported} 条并合并 ${removed} 条重复短语，记得保存`
+      : `已导入 ${imported} 条短语，未发现重复项，记得保存`,
+  );
+}
+
 function copyAllAsTSV() {
   const text = entries.value.map((e) => `${e.text}\t${e.code}\t${e.weight}`).join("\n");
   navigator.clipboard.writeText(text).then(
     () => ElMessage.success("已复制到剪贴板"),
     () => ElMessage.error("复制失败"),
   );
+}
+
+async function cleanDuplicatePhrases() {
+  const duplicates = duplicateCount.value;
+  if (!duplicates) {
+    ElMessage.info("没有发现重复短语");
+    return;
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      `将移除 ${duplicates.toLocaleString()} 条重复短语。重复项按“短语 + 编码”判断，并保留权重最高的一条。清理后需要保存才会写入文件。`,
+      "清理重复短语",
+      { confirmButtonText: "清理", cancelButtonText: "取消", type: "warning" },
+    );
+  } catch {
+    return;
+  }
+
+  entries.value = dedupePhrases(entries.value);
+  editingEntry.value = null;
+  ElMessage.success(`已清理 ${duplicates.toLocaleString()} 条重复短语，记得保存`);
 }
 
 onMounted(loadPhrases);
@@ -170,9 +252,15 @@ onMounted(loadPhrases);
         <el-tag effect="plain" type="info">
           {{ filteredEntries.length }} / {{ entries.length }} 条
         </el-tag>
+        <el-tag v-if="duplicateCount" effect="light" type="warning">
+          重复 {{ duplicateCount }} 条
+        </el-tag>
         <div class="phrases-toolbar-actions">
           <el-button :icon="Plus" @click="showAddDialog = true">添加</el-button>
           <el-button :icon="Download" @click="showImportDialog = true">导入</el-button>
+          <el-button :icon="Delete" :disabled="!duplicateCount" @click="cleanDuplicatePhrases">
+            去重
+          </el-button>
           <el-button :icon="Refresh" :loading="loading" @click="loadPhrases">刷新</el-button>
         </div>
       </div>
@@ -192,9 +280,9 @@ onMounted(loadPhrases);
         <el-table v-else :data="filteredEntries" v-loading="loading" stripe max-height="calc(100dvh - 280px)" highlight-current-row @sort-change="(sort:any) => { if(sort.prop === 'text') entries.sort((a,b) => (sort.order==='ascending'?1:-1) * a.text.localeCompare(b.text)); if(sort.prop==='code') entries.sort((a,b) => (sort.order==='ascending'?1:-1) * (a.code||'').localeCompare(b.code||'')); if(sort.prop==='weight') entries.sort((a,b) => (sort.order==='ascending'?1:-1) * (a.weight-b.weight)); }">
           <el-table-column label="#" type="index" width="56" />
           <el-table-column label="短语" min-width="200" prop="text" sortable="custom">
-            <template #default="{ row, $index }: { row: PhraseEntry; $index: number }">
+            <template #default="{ row }: { row: PhraseEntry }">
               <el-input
-                v-if="editingIndex === $index"
+                v-if="editingEntry === row"
                 v-model="editDraft.text"
                 size="small"
                 placeholder="短语内容"
@@ -203,9 +291,9 @@ onMounted(loadPhrases);
             </template>
           </el-table-column>
           <el-table-column label="编码" width="180" prop="code" sortable="custom">
-            <template #default="{ row, $index }: { row: PhraseEntry; $index: number }">
+            <template #default="{ row }: { row: PhraseEntry }">
               <el-input
-                v-if="editingIndex === $index"
+                v-if="editingEntry === row"
                 v-model="editDraft.code"
                 size="small"
                 placeholder="输入编码"
@@ -214,9 +302,9 @@ onMounted(loadPhrases);
             </template>
           </el-table-column>
           <el-table-column label="权重" width="100" align="center" prop="weight" sortable="custom">
-            <template #default="{ row, $index }: { row: PhraseEntry; $index: number }">
+            <template #default="{ row }: { row: PhraseEntry }">
               <el-input-number
-                v-if="editingIndex === $index"
+                v-if="editingEntry === row"
                 v-model="editDraft.weight"
                 size="small"
                 :min="0"
@@ -227,18 +315,18 @@ onMounted(loadPhrases);
             </template>
           </el-table-column>
           <el-table-column label="操作" width="150" fixed="right">
-            <template #default="{ $index }: { $index: number }">
-              <template v-if="editingIndex === $index">
-                <el-button link type="primary" size="small" @click="confirmEdit($index)">
+            <template #default="{ row }: { row: PhraseEntry }">
+              <template v-if="editingEntry === row">
+                <el-button link type="primary" size="small" @click="confirmEdit(row)">
                   保存
                 </el-button>
                 <el-button link type="info" size="small" @click="cancelEdit">取消</el-button>
               </template>
               <template v-else>
-                <el-button link type="primary" size="small" :icon="EditPen" @click="startEdit($index)">
+                <el-button link type="primary" size="small" :icon="EditPen" @click="startEdit(row)">
                   编辑
                 </el-button>
-                <el-button link type="danger" size="small" :icon="Delete" @click="deleteEntry($index)">
+                <el-button link type="danger" size="small" :icon="Delete" @click="deleteEntry(row)">
                   删除
                 </el-button>
               </template>
@@ -311,6 +399,10 @@ onMounted(loadPhrases);
               {{ entries.length ? (entries.reduce((s, e) => s + e.weight, 0) / entries.length).toFixed(1) : 0 }}
             </strong>
           </div>
+          <div>
+            <span>重复短语</span>
+            <strong :class="duplicateCount ? 'warn-text' : ''">{{ duplicateCount }}</strong>
+          </div>
         </div>
       </el-card>
     </aside>
@@ -337,7 +429,7 @@ onMounted(loadPhrases);
     <!-- Import Dialog -->
     <el-dialog v-model="showImportDialog" title="从剪贴板导入" width="560px">
       <p class="helper-text" style="margin-top: 0">
-        粘贴制表符分隔的数据（短语→编码→权重），每行一条，与 Rime custom_phrase.txt 格式一致。
+        粘贴制表符分隔的数据（短语→编码→权重）。可以直接追加，也可以按“短语 + 编码”合并重复项。
       </p>
       <el-input
         v-model="importText"
@@ -347,14 +439,20 @@ onMounted(loadPhrases);
       />
       <div v-if="parsedImport.length" class="import-preview">
         <el-tag type="success">解析到 {{ parsedImport.length }} 条短语</el-tag>
+        <el-tag v-if="parsedDuplicateCount" type="warning">
+          导入后将有 {{ parsedDuplicateCount }} 条重复
+        </el-tag>
       </div>
       <template #footer>
         <el-button @click="showImportDialog = false; parsedImport = []; importText = ''">
           取消
         </el-button>
         <el-button @click="parseImportText">预览</el-button>
-        <el-button type="primary" :disabled="!parsedImport.length" @click="confirmImport">
-          确认导入
+        <el-button :disabled="!parsedImport.length" @click="confirmImport">
+          追加导入
+        </el-button>
+        <el-button type="primary" :disabled="!parsedImport.length" @click="confirmImportAndDedupe">
+          合并去重
         </el-button>
       </template>
     </el-dialog>
