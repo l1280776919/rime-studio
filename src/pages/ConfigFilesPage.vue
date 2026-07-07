@@ -176,7 +176,7 @@ async function openRimeDir() {
           <span>使用建议</span>
         </template>
         <p class="config-files-note">
-          普通保存不会创建备份。需要留档时，先点“手动备份”，再继续修改配置。
+          普通保存会自动创建保存前备份。需要标记重要节点时，可以额外手动备份。
         </p>
       </el-card>
     </aside>

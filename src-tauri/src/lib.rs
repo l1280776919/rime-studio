@@ -105,6 +105,7 @@ struct InstallResult {
 struct BackupEntry {
     name: String,
     path: String,
+    kind: String,
     modified: Option<u64>,
     files: usize,
 }
@@ -144,6 +145,15 @@ struct DictionaryImportResult {
 struct DictionaryExportResult {
     name: String,
     contents: String,
+}
+
+#[derive(Debug, Serialize)]
+struct DictionaryCleanResult {
+    name: String,
+    path: String,
+    removed_duplicate_lines: usize,
+    entries_after: usize,
+    backup_dir: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -761,6 +771,17 @@ fn write_appearance_config(
     write_text_file(&path, &render_weasel_custom(config), "写入外观配置文件失败")
 }
 
+fn is_dictionary_entry_line(trimmed: &str) -> bool {
+    !trimmed.is_empty()
+        && !trimmed.starts_with('#')
+        && trimmed != "---"
+        && trimmed != "..."
+        && !trimmed.starts_with("name:")
+        && !trimmed.starts_with("version:")
+        && !trimmed.starts_with("sort:")
+        && trimmed.contains('\t')
+}
+
 fn analyze_sogou(path: &Path) -> Option<DictHealth> {
     let contents = fs::read_to_string(path).ok()?;
     let mut entries = 0usize;
@@ -770,14 +791,7 @@ fn analyze_sogou(path: &Path) -> Option<DictHealth> {
 
     for line in contents.lines() {
         let trimmed = line.trim();
-        if trimmed.is_empty()
-            || trimmed.starts_with('#')
-            || trimmed == "---"
-            || trimmed == "..."
-            || trimmed.starts_with("name:")
-            || trimmed.starts_with("version:")
-            || trimmed.starts_with("sort:")
-        {
+        if !is_dictionary_entry_line(trimmed) {
             continue;
         }
 
@@ -813,6 +827,60 @@ fn copy_if_exists(source: &Path, target: &Path) -> io::Result<()> {
         fs::copy(source, target)?;
     }
     Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum BackupKind {
+    Manual,
+    BeforeSave,
+    BeforeRestore,
+    BeforeInstall,
+}
+
+impl BackupKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            BackupKind::Manual => "manual",
+            BackupKind::BeforeSave => "before-save",
+            BackupKind::BeforeRestore => "before-restore",
+            BackupKind::BeforeInstall => "before-install",
+        }
+    }
+}
+
+fn backup_kind_from_name(name: &str) -> String {
+    let marker = "backup-rime-studio-";
+    let Some(rest) = name.strip_prefix(marker) else {
+        return BackupKind::Manual.as_str().to_string();
+    };
+
+    if rest.starts_with("before-save-") {
+        BackupKind::BeforeSave.as_str().to_string()
+    } else if rest.starts_with("before-restore-") {
+        BackupKind::BeforeRestore.as_str().to_string()
+    } else if rest.starts_with("before-install-") {
+        BackupKind::BeforeInstall.as_str().to_string()
+    } else {
+        BackupKind::Manual.as_str().to_string()
+    }
+}
+
+fn create_unique_backup_dir(backup_root: &Path, kind: BackupKind) -> Result<PathBuf, String> {
+    for suffix in 0..100 {
+        let base = format!("backup-rime-studio-{}-{}", kind.as_str(), timestamp());
+        let name = if suffix == 0 {
+            base
+        } else {
+            format!("{base}-{suffix}")
+        };
+        let path = backup_root.join(name);
+        if !path.exists() {
+            fs::create_dir_all(&path).map_err(|err| format!("创建备份目录失败: {err}"))?;
+            return Ok(path);
+        }
+    }
+
+    Err("创建备份目录失败: 无法生成唯一目录名".to_string())
 }
 
 fn write_text_file(path: &Path, contents: &str, context: &str) -> Result<(), String> {
@@ -859,10 +927,10 @@ fn is_managed_config_file(name: &str) -> bool {
         || name == "weasel.yaml"
 }
 
-fn backup_user_config(user_dir: &Path) -> Result<PathBuf, String> {
+fn backup_user_config(user_dir: &Path, kind: BackupKind) -> Result<PathBuf, String> {
     let backup_root = app_data_dir()?;
-    let backup_dir = backup_root.join(format!("backup-rime-studio-{}", timestamp()));
-    fs::create_dir_all(&backup_dir).map_err(|err| format!("创建备份目录失败: {err}"))?;
+    fs::create_dir_all(&backup_root).map_err(|err| format!("创建备份根目录失败: {err}"))?;
+    let backup_dir = create_unique_backup_dir(&backup_root, kind)?;
 
     for entry in fs::read_dir(user_dir).map_err(|err| format!("读取 Rime 目录失败: {err}"))? {
         let entry = entry.map_err(|err| format!("检查 Rime 文件失败: {err}"))?;
@@ -924,6 +992,7 @@ fn list_backup_dirs(_user_dir: &Path) -> Result<Vec<BackupEntry>, String> {
         backups.push(BackupEntry {
             name: name.to_string(),
             path: path.display().to_string(),
+            kind: backup_kind_from_name(name),
             modified,
             files,
         });
@@ -952,7 +1021,7 @@ fn validated_backup_dir(_user_dir: &Path, backup_name: &str) -> Result<PathBuf, 
 }
 
 fn restore_backup_dir(user_dir: &Path, backup_dir: &Path) -> Result<RestoreResult, String> {
-    let safety_backup_dir = backup_user_config(user_dir)?;
+    let safety_backup_dir = backup_user_config(user_dir, BackupKind::BeforeRestore)?;
     let mut restored_files = 0usize;
 
     for entry in fs::read_dir(backup_dir).map_err(|err| format!("读取备份失败: {err}"))? {
@@ -1017,6 +1086,7 @@ fn get_custom_phrases_sync() -> Result<Vec<PhraseEntry>, String> {
 fn save_custom_phrases_sync(phrases: Vec<PhraseEntry>) -> Result<(), String> {
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
+    backup_user_config(&user_dir, BackupKind::BeforeSave)?;
 
     let path = user_dir.join("custom_phrase.txt");
 
@@ -1353,6 +1423,7 @@ fn save_dictionary_imports_sync(imports: Vec<String>) -> Result<DictionaryConfig
     fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
     let (_, _, main_dictionary) = current_schema_dictionary(&user_dir);
     let main_dictionary = main_dictionary.ok_or_else(|| "当前方案未找到主词库".to_string())?;
+    backup_user_config(&user_dir, BackupKind::BeforeSave)?;
 
     let mut seen = std::collections::HashSet::new();
     let cleaned = imports
@@ -1423,6 +1494,54 @@ fn get_dict_health_sync(dict_name: String) -> Result<DictHealth, String> {
     let path = validate_dictionary_path(&user_dir, &dict_name)?;
 
     analyze_sogou(&path).ok_or_else(|| "词库分析失败".to_string())
+}
+
+fn remove_duplicate_dictionary_lines(contents: &str) -> (String, usize) {
+    let mut seen = std::collections::HashSet::new();
+    let mut removed = 0usize;
+    let mut lines = Vec::new();
+
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        if is_dictionary_entry_line(trimmed) && !seen.insert(trimmed.to_string()) {
+            removed += 1;
+            continue;
+        }
+        lines.push(line);
+    }
+
+    let mut cleaned = lines.join("\n");
+    if contents.ends_with('\n') {
+        cleaned.push('\n');
+    }
+    (cleaned, removed)
+}
+
+fn clean_dictionary_duplicates_sync(dict_name: String) -> Result<DictionaryCleanResult, String> {
+    let user_dir = rime_user_dir()?;
+    let path = validate_dictionary_path(&user_dir, &dict_name)?;
+    let contents = fs::read_to_string(&path).map_err(|err| format!("读取词库失败: {err}"))?;
+    let (cleaned, removed_duplicate_lines) = remove_duplicate_dictionary_lines(&contents);
+
+    let backup_dir = if removed_duplicate_lines > 0 {
+        let backup_dir = backup_user_config(&user_dir, BackupKind::BeforeSave)?;
+        write_text_file(&path, &cleaned, "写入去重后的词库失败")?;
+        Some(backup_dir.display().to_string())
+    } else {
+        None
+    };
+
+    let entries_after = analyze_sogou(&path)
+        .map(|health| health.entries)
+        .unwrap_or_default();
+
+    Ok(DictionaryCleanResult {
+        name: dict_name,
+        path: path.display().to_string(),
+        removed_duplicate_lines,
+        entries_after,
+        backup_dir,
+    })
 }
 
 fn sanitize_dict_id(source_name: &str) -> String {
@@ -1940,9 +2059,14 @@ fn install_rime_ice_sync(recipe: Option<String>) -> Result<InstallResult, String
     let recipe = recipe.unwrap_or_else(|| "iDvel/rime-ice:others/recipes/full".to_string());
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
+    let backup_dir = backup_user_config(&user_dir, BackupKind::BeforeInstall)?;
+    let backup_dir_display = backup_dir.display().to_string();
     let plum_dir = app_data_dir()?.join("plum");
 
     let mut log = String::new();
+    log.push_str("已创建安装前备份: ");
+    log.push_str(&backup_dir_display);
+    log.push('\n');
     log.push_str("正在准备 plum...\n");
     log.push_str(&ensure_plum(&plum_dir)?);
     log.push_str("\n正在安装方案: ");
@@ -1962,7 +2086,7 @@ fn install_rime_ice_sync(recipe: Option<String>) -> Result<InstallResult, String
         return Ok(InstallResult {
             success: false,
             recipe,
-            backup_dir: None,
+            backup_dir: Some(backup_dir_display.clone()),
             log,
         });
     }
@@ -1974,7 +2098,7 @@ fn install_rime_ice_sync(recipe: Option<String>) -> Result<InstallResult, String
             Ok(InstallResult {
                 success: result.success,
                 recipe,
-                backup_dir: None,
+                backup_dir: Some(backup_dir_display.clone()),
                 log,
             })
         }
@@ -1983,7 +2107,7 @@ fn install_rime_ice_sync(recipe: Option<String>) -> Result<InstallResult, String
             Ok(InstallResult {
                 success: false,
                 recipe,
-                backup_dir: None,
+                backup_dir: Some(backup_dir_display.clone()),
                 log,
             })
         }
@@ -2045,6 +2169,7 @@ fn get_quick_settings_sync() -> Result<QuickSettingsConfig, String> {
 fn save_quick_settings_sync(config: QuickSettingsConfig) -> Result<QuickSettingsConfig, String> {
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
+    backup_user_config(&user_dir, BackupKind::BeforeSave)?;
 
     let default_custom_path = user_dir.join("default.custom.yaml");
     let schema_id = config.schema_id.replace(['/', '\\'], "").replace("..", "");
@@ -2500,6 +2625,7 @@ fn render_rime_ice_custom(settings: &RimeIceSettings) -> String {
 fn save_rime_ice_settings_sync(settings: RimeIceSettings) -> Result<RimeIceSettings, String> {
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
+    backup_user_config(&user_dir, BackupKind::BeforeSave)?;
     write_text_file(
         &user_dir.join("rime_ice.custom.yaml"),
         &render_rime_ice_custom(&settings),
@@ -2511,6 +2637,7 @@ fn save_rime_ice_settings_sync(settings: RimeIceSettings) -> Result<RimeIceSetti
 fn save_appearance_config_sync(config: AppearanceConfig) -> Result<AppearanceConfig, String> {
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
+    backup_user_config(&user_dir, BackupKind::BeforeSave)?;
     write_appearance_config(&user_dir, &config, false)?;
 
     Ok(read_appearance_config(&user_dir))
@@ -2524,7 +2651,7 @@ fn list_backups_sync() -> Result<Vec<BackupEntry>, String> {
 fn create_backup_sync() -> Result<BackupEntry, String> {
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
-    let backup_dir = backup_user_config(&user_dir)?;
+    let backup_dir = backup_user_config(&user_dir, BackupKind::Manual)?;
     let backup_name = backup_dir
         .file_name()
         .and_then(OsStr::to_str)
@@ -2957,6 +3084,7 @@ fn save_active_schema_list_sync(schema_ids: Vec<String>) -> Result<QuickSettings
     if safe_schema_ids.is_empty() {
         return Err("至少需要启用一个输入方案".to_string());
     }
+    backup_user_config(&user_dir, BackupKind::BeforeSave)?;
 
     let mut config = get_quick_settings_sync()?;
     config.schema_id = safe_schema_ids[0].clone();
@@ -3061,6 +3189,56 @@ patch:
     }
 
     #[test]
+    fn reads_backup_kind_from_new_and_legacy_names() {
+        assert_eq!(
+            backup_kind_from_name("backup-rime-studio-manual-123"),
+            "manual"
+        );
+        assert_eq!(
+            backup_kind_from_name("backup-rime-studio-before-save-123"),
+            "before-save"
+        );
+        assert_eq!(
+            backup_kind_from_name("backup-rime-studio-before-restore-123"),
+            "before-restore"
+        );
+        assert_eq!(
+            backup_kind_from_name("backup-rime-studio-before-install-123"),
+            "before-install"
+        );
+        assert_eq!(backup_kind_from_name("backup-rime-studio-123"), "manual");
+    }
+
+    #[test]
+    fn creates_unique_backup_dir_names() {
+        let dir = env::temp_dir().join(format!(
+            "rime-studio-backup-kind-test-{}-{}",
+            process::id(),
+            timestamp()
+        ));
+        fs::create_dir_all(&dir).expect("create test dir");
+
+        let first =
+            create_unique_backup_dir(&dir, BackupKind::BeforeSave).expect("first backup dir");
+        let second =
+            create_unique_backup_dir(&dir, BackupKind::BeforeSave).expect("second backup dir");
+
+        assert_ne!(first, second);
+        assert!(first
+            .file_name()
+            .and_then(OsStr::to_str)
+            .unwrap_or_default()
+            .starts_with("backup-rime-studio-before-save-"));
+        assert!(second
+            .file_name()
+            .and_then(OsStr::to_str)
+            .unwrap_or_default()
+            .starts_with("backup-rime-studio-before-save-"));
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn write_text_file_replaces_existing_contents() {
         let dir = env::temp_dir().join(format!(
             "rime-studio-test-{}-{}",
@@ -3088,6 +3266,34 @@ patch:
             ("深度学习".to_string(), "shen du xue xi".to_string(), 10)
         );
         assert_eq!(entries[1], ("空行".to_string(), "kong hang".to_string(), 1));
+    }
+
+    #[test]
+    fn removes_duplicate_dictionary_entry_lines_only() {
+        let contents = [
+            "# Imported by Rime Studio.",
+            "---",
+            "name: custom",
+            "sort: by_weight",
+            "...",
+            "# duplicated comments should stay",
+            "# duplicated comments should stay",
+            "深度学习\tshen du xue xi\t10",
+            "深度学习\tshen du xue xi\t10",
+            "机器学习\tji qi xue xi\t8",
+            "",
+        ]
+        .join("\n");
+
+        let (cleaned, removed) = remove_duplicate_dictionary_lines(&contents);
+
+        assert_eq!(removed, 1);
+        assert_eq!(
+            cleaned.matches("# duplicated comments should stay").count(),
+            2
+        );
+        assert_eq!(cleaned.matches("深度学习\tshen du xue xi\t10").count(), 1);
+        assert!(cleaned.contains("机器学习\tji qi xue xi\t8"));
     }
 
     #[test]
@@ -3260,6 +3466,11 @@ async fn get_dict_health(dict_name: String) -> Result<DictHealth, String> {
 }
 
 #[tauri::command]
+async fn clean_dictionary_duplicates(dict_name: String) -> Result<DictionaryCleanResult, String> {
+    run_blocking(move || clean_dictionary_duplicates_sync(dict_name)).await
+}
+
+#[tauri::command]
 async fn get_dictionary_config() -> Result<DictionaryConfig, String> {
     run_blocking(read_dictionary_config_sync).await
 }
@@ -3363,6 +3574,7 @@ pub fn run() {
             save_custom_phrases,
             list_dictionaries,
             get_dict_health,
+            clean_dictionary_duplicates,
             get_dictionary_config,
             add_dictionary_to_current_schema,
             remove_dictionary_from_current_schema,

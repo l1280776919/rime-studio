@@ -16,6 +16,7 @@ import {
 } from "@element-plus/icons-vue";
 import type {
   DictHealth,
+  DictionaryCleanResult,
   DictionaryConfig,
   DictInfo,
   DictionaryExportResult,
@@ -43,6 +44,7 @@ const dictHealth = ref<DictHealth | null>(null);
 const healthLoading = ref(false);
 const deletingDict = ref<string>();
 const updatingReference = ref<string>();
+const cleaningDict = ref<string>();
 const fileInput = ref<HTMLInputElement>();
 
 async function loadDictionaries() {
@@ -227,6 +229,41 @@ async function deleteDictionary(dict: DictInfo) {
     ElMessage.error(String(error));
   } finally {
     deletingDict.value = undefined;
+  }
+}
+
+async function cleanDuplicateLines(dictName: string) {
+  if (!dictHealth.value?.duplicate_exact_lines) {
+    ElMessage.info("这个词库没有重复词条");
+    return;
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      `将从「${dictName}」中移除 ${dictHealth.value.duplicate_exact_lines.toLocaleString()} 条完全重复的词条行。执行前会自动创建保存前备份。`,
+      "清理重复词条",
+      { confirmButtonText: "清理", cancelButtonText: "取消", type: "warning" },
+    );
+  } catch {
+    return;
+  }
+
+  cleaningDict.value = dictName;
+  try {
+    const result = await invoke<DictionaryCleanResult>("clean_dictionary_duplicates", {
+      dictName,
+    });
+    await loadAllStats();
+    dictHealth.value = await invoke<DictHealth>("get_dict_health", { dictName });
+    ElMessage.success(
+      result.removed_duplicate_lines
+        ? `已移除 ${result.removed_duplicate_lines.toLocaleString()} 条重复词条`
+        : "未发现需要清理的重复词条",
+    );
+  } catch (error) {
+    ElMessage.error(String(error));
+  } finally {
+    cleaningDict.value = undefined;
   }
 }
 
@@ -443,6 +480,17 @@ onMounted(loadAllStats);
               <el-divider />
               <div class="panel-title" style="margin-bottom: 10px">
                 <span>{{ expandedDict }} — 健康分析</span>
+                <el-button
+                  type="warning"
+                  plain
+                  size="small"
+                  :icon="Delete"
+                  :loading="cleaningDict === expandedDict"
+                  :disabled="!dictHealth.duplicate_exact_lines"
+                  @click.stop="cleanDuplicateLines(expandedDict)"
+                >
+                  一键去重
+                </el-button>
               </div>
               <div class="health-list health-list-row">
                 <div>

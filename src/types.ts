@@ -45,6 +45,7 @@ export type InstallResult = {
 export type BackupEntry = {
   name: string;
   path: string;
+  kind: "manual" | "before-save" | "before-restore" | "before-install" | string;
   modified?: number;
   files: number;
 };
@@ -144,6 +145,14 @@ export type DictionaryImportResult = {
 export type DictionaryExportResult = {
   name: string;
   contents: string;
+};
+
+export type DictionaryCleanResult = {
+  name: string;
+  path: string;
+  removed_duplicate_lines: number;
+  entries_after: number;
+  backup_dir?: string;
 };
 
 export type DictionaryReference = {

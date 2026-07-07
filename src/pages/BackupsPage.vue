@@ -27,8 +27,27 @@ const latestBackup = computed(() => props.backups[0]);
 const totalFiles = computed(() => props.backups.reduce((total, backup) => total + backup.files, 0));
 
 function backupLabel(backup: BackupEntry) {
-  const raw = backup.name.replace("backup-rime-studio-", "");
+  const raw = backup.name
+    .replace("backup-rime-studio-before-save-", "")
+    .replace("backup-rime-studio-before-restore-", "")
+    .replace("backup-rime-studio-before-install-", "")
+    .replace("backup-rime-studio-manual-", "")
+    .replace("backup-rime-studio-", "");
   return raw.replace(/[-_]/g, " ");
+}
+
+function backupKindLabel(kind: string) {
+  if (kind === "before-save") return "保存前";
+  if (kind === "before-restore") return "恢复前";
+  if (kind === "before-install") return "安装前";
+  return "手动";
+}
+
+function backupKindType(kind: string) {
+  if (kind === "before-save") return "info";
+  if (kind === "before-restore") return "warning";
+  if (kind === "before-install") return "warning";
+  return "success";
 }
 </script>
 
@@ -37,9 +56,9 @@ function backupLabel(backup: BackupEntry) {
     <section class="main-column">
       <div class="backup-hero panel">
         <div>
-          <span>手动备份</span>
+          <span>配置备份</span>
           <strong>{{ latestBackup ? formatTime(latestBackup.modified) : "还没有备份" }}</strong>
-          <small>普通保存不会创建备份。需要留档时，在这里手动创建。</small>
+          <small>保存配置、安装方案和恢复备份前会自动留档；重要节点也可以手动创建备份。</small>
         </div>
         <el-button
           type="primary"
@@ -76,7 +95,7 @@ function backupLabel(backup: BackupEntry) {
 
         <div v-if="!backups.length" class="backup-empty-state">
           <el-icon><FolderOpened /></el-icon>
-          <strong>还没有手动备份</strong>
+          <strong>还没有备份</strong>
           <span>创建一个备份后，当前 Rime 配置文件会被保存到应用数据目录。</span>
           <el-button type="primary" :icon="FolderOpened" :loading="backingUp" @click="emit('createBackup')">
             创建第一个备份
@@ -86,7 +105,12 @@ function backupLabel(backup: BackupEntry) {
         <div v-else class="backup-manual-list">
           <article v-for="backup in backups" :key="backup.path" class="backup-manual-item">
             <div class="backup-manual-main">
-              <strong>{{ backupLabel(backup) }}</strong>
+              <strong>
+                <el-tag size="small" effect="light" :type="backupKindType(backup.kind)">
+                  {{ backupKindLabel(backup.kind) }}
+                </el-tag>
+                {{ backupLabel(backup) }}
+              </strong>
               <span>{{ formatTime(backup.modified) }} · {{ backup.files }} 个文件</span>
             </div>
             <div class="backup-manual-note">
