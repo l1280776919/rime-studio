@@ -4,6 +4,9 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { formatBytes, formatTime } from "../utils";
+import DictionaryImportPreviewDialog from "../components/dictionaries/DictionaryImportPreviewDialog.vue";
+import DictionaryUrlImportDialog from "../components/dictionaries/DictionaryUrlImportDialog.vue";
+import OnlineDictionaryDialog from "../components/dictionaries/OnlineDictionaryDialog.vue";
 import {
   Collection,
   Delete,
@@ -67,7 +70,6 @@ const onlineDictionaries = ref<OnlineDictionary[]>([]);
 const onlineCategories = ref<OnlineDictionaryCategory[]>([]);
 const categoryDictionaries = ref<OnlineDictionary[]>([]);
 const selectedOnlineCategory = ref("96");
-const activeOnlineTab = ref("category");
 const onlineLoading = ref(false);
 const categoryLoading = ref(false);
 const onlineImporting = ref<string>();
@@ -481,50 +483,8 @@ async function cleanDuplicateLines(dictName: string) {
 const totalEntries = computed(() => dictionaries.value.reduce((s, d) => s + d.entry_count, 0));
 const totalSize = computed(() => dictionaries.value.reduce((s, d) => s + d.size_bytes, 0));
 const enabledCount = computed(() => (dictConfig.value?.enabled.length ?? 0) + (dictConfig.value?.missing.length ?? 0));
-const onlineGroups = computed(() => {
-  const groups = new Map<string, OnlineDictionary[]>();
-  for (const dict of onlineDictionaries.value) {
-    groups.set(dict.category, [...(groups.get(dict.category) ?? []), dict]);
-  }
-  return Array.from(groups.entries()).map(([category, items]) => ({ category, items }));
-});
-const featuredOnlineRows = computed(() => onlineGroups.value.flatMap((group) => group.items));
-const activeOnlineRows = computed(() =>
-  activeOnlineTab.value === "featured" ? featuredOnlineRows.value : categoryDictionaries.value,
-);
-const activeOnlineLoading = computed(() =>
-  activeOnlineTab.value === "featured" ? onlineLoading.value : categoryLoading.value,
-);
-const selectedCategoryInfo = computed(() =>
-  onlineCategories.value.find((category) => category.id === selectedOnlineCategory.value),
-);
-const activeOnlineTitle = computed(() =>
-  activeOnlineTab.value === "featured" ? "精选推荐" : (selectedCategoryInfo.value?.title ?? "分类词库"),
-);
-const activeOnlineDescription = computed(() =>
-  activeOnlineTab.value === "featured"
-    ? "适合快速补齐通用、技术、文史和生活常用词。"
-    : (selectedCategoryInfo.value?.description ?? "从搜狗分类页加载更多词库。"),
-);
-const lmdgProgressPercentage = computed(() =>
-  Math.max(0, Math.min(100, Math.round(lmdgDownloadProgress.value?.percent ?? 0))),
-);
-const lmdgProgressText = computed(() => {
-  const progress = lmdgDownloadProgress.value;
-  if (!progress) return "";
-  const downloaded = formatBytes(progress.downloaded_bytes);
-  if (progress.total_bytes) {
-    return `${progress.stage} · ${downloaded} / ${formatBytes(progress.total_bytes)}`;
-  }
-  return `${progress.stage} · 已下载 ${downloaded}`;
-});
-const showLmdgProgress = computed(() =>
-  (lmdgGrammarInstalling.value || lmdgInstalling.value) && Boolean(lmdgDownloadProgress.value),
-);
-
 async function selectOnlineCategory(categoryId: string) {
   selectedOnlineCategory.value = categoryId;
-  activeOnlineTab.value = "category";
   await loadCategoryDictionaries();
 }
 
@@ -832,244 +792,48 @@ onUnmounted(() => {
       </el-card>
     </aside>
 
-    <el-dialog
+    <OnlineDictionaryDialog
       v-model="showOnlineDictionaryDialog"
-      title="在线词库"
-      width="min(1180px, 92vw)"
-      class="online-dictionary-dialog"
-    >
-      <section class="lmdg-resource-panel">
-        <div class="lmdg-resource-copy">
-          <el-tag type="success" size="small">高级资源</el-tag>
-          <div>
-            <strong>万象语言模型 RIME-LMDG</strong>
-            <small>
-              下载 wanxiang-lts-zh-hans.gram，并为雾凇拼音写入 octagram 语法模型补丁。保留雾凇方案，只增强长句排序。
-            </small>
-          </div>
-        </div>
-        <div class="lmdg-resource-actions">
-          <el-button
-            type="success"
-            :icon="Download"
-            :loading="lmdgGrammarInstalling"
-            @click="installLmdgGrammar"
-          >
-            安装模型
-          </el-button>
-          <el-button
-            type="warning"
-            plain
-            :icon="Delete"
-            :loading="lmdgGrammarUninstalling"
-            @click="uninstallLmdgGrammar"
-          >
-            卸载模型
-          </el-button>
-          <el-button
-            :icon="Collection"
-            :loading="lmdgInstalling"
-            @click="installLmdgDictionaries"
-          >
-            安装词库包
-          </el-button>
-          <el-button :icon="Refresh" :loading="loading" @click="loadAllStats">
-            刷新本地词库
-          </el-button>
-        </div>
-        <div v-if="showLmdgProgress" class="lmdg-download-progress">
-          <div>
-            <span>{{ lmdgProgressText }}</span>
-            <strong v-if="lmdgDownloadProgress?.percent !== undefined">
-              {{ lmdgProgressPercentage }}%
-            </strong>
-          </div>
-          <el-progress
-            :percentage="lmdgProgressPercentage"
-            :show-text="false"
-            :indeterminate="lmdgDownloadProgress?.percent === undefined"
-          />
-        </div>
-        <div v-if="lmdgGrammarResult" class="lmdg-resource-status">
-          <span>{{ lmdgGrammarResult.message }}</span>
-          <small>{{ lmdgGrammarResult.model_path }}</small>
-          <small>{{ lmdgGrammarResult.patch_path }}</small>
-        </div>
-        <div v-if="lmdgGrammarUninstallResult" class="lmdg-resource-status">
-          <span>{{ lmdgGrammarUninstallResult.message }}</span>
-          <small>{{ lmdgGrammarUninstallResult.model_path }}</small>
-          <small>{{ lmdgGrammarUninstallResult.patch_path }}</small>
-        </div>
-        <div v-if="lmdgResult" class="lmdg-resource-status">
-          <span>{{ lmdgResult.message }}</span>
-          <small>{{ lmdgResult.target_dir }}</small>
-        </div>
-      </section>
+      :online-dictionaries="onlineDictionaries"
+      :online-categories="onlineCategories"
+      :category-dictionaries="categoryDictionaries"
+      :selected-category="selectedOnlineCategory"
+      :online-loading="onlineLoading"
+      :category-loading="categoryLoading"
+      :local-loading="loading"
+      :importing="importing"
+      :online-importing="onlineImporting"
+      :dict-installing="lmdgInstalling"
+      :grammar-installing="lmdgGrammarInstalling"
+      :grammar-uninstalling="lmdgGrammarUninstalling"
+      :lmdg-progress="lmdgDownloadProgress"
+      :lmdg-result="lmdgResult"
+      :lmdg-grammar-result="lmdgGrammarResult"
+      :lmdg-grammar-uninstall-result="lmdgGrammarUninstallResult"
+      @refresh-local="loadAllStats"
+      @refresh-online="loadOnlineDictionaries"
+      @refresh-category="loadCategoryDictionaries"
+      @select-category="selectOnlineCategory"
+      @preview-dictionary="previewOnlineDictionary"
+      @show-url-import="showUrlImportDialog = true"
+      @install-dicts="installLmdgDictionaries"
+      @install-grammar="installLmdgGrammar"
+      @uninstall-grammar="uninstallLmdgGrammar"
+    />
 
-      <div class="online-workbench-grid">
-        <nav class="online-category-rail" aria-label="在线词库分类">
-          <button
-            type="button"
-            class="online-category-button"
-            :class="{ active: activeOnlineTab === 'featured' }"
-            @click="activeOnlineTab = 'featured'"
-          >
-            <strong>精选推荐</strong>
-            <small>{{ featuredOnlineRows.length }} 个词库</small>
-          </button>
-          <button
-            v-for="category in onlineCategories"
-            :key="category.id"
-            type="button"
-            class="online-category-button"
-            :class="{ active: activeOnlineTab === 'category' && selectedOnlineCategory === category.id }"
-            @click="selectOnlineCategory(category.id)"
-          >
-            <strong>{{ category.title }}</strong>
-            <small>{{ category.description }}</small>
-          </button>
-        </nav>
+    <DictionaryUrlImportDialog
+      v-model="showUrlImportDialog"
+      v-model:import-url="importUrl"
+      v-model:source-name="importUrlSourceName"
+      :importing="importing"
+      @preview="previewUrlDictionary"
+    />
 
-        <div class="online-results-panel">
-          <div class="online-results-header">
-            <div>
-              <strong>{{ activeOnlineTitle }}</strong>
-              <small>{{ activeOnlineDescription }}</small>
-            </div>
-            <div class="online-dict-actions">
-              <el-button :icon="Refresh" :loading="onlineLoading" @click="loadOnlineDictionaries">
-                刷新目录
-              </el-button>
-              <el-button
-                v-if="activeOnlineTab === 'category'"
-                :icon="Refresh"
-                :loading="categoryLoading"
-                @click="loadCategoryDictionaries"
-              >
-                重新加载
-              </el-button>
-              <el-button type="primary" :icon="Download" :loading="importing" @click="showUrlImportDialog = true">
-                URL 导入
-              </el-button>
-            </div>
-          </div>
-
-          <el-table
-            :data="activeOnlineRows"
-            v-loading="activeOnlineLoading"
-            stripe
-            max-height="min(540px, 58vh)"
-          >
-            <el-table-column label="词库" min-width="220">
-              <template #default="{ row }: { row: OnlineDictionary }">
-                <div class="online-dict-title-cell">
-                  <strong>{{ row.title }}</strong>
-                  <small>{{ row.source }}</small>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column label="说明" min-width="360">
-              <template #default="{ row }: { row: OnlineDictionary }">
-                <span class="online-dict-description">{{ row.description }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="分类" width="90">
-              <template #default="{ row }: { row: OnlineDictionary }">
-                <el-tag size="small">{{ row.category }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="150" align="center">
-              <template #default="{ row }: { row: OnlineDictionary }">
-                <el-button
-                  type="primary"
-                  link
-                  :icon="Download"
-                  :loading="onlineImporting === row.id"
-                  @click="previewOnlineDictionary(row)"
-                >
-                  预览导入
-                </el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-        </div>
-      </div>
-    </el-dialog>
-
-    <el-dialog v-model="showUrlImportDialog" title="URL 导入词库" width="620px">
-      <div class="url-import-form">
-        <el-alert
-          title="支持直接下载 .scel、.txt、.dict.yaml 等词库文件的 http/https 地址。"
-          type="info"
-          show-icon
-          :closable="false"
-        />
-        <el-input
-          v-model="importUrl"
-          clearable
-          placeholder="https://example.com/dictionary.scel"
-        />
-        <el-input
-          v-model="importUrlSourceName"
-          clearable
-          placeholder="可选：保存文件名，例如 my_words.scel"
-        />
-      </div>
-      <template #footer>
-        <el-button @click="showUrlImportDialog = false">取消</el-button>
-        <el-button type="primary" :loading="importing" @click="previewUrlDictionary">
-          下载并预览
-        </el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="showImportPreviewDialog" title="词库导入预览" width="720px">
-      <div v-if="importPreview" class="dictionary-import-preview">
-        <el-alert
-          v-if="importPreview.will_overwrite"
-          title="目标词库已存在，确认导入会覆盖同名文件。"
-          type="warning"
-          show-icon
-          :closable="false"
-        />
-        <div class="health-list health-list-row">
-          <div>
-            <span>目标文件</span>
-            <strong>{{ importPreview.name }}</strong>
-          </div>
-          <div>
-            <span>可导入词条</span>
-            <strong>{{ importPreview.imported_entries.toLocaleString() }}</strong>
-          </div>
-          <div>
-            <span>跳过行</span>
-            <strong :class="importPreview.skipped_entries ? 'warn-text' : ''">
-              {{ importPreview.skipped_entries.toLocaleString() }}
-            </strong>
-          </div>
-        </div>
-        <div class="path-chip">
-          <el-icon><FolderOpened /></el-icon>
-          <span>{{ importPreview.path }}</span>
-        </div>
-        <el-table :data="importPreview.sample_entries" size="small" stripe max-height="260">
-          <el-table-column label="词条" prop="text" min-width="180" />
-          <el-table-column label="编码" prop="code" min-width="180" />
-          <el-table-column label="权重" prop="weight" width="80" align="right" />
-        </el-table>
-        <p class="helper-text">
-          这里只展示前 {{ importPreview.sample_entries.length }} 条样例。确认导入后再决定是否加入当前方案词库。
-        </p>
-      </div>
-      <template #footer>
-        <el-button @click="showImportPreviewDialog = false">取消</el-button>
-        <el-button :loading="importing" @click="confirmDictionaryImport(false)">
-          只导入文件
-        </el-button>
-        <el-button type="primary" :loading="importing" @click="confirmDictionaryImport(true)">
-          导入并加入当前方案
-        </el-button>
-      </template>
-    </el-dialog>
+    <DictionaryImportPreviewDialog
+      v-model="showImportPreviewDialog"
+      :import-preview="importPreview"
+      :importing="importing"
+      @confirm="confirmDictionaryImport"
+    />
   </section>
 </template>
