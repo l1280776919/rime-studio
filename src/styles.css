@@ -2069,6 +2069,195 @@ button:active {
   font-weight: 680;
 }
 
+.update-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.update-status-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 16px;
+  overflow: hidden;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--brand-100);
+  border-radius: var(--radius-sm);
+}
+
+.update-panel.is-available .update-status-card {
+  background: var(--color-surface-soft);
+  border-color: color-mix(in srgb, var(--amber-500) 34%, var(--color-line));
+}
+
+.update-panel.is-current .update-status-card {
+  background: var(--color-surface-soft);
+  border-color: color-mix(in srgb, var(--emerald-500) 30%, var(--color-line));
+}
+
+.update-status-icon {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  color: var(--brand-600);
+  background: var(--color-surface);
+  border: 1px solid var(--brand-100);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-xs);
+}
+
+.update-panel.is-available .update-status-icon {
+  color: var(--amber-600);
+  border-color: color-mix(in srgb, var(--amber-500) 34%, var(--color-line));
+}
+
+.update-panel.is-current .update-status-icon {
+  color: var(--emerald-500);
+  border-color: color-mix(in srgb, var(--emerald-500) 30%, var(--color-line));
+}
+
+.update-status-icon .el-icon {
+  font-size: 22px;
+}
+
+.update-status-copy {
+  min-width: 0;
+}
+
+.update-status-copy > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.update-status-copy strong {
+  min-width: 0;
+  color: var(--ink-900);
+  font-size: 17px;
+  font-weight: 780;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.update-status-copy p {
+  margin: 5px 0 0;
+  color: var(--ink-500);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.update-version-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-items: stretch;
+}
+
+.update-version-tile {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 14px;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-sm);
+}
+
+.update-version-tile.latest {
+  border-color: var(--brand-100);
+}
+
+.update-version-tile span {
+  color: var(--ink-500);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.update-version-tile strong {
+  color: var(--ink-900);
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 760;
+  overflow-wrap: anywhere;
+}
+
+.update-version-tile small {
+  color: var(--ink-500);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.update-release-detail {
+  display: grid;
+  gap: 12px;
+}
+
+.update-notes {
+  overflow: hidden;
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.update-notes header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--color-surface-soft);
+  border-bottom: 1px solid var(--color-line-soft);
+}
+
+.update-notes header span {
+  color: var(--ink-700);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.update-notes header small {
+  min-width: 0;
+  color: var(--ink-500);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.update-release-detail pre {
+  max-height: 180px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  color: var(--ink-700);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 1040px) {
+  .update-status-card {
+    grid-template-columns: 1fr;
+  }
+
+  .update-status-icon {
+    width: 42px;
+    height: 42px;
+  }
+
+  .update-version-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ---- Onboarding hero (Rime not installed) ---- */
 .onboarding-hero {
   flex: 0 0 auto;

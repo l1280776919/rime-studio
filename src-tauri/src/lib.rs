@@ -334,6 +334,7 @@ include!("backend/backup.rs");
 include!("backend/phrases.rs");
 include!("backend/dictionaries.rs");
 include!("backend/downloads.rs");
+include!("backend/app_update.rs");
 include!("backend/system.rs");
 include!("backend/settings.rs");
 include!("backend/schemas.rs");
@@ -362,6 +363,11 @@ async fn deploy_rime() -> Result<DeployResult, String> {
 #[tauri::command]
 async fn install_rime_ice(recipe: Option<String>) -> Result<InstallResult, String> {
     run_blocking(move || install_rime_ice_sync(recipe)).await
+}
+
+#[tauri::command]
+async fn check_app_update() -> Result<AppUpdateInfo, String> {
+    run_blocking(check_app_update_sync).await
 }
 
 #[tauri::command]
@@ -653,6 +659,7 @@ pub fn run() {
             scan_rime_environment,
             deploy_rime,
             install_rime_ice,
+            check_app_update,
             get_appearance_config,
             get_quick_settings,
             save_quick_settings,

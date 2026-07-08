@@ -239,3 +239,15 @@ export type LmdgGrammarUninstallResult = {
   removed_model: boolean;
   message: string;
 };
+
+export type AppUpdateInfo = {
+  current_version: string;
+  latest_version?: string;
+  release_name?: string;
+  release_notes?: string;
+  published_at?: string;
+  release_url: string;
+  asset_name?: string;
+  asset_url?: string;
+  update_available: boolean;
+};

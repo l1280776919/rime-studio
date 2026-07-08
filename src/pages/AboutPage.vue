@@ -1,6 +1,98 @@
 <script setup lang="ts">
-import { Collection, Connection, Link } from "@element-plus/icons-vue";
+import { computed, onMounted, ref } from "vue";
+import { ElMessage } from "element-plus";
+import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { Check, Collection, Connection, Link, Refresh, UploadFilled, Warning } from "@element-plus/icons-vue";
 import pkg from "../../package.json";
+import type { AppUpdateInfo } from "../types";
+
+const checkingUpdate = ref(false);
+const updateInfo = ref<AppUpdateInfo>();
+
+const releaseNotesPreview = computed(() => {
+  const notes = updateInfo.value?.release_notes?.trim();
+  if (!notes) return "";
+  return notes.length > 600 ? `${notes.slice(0, 600)}...` : notes;
+});
+const updateState = computed(() => {
+  if (!updateInfo.value) {
+    return {
+      tone: "idle",
+      title: "检查更新",
+      detail: "从 GitHub Releases 获取最新版本。",
+      tagType: "info" as const,
+      tagText: "待检查",
+      actionText: "检查更新",
+    };
+  }
+  if (updateInfo.value.update_available) {
+    return {
+      tone: "available",
+      title: `发现新版本 ${updateInfo.value.latest_version}`,
+      detail: "点击更新获取最新安装包。",
+      tagType: "warning" as const,
+      tagText: "可更新",
+      actionText: "更新",
+    };
+  }
+  return {
+    tone: "current",
+    title: "当前已是最新版本",
+    detail: "本机版本与 GitHub 最新正式发布一致。",
+    tagType: "success" as const,
+    tagText: "已是最新",
+    actionText: "重新检查",
+  };
+});
+
+function formatPublishedAt(value?: string) {
+  if (!value) return "未知";
+  return new Date(value).toLocaleString();
+}
+
+async function checkUpdate() {
+  if (checkingUpdate.value) return;
+  checkingUpdate.value = true;
+  try {
+    updateInfo.value = await invoke<AppUpdateInfo>("check_app_update");
+    if (updateInfo.value.update_available) {
+      ElMessage.success(`发现新版本 ${updateInfo.value.latest_version}`);
+    } else {
+      ElMessage.success("当前已是最新版本");
+    }
+  } catch (error) {
+    ElMessage.error(String(error));
+  } finally {
+    checkingUpdate.value = false;
+  }
+}
+
+async function openReleasePage() {
+  const url = updateInfo.value?.release_url ?? "https://github.com/l1280776919/rime-studio/releases";
+  await openUrl(url);
+}
+
+async function openDownloadAsset() {
+  const url = updateInfo.value?.asset_url ?? updateInfo.value?.release_url;
+  if (!url) {
+    await openReleasePage();
+    return;
+  }
+  await openUrl(url);
+}
+
+async function handleUpdateAction() {
+  if (!updateInfo.value || !updateInfo.value.update_available) {
+    await checkUpdate();
+    return;
+  }
+  await openDownloadAsset();
+}
+
+onMounted(() => {
+  checkUpdate();
+});
 </script>
 
 <template>
@@ -20,6 +112,66 @@ import pkg from "../../package.json";
           <p class="helper-text">
             基于 Tauri 2 + Vue 3 + Rust 构建的桌面应用，提供图形化界面来管理 Rime 输入法的外观主题、自定义短语、词库和配置备份。
           </p>
+        </div>
+      </el-card>
+
+      <el-card class="panel" shadow="never">
+        <template #header>
+          <div class="panel-title">
+            <span>应用更新</span>
+          </div>
+        </template>
+
+        <div class="update-panel" :class="`is-${updateState.tone}`">
+          <div class="update-status-card">
+            <div class="update-status-icon">
+              <el-icon>
+                <Warning v-if="updateInfo?.update_available" />
+                <Check v-else-if="updateInfo" />
+                <Refresh v-else />
+              </el-icon>
+            </div>
+            <div class="update-status-copy">
+              <div>
+                <strong>{{ updateState.title }}</strong>
+                <el-tag :type="updateState.tagType" effect="light">
+                  {{ updateState.tagText }}
+                </el-tag>
+              </div>
+              <p>{{ updateState.detail }}</p>
+            </div>
+            <el-button
+              type="primary"
+              :icon="updateInfo?.update_available ? UploadFilled : Refresh"
+              :loading="checkingUpdate"
+              @click="handleUpdateAction"
+            >
+              {{ updateState.actionText }}
+            </el-button>
+          </div>
+
+          <div class="update-version-grid">
+            <div class="update-version-tile">
+              <span>当前版本</span>
+              <strong>v{{ updateInfo?.current_version ?? pkg.version }}</strong>
+              <small>已安装在本机</small>
+            </div>
+            <div class="update-version-tile latest">
+              <span>GitHub 最新版本</span>
+              <strong>{{ updateInfo?.latest_version ?? "尚未检查" }}</strong>
+              <small>{{ updateInfo ? `发布于 ${formatPublishedAt(updateInfo.published_at)}` : "点击检查后显示" }}</small>
+            </div>
+          </div>
+
+          <div v-if="updateInfo" class="update-release-detail">
+            <section v-if="releaseNotesPreview" class="update-notes">
+              <header>
+                <span>Release Notes</span>
+                <small>{{ updateInfo.release_name ?? updateInfo.latest_version }}</small>
+              </header>
+              <pre>{{ releaseNotesPreview }}</pre>
+            </section>
+          </div>
         </div>
       </el-card>
     </section>
