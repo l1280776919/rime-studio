@@ -118,6 +118,7 @@ export type RimeIceSettings = {
   ascii_punct: boolean;
   full_shape: boolean;
   search_single_char: boolean;
+  fuzzy_pinyin: boolean;
   traditional_preset: string;
 };
 
@@ -214,4 +215,27 @@ export type OnlineDictionaryCategory = {
   id: string;
   title: string;
   description: string;
+};
+
+export type LmdgInstallResult = {
+  installed_count: number;
+  target_dir: string;
+  source_url: string;
+  message: string;
+};
+
+export type LmdgGrammarInstallResult = {
+  model_name: string;
+  model_path: string;
+  patch_path: string;
+  source_url: string;
+  message: string;
+};
+
+export type LmdgGrammarUninstallResult = {
+  model_name: string;
+  model_path: string;
+  patch_path: string;
+  removed_model: boolean;
+  message: string;
 };

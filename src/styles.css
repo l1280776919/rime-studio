@@ -3567,6 +3567,94 @@ button:active {
   padding-top: 8px;
 }
 
+.lmdg-resource-panel {
+  align-items: center;
+  background: color-mix(in srgb, var(--color-success) 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--color-success) 24%, var(--color-line));
+  border-radius: var(--radius-sm);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-bottom: 14px;
+  padding: 12px;
+}
+
+.lmdg-resource-copy {
+  align-items: start;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr);
+  min-width: 0;
+}
+
+.lmdg-resource-copy > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.lmdg-resource-copy strong {
+  color: var(--ink-900);
+  font-size: 14px;
+  font-weight: 780;
+}
+
+.lmdg-resource-copy small,
+.lmdg-resource-status small {
+  color: var(--ink-500);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.lmdg-resource-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.lmdg-resource-status {
+  border-top: 1px solid color-mix(in srgb, var(--color-success) 20%, var(--color-line));
+  display: grid;
+  gap: 3px;
+  grid-column: 1 / -1;
+  padding-top: 10px;
+}
+
+.lmdg-resource-status span {
+  color: var(--ink-700);
+  font-size: 13px;
+  font-weight: 680;
+}
+
+.lmdg-download-progress {
+  border-top: 1px solid color-mix(in srgb, var(--color-success) 20%, var(--color-line));
+  display: grid;
+  gap: 8px;
+  grid-column: 1 / -1;
+  padding-top: 10px;
+}
+
+.lmdg-download-progress > div {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.lmdg-download-progress span {
+  color: var(--ink-600);
+  font-size: 12px;
+  min-width: 0;
+}
+
+.lmdg-download-progress strong {
+  color: var(--ink-800);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 760;
+}
+
 .online-workbench-grid {
   display: grid;
   gap: 14px;
@@ -3931,6 +4019,14 @@ button:active {
 
   .online-dict-controls {
     grid-template-columns: 1fr;
+  }
+
+  .lmdg-resource-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .lmdg-resource-actions {
+    justify-content: flex-start;
   }
 
   .online-workbench-grid {

@@ -63,6 +63,7 @@ const iceSettings = reactive<RimeIceSettings>({
   ascii_punct: false,
   full_shape: false,
   search_single_char: false,
+  fuzzy_pinyin: false,
   traditional_preset: "s2t.json",
 });
 
@@ -426,6 +427,13 @@ onBeforeUnmount(() => {
               <small>部件/拼音反查时更偏向单字</small>
             </span>
             <el-switch v-model="iceSettings.search_single_char" :disabled="!hasRimeIce" />
+          </div>
+          <div class="ice-toggle">
+            <span>
+              <strong>全模糊音</strong>
+              <small>启用 z/zh、n/l、前后鼻音等全量拼音容错；候选会变多</small>
+            </span>
+            <el-switch v-model="iceSettings.fuzzy_pinyin" :disabled="!hasRimeIce" />
           </div>
           <div class="ice-toggle select-toggle">
             <span>

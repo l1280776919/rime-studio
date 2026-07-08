@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { formatBytes, formatTime } from "../utils";
 import {
   Collection,
@@ -23,6 +24,9 @@ import type {
   DictionaryImportPreview,
   DictionaryImportResult,
   DictionaryReference,
+  LmdgGrammarInstallResult,
+  LmdgGrammarUninstallResult,
+  LmdgInstallResult,
   OnlineDictionary,
   OnlineDictionaryCategory,
   RimeEnvironment,
@@ -67,6 +71,22 @@ const activeOnlineTab = ref("category");
 const onlineLoading = ref(false);
 const categoryLoading = ref(false);
 const onlineImporting = ref<string>();
+const lmdgInstalling = ref(false);
+const lmdgResult = ref<LmdgInstallResult>();
+const lmdgGrammarInstalling = ref(false);
+const lmdgGrammarUninstalling = ref(false);
+const lmdgGrammarResult = ref<LmdgGrammarInstallResult>();
+const lmdgGrammarUninstallResult = ref<LmdgGrammarUninstallResult>();
+const lmdgDownloadProgress = ref<LmdgDownloadProgress>();
+let unlistenLmdgProgress: UnlistenFn | undefined;
+
+type LmdgDownloadProgress = {
+  kind: "grammar" | "dicts";
+  stage: string;
+  downloaded_bytes: number;
+  total_bytes?: number;
+  percent?: number;
+};
 
 async function loadDictionaries() {
   loading.value = true;
@@ -184,6 +204,58 @@ async function loadCategoryDictionaries() {
     ElMessage.error(String(error));
   } finally {
     categoryLoading.value = false;
+  }
+}
+
+async function installLmdgDictionaries() {
+  lmdgInstalling.value = true;
+  lmdgDownloadProgress.value = {
+    kind: "dicts",
+    stage: "准备下载万象词库包",
+    downloaded_bytes: 0,
+  };
+  try {
+    const result = await invoke<LmdgInstallResult>("install_lmdg_dicts");
+    lmdgResult.value = result;
+    await loadAllStats();
+    ElMessage.success(result.message);
+  } catch (error) {
+    ElMessage.error(String(error));
+  } finally {
+    lmdgInstalling.value = false;
+  }
+}
+
+async function installLmdgGrammar() {
+  lmdgGrammarInstalling.value = true;
+  lmdgGrammarUninstallResult.value = undefined;
+  lmdgDownloadProgress.value = {
+    kind: "grammar",
+    stage: "准备下载万象语言模型",
+    downloaded_bytes: 0,
+  };
+  try {
+    const result = await invoke<LmdgGrammarInstallResult>("install_lmdg_grammar");
+    lmdgGrammarResult.value = result;
+    ElMessage.success(result.message);
+  } catch (error) {
+    ElMessage.error(String(error));
+  } finally {
+    lmdgGrammarInstalling.value = false;
+  }
+}
+
+async function uninstallLmdgGrammar() {
+  lmdgGrammarUninstalling.value = true;
+  try {
+    const result = await invoke<LmdgGrammarUninstallResult>("uninstall_lmdg_grammar");
+    lmdgGrammarUninstallResult.value = result;
+    lmdgGrammarResult.value = undefined;
+    ElMessage.success(result.message);
+  } catch (error) {
+    ElMessage.error(String(error));
+  } finally {
+    lmdgGrammarUninstalling.value = false;
   }
 }
 
@@ -434,6 +506,21 @@ const activeOnlineDescription = computed(() =>
     ? "适合快速补齐通用、技术、文史和生活常用词。"
     : (selectedCategoryInfo.value?.description ?? "从搜狗分类页加载更多词库。"),
 );
+const lmdgProgressPercentage = computed(() =>
+  Math.max(0, Math.min(100, Math.round(lmdgDownloadProgress.value?.percent ?? 0))),
+);
+const lmdgProgressText = computed(() => {
+  const progress = lmdgDownloadProgress.value;
+  if (!progress) return "";
+  const downloaded = formatBytes(progress.downloaded_bytes);
+  if (progress.total_bytes) {
+    return `${progress.stage} · ${downloaded} / ${formatBytes(progress.total_bytes)}`;
+  }
+  return `${progress.stage} · 已下载 ${downloaded}`;
+});
+const showLmdgProgress = computed(() =>
+  (lmdgGrammarInstalling.value || lmdgInstalling.value) && Boolean(lmdgDownloadProgress.value),
+);
 
 async function selectOnlineCategory(categoryId: string) {
   selectedOnlineCategory.value = categoryId;
@@ -446,8 +533,15 @@ async function loadAllStats() {
 }
 
 onMounted(async () => {
+  unlistenLmdgProgress = await listen<LmdgDownloadProgress>("lmdg-download-progress", (event) => {
+    lmdgDownloadProgress.value = event.payload;
+  });
   await Promise.all([loadAllStats(), loadOnlineDictionaries()]);
   await loadCategoryDictionaries();
+});
+
+onUnmounted(() => {
+  unlistenLmdgProgress?.();
 });
 </script>
 
@@ -744,6 +838,74 @@ onMounted(async () => {
       width="min(1180px, 92vw)"
       class="online-dictionary-dialog"
     >
+      <section class="lmdg-resource-panel">
+        <div class="lmdg-resource-copy">
+          <el-tag type="success" size="small">高级资源</el-tag>
+          <div>
+            <strong>万象语言模型 RIME-LMDG</strong>
+            <small>
+              下载 wanxiang-lts-zh-hans.gram，并为雾凇拼音写入 octagram 语法模型补丁。保留雾凇方案，只增强长句排序。
+            </small>
+          </div>
+        </div>
+        <div class="lmdg-resource-actions">
+          <el-button
+            type="success"
+            :icon="Download"
+            :loading="lmdgGrammarInstalling"
+            @click="installLmdgGrammar"
+          >
+            安装模型
+          </el-button>
+          <el-button
+            type="warning"
+            plain
+            :icon="Delete"
+            :loading="lmdgGrammarUninstalling"
+            @click="uninstallLmdgGrammar"
+          >
+            卸载模型
+          </el-button>
+          <el-button
+            :icon="Collection"
+            :loading="lmdgInstalling"
+            @click="installLmdgDictionaries"
+          >
+            安装词库包
+          </el-button>
+          <el-button :icon="Refresh" :loading="loading" @click="loadAllStats">
+            刷新本地词库
+          </el-button>
+        </div>
+        <div v-if="showLmdgProgress" class="lmdg-download-progress">
+          <div>
+            <span>{{ lmdgProgressText }}</span>
+            <strong v-if="lmdgDownloadProgress?.percent !== undefined">
+              {{ lmdgProgressPercentage }}%
+            </strong>
+          </div>
+          <el-progress
+            :percentage="lmdgProgressPercentage"
+            :show-text="false"
+            :indeterminate="lmdgDownloadProgress?.percent === undefined"
+          />
+        </div>
+        <div v-if="lmdgGrammarResult" class="lmdg-resource-status">
+          <span>{{ lmdgGrammarResult.message }}</span>
+          <small>{{ lmdgGrammarResult.model_path }}</small>
+          <small>{{ lmdgGrammarResult.patch_path }}</small>
+        </div>
+        <div v-if="lmdgGrammarUninstallResult" class="lmdg-resource-status">
+          <span>{{ lmdgGrammarUninstallResult.message }}</span>
+          <small>{{ lmdgGrammarUninstallResult.model_path }}</small>
+          <small>{{ lmdgGrammarUninstallResult.patch_path }}</small>
+        </div>
+        <div v-if="lmdgResult" class="lmdg-resource-status">
+          <span>{{ lmdgResult.message }}</span>
+          <small>{{ lmdgResult.target_dir }}</small>
+        </div>
+      </section>
+
       <div class="online-workbench-grid">
         <nav class="online-category-rail" aria-label="在线词库分类">
           <button
