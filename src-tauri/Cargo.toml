@@ -22,7 +22,7 @@ unsafe_code = "forbid"
 
 [lints.clippy]
 dbg_macro = "deny"
-await_holding_ref = "deny"
+await_holding_lock = "deny"
 unwrap_used = "warn"
 panic = "warn"
 

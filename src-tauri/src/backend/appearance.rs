@@ -1,6 +1,9 @@
 use crate::backend::*;
 use crate::*;
-use std::{fs, path::{Path, PathBuf}};
+use std::{
+    fs,
+    path::Path,
+};
 
 pub(crate) fn read_appearance_config(user_dir: &Path) -> AppearanceConfig {
     let weasel_custom = read_to_string(&user_dir.join("weasel.custom.yaml"));
@@ -153,4 +156,3 @@ pub(crate) fn write_appearance_config(
     let _ = include_behavior;
     write_text_file(&path, &render_weasel_custom(config), "写入外观配置文件失败")
 }
-

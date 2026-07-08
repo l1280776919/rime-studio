@@ -1,6 +1,12 @@
 use crate::*;
-use std::{env, ffi::OsStr, fs, path::{Path, PathBuf}, process::Command};
 use serde_yaml::{Mapping, Value};
+use std::{
+    env,
+    ffi::OsStr,
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 pub(crate) fn rime_user_dir() -> Result<PathBuf, String> {
     let appdata = env::var("APPDATA").map_err(|_| "APPDATA 环境变量不可用".to_string())?;
@@ -384,4 +390,3 @@ pub(crate) fn locate_git_bash() -> Option<PathBuf> {
         .into_iter()
         .find(|path| path.exists() && command_success(path, "--version"))
 }
-

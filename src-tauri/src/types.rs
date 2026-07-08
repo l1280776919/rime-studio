@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use serde_yaml::{Mapping, Value};
 
 #[cfg(windows)]
 pub(crate) use std::os::windows::process::CommandExt;

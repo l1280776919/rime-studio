@@ -1,7 +1,9 @@
 use crate::backend::*;
 use crate::*;
+use std::{fs, io};
 
-const APP_RELEASE_API_URL: &str = "https://api.github.com/repos/l1280776919/rime-studio/releases/latest";
+const APP_RELEASE_API_URL: &str =
+    "https://api.github.com/repos/l1280776919/rime-studio/releases/latest";
 const APP_RELEASES_URL: &str = "https://github.com/l1280776919/rime-studio/releases";
 
 pub(crate) fn normalize_version(value: &str) -> &str {
@@ -24,15 +26,18 @@ pub(crate) fn parse_semver(value: &str) -> Option<(u64, u64, u64, Vec<String>)> 
 }
 
 pub(crate) fn version_is_newer(latest: &str, current: &str) -> bool {
-    let Some((latest_major, latest_minor, latest_patch, latest_suffix)) = parse_semver(latest) else {
+    let Some((latest_major, latest_minor, latest_patch, latest_suffix)) = parse_semver(latest)
+    else {
         return false;
     };
-    let Some((current_major, current_minor, current_patch, current_suffix)) = parse_semver(current) else {
+    let Some((current_major, current_minor, current_patch, current_suffix)) = parse_semver(current)
+    else {
         return false;
     };
 
     (latest_major, latest_minor, latest_patch) > (current_major, current_minor, current_patch)
-        || ((latest_major, latest_minor, latest_patch) == (current_major, current_minor, current_patch)
+        || ((latest_major, latest_minor, latest_patch)
+            == (current_major, current_minor, current_patch)
             && !current_suffix.is_empty()
             && latest_suffix.is_empty())
 }
@@ -76,25 +81,25 @@ pub(crate) fn check_app_update_sync() -> Result<AppUpdateInfo, String> {
         .map(|latest| version_is_newer(latest, &current_version))
         .unwrap_or(false);
 
-    let selected_asset = json["assets"]
-        .as_array()
-        .and_then(|assets| {
-            assets
-                .iter()
-                .filter_map(|asset| {
-                    let name = asset["name"].as_str()?;
-                    let score = release_asset_score(name);
-                    if score == 0 {
-                        return None;
-                    }
-                    Some((
-                        score,
-                        name.to_string(),
-                        asset["browser_download_url"].as_str()?.to_string(),
-                    ))
-                })
-                .max_by_key(|(score, name, _)| (*score, name.contains("setup") || name.contains("install")))
-        });
+    let selected_asset = json["assets"].as_array().and_then(|assets| {
+        assets
+            .iter()
+            .filter_map(|asset| {
+                let name = asset["name"].as_str()?;
+                let score = release_asset_score(name);
+                if score == 0 {
+                    return None;
+                }
+                Some((
+                    score,
+                    name.to_string(),
+                    asset["browser_download_url"].as_str()?.to_string(),
+                ))
+            })
+            .max_by_key(|(score, name, _)| {
+                (*score, name.contains("setup") || name.contains("install"))
+            })
+    });
 
     let (asset_name, asset_url) = selected_asset
         .map(|(_, name, url)| (Some(name), Some(url)))
@@ -110,6 +115,36 @@ pub(crate) fn check_app_update_sync() -> Result<AppUpdateInfo, String> {
         asset_name,
         asset_url,
         update_available,
+    })
+}
+
+pub(crate) fn download_app_update_sync() -> Result<RimeDownloadResult, String> {
+    let info = check_app_update_sync()?;
+    let download_url = info.asset_url.ok_or("未找到可下载的安装包")?;
+    let filename = info
+        .asset_name
+        .unwrap_or_else(|| "RimeStudio-Installer.exe".to_string());
+
+    let dest_dir = app_data_dir()?;
+    fs::create_dir_all(&dest_dir).map_err(|err| format!("创建下载目录失败: {err}"))?;
+    let dest_path = dest_dir.join(&filename);
+
+    // Remove partially downloaded file first
+    let _ = fs::remove_file(&dest_path);
+
+    let response = ureq::get(&download_url)
+        .set("User-Agent", "RimeStudio/0.2")
+        .call()
+        .map_err(|err| format!("下载失败: {err}"))?;
+
+    let mut reader = response.into_reader();
+    let mut file = fs::File::create(&dest_path).map_err(|err| format!("创建文件失败: {err}"))?;
+    io::copy(&mut reader, &mut file).map_err(|err| format!("保存文件失败: {err}"))?;
+
+    Ok(RimeDownloadResult {
+        success: true,
+        installer_path: Some(dest_path.display().to_string()),
+        message: format!("已下载 {filename}"),
     })
 }
 

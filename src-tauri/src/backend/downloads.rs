@@ -1,10 +1,18 @@
 use crate::backend::*;
 use crate::*;
-use tauri::Emitter;
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::{ffi::OsStr, fs, path::{Path, PathBuf}, process::{self, Command}};
+use std::{
+    ffi::OsStr,
+    fs,
+    path::{Path, PathBuf},
+    process::{self, Command},
+};
+use tauri::Emitter;
 
-pub(crate) fn github_release_asset_url(api_url: &str, asset_name: &str) -> Result<(String, String), String> {
+pub(crate) fn github_release_asset_url(
+    api_url: &str,
+    asset_name: &str,
+) -> Result<(String, String), String> {
     let response = ureq::get(api_url)
         .set("User-Agent", "RimeStudio/0.2")
         .set("Accept", "application/vnd.github+json")
@@ -72,7 +80,10 @@ pub(crate) fn safe_relative_path(path: &Path) -> bool {
     })
 }
 
-pub(crate) fn copy_lmdg_dictionaries(source_dir: &Path, target_dir: &Path) -> Result<usize, String> {
+pub(crate) fn copy_lmdg_dictionaries(
+    source_dir: &Path,
+    target_dir: &Path,
+) -> Result<usize, String> {
     fs::create_dir_all(target_dir).map_err(|err| format!("创建万象词库目录失败: {err}"))?;
     let mut installed = 0usize;
     let mut pending = vec![source_dir.to_path_buf()];
@@ -138,7 +149,9 @@ pub(crate) fn emit_download_progress(
     );
 }
 
-pub(crate) fn install_lmdg_dicts_sync_with_progress<F>(progress: F) -> Result<LmdgInstallResult, String>
+pub(crate) fn install_lmdg_dicts_sync_with_progress<F>(
+    progress: F,
+) -> Result<LmdgInstallResult, String>
 where
     F: FnMut(u64, Option<u64>),
 {
@@ -317,4 +330,3 @@ pub(crate) fn export_dictionary_sync(dict_name: String) -> Result<DictionaryExpo
         contents,
     })
 }
-

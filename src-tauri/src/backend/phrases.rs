@@ -1,6 +1,6 @@
 use crate::backend::*;
 use crate::*;
-use std::{fs, path::{Path, PathBuf}};
+use std::fs;
 
 pub(crate) fn get_custom_phrases_sync() -> Result<Vec<PhraseEntry>, String> {
     let user_dir = rime_user_dir()?;
@@ -80,4 +80,3 @@ pub(crate) fn save_custom_phrases_sync(phrases: Vec<PhraseEntry>) -> Result<(), 
 
     write_text_file(&path, &contents, "写入自定义短语文件失败")
 }
-
