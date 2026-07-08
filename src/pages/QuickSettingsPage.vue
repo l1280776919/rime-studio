@@ -430,8 +430,8 @@ onBeforeUnmount(() => {
           </div>
           <div class="ice-toggle">
             <span>
-              <strong>全模糊音</strong>
-              <small>启用 z/zh、n/l、前后鼻音等全量拼音容错；候选会变多</small>
+              <strong>常用模糊音</strong>
+              <small>启用 z/zh、n/l 和前后鼻音容错；避免 g/k 这类过宽混淆</small>
             </span>
             <el-switch v-model="iceSettings.fuzzy_pinyin" :disabled="!hasRimeIce" />
           </div>

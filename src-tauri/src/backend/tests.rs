@@ -268,5 +268,13 @@ patch:
             vec![("阿里啊".to_string(), "a li a".to_string(), 1)]
         );
     }
+
+    #[test]
+    fn fuzzy_pinyin_rules_do_not_mix_g_and_k() {
+        let rules = fuzzy_pinyin_algebra_rules();
+
+        assert!(!rules.contains(&"derive/^g/k/"));
+        assert!(!rules.contains(&"derive/^k/g/"));
+    }
 }
 
