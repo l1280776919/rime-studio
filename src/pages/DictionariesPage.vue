@@ -545,7 +545,7 @@ onUnmounted(() => {
           accept=".bin,.scel,.txt,.dict.yaml,.yaml"
           style="display: none"
           @change="importDictionary"
-        />
+        >
         <el-button type="primary" :icon="UploadFilled" :loading="importing" @click="chooseImportFile">
           导入词库
         </el-button>
@@ -576,8 +576,8 @@ onUnmounted(() => {
         />
         <el-table
           v-else
-          :data="[...(dictConfig?.enabled ?? []), ...(dictConfig?.missing ?? [])]"
           v-loading="loading"
+          :data="[...(dictConfig?.enabled ?? []), ...(dictConfig?.missing ?? [])]"
           stripe
           max-height="calc(50dvh - 180px)"
         >
@@ -645,8 +645,8 @@ onUnmounted(() => {
 
         <template v-else>
           <el-table
-            :data="dictConfig?.available ?? []"
             v-loading="loading"
+            :data="dictConfig?.available ?? []"
             stripe
             highlight-current-row
             max-height="calc(50dvh - 180px)"

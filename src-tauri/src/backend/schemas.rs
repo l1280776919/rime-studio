@@ -1,15 +1,8 @@
-#[derive(Debug, Serialize)]
-struct SchemaInfo {
-    id: String,
-    name: String,
-    description: String,
-    path: String,
-    is_system: bool,
-    is_active: bool,
-    is_enabled: bool,
-}
+use crate::backend::*;
+use crate::*;
+use std::{ffi::OsStr, fs, path::PathBuf};
 
-fn list_schemas_sync() -> Result<Vec<SchemaInfo>, String> {
+pub(crate) fn list_schemas_sync() -> Result<Vec<SchemaInfo>, String> {
     let user_dir = rime_user_dir()?;
     let active_schema = read_to_string(&user_dir.join("default.custom.yaml"));
     let active = parse_schema(&active_schema);
@@ -127,7 +120,7 @@ fn list_schemas_sync() -> Result<Vec<SchemaInfo>, String> {
     Ok(schemas)
 }
 
-fn copy_schema_sync(schema_id: String) -> Result<String, String> {
+pub(crate) fn copy_schema_sync(schema_id: String) -> Result<String, String> {
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
 
@@ -180,7 +173,7 @@ fn copy_schema_sync(schema_id: String) -> Result<String, String> {
     Ok(dest.display().to_string())
 }
 
-fn sanitize_schema_id(schema_id: &str) -> String {
+pub(crate) fn sanitize_schema_id(schema_id: &str) -> String {
     schema_id
         .replace(['/', '\\'], "")
         .replace("..", "")
@@ -188,7 +181,7 @@ fn sanitize_schema_id(schema_id: &str) -> String {
         .to_string()
 }
 
-fn sanitize_schema_ids(schema_ids: Vec<String>) -> Vec<String> {
+pub(crate) fn sanitize_schema_ids(schema_ids: Vec<String>) -> Vec<String> {
     let mut seen = std::collections::HashSet::new();
     schema_ids
         .into_iter()
@@ -198,7 +191,7 @@ fn sanitize_schema_ids(schema_ids: Vec<String>) -> Vec<String> {
         .collect()
 }
 
-fn render_default_custom_with_schema_list(
+pub(crate) fn render_default_custom_with_schema_list(
     config: &QuickSettingsConfig,
     schema_ids: &[String],
 ) -> String {
@@ -251,7 +244,7 @@ fn render_default_custom_with_schema_list(
     default_contents.join("\n")
 }
 
-fn save_active_schema_list_sync(schema_ids: Vec<String>) -> Result<QuickSettingsConfig, String> {
+pub(crate) fn save_active_schema_list_sync(schema_ids: Vec<String>) -> Result<QuickSettingsConfig, String> {
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
     let safe_schema_ids = sanitize_schema_ids(schema_ids);
@@ -271,7 +264,7 @@ fn save_active_schema_list_sync(schema_ids: Vec<String>) -> Result<QuickSettings
     get_quick_settings_sync()
 }
 
-fn set_active_schema_sync(schema_id: String) -> Result<QuickSettingsConfig, String> {
+pub(crate) fn set_active_schema_sync(schema_id: String) -> Result<QuickSettingsConfig, String> {
     let safe_id = sanitize_schema_id(&schema_id);
     if safe_id.is_empty() {
         return Err("方案 ID 不能为空".to_string());
@@ -284,7 +277,7 @@ fn set_active_schema_sync(schema_id: String) -> Result<QuickSettingsConfig, Stri
     save_active_schema_list_sync(schema_ids)
 }
 
-fn validate_schema_path(path: String) -> Result<PathBuf, String> {
+pub(crate) fn validate_schema_path(path: String) -> Result<PathBuf, String> {
     let path = PathBuf::from(path);
     if !path.exists() || !path.is_file() {
         return Err("方案文件不存在".to_string());
@@ -300,12 +293,12 @@ fn validate_schema_path(path: String) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-fn open_schema_file_sync(path: String) -> Result<(), String> {
+pub(crate) fn open_schema_file_sync(path: String) -> Result<(), String> {
     let path = validate_schema_path(path)?;
     reveal_in_explorer(&path)
 }
 
-fn open_schema_dir_sync(path: String) -> Result<(), String> {
+pub(crate) fn open_schema_dir_sync(path: String) -> Result<(), String> {
     let path = validate_schema_path(path)?;
     let parent = path
         .parent()

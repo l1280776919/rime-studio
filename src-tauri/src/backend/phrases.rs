@@ -1,4 +1,8 @@
-fn get_custom_phrases_sync() -> Result<Vec<PhraseEntry>, String> {
+use crate::backend::*;
+use crate::*;
+use std::{fs, path::{Path, PathBuf}};
+
+pub(crate) fn get_custom_phrases_sync() -> Result<Vec<PhraseEntry>, String> {
     let user_dir = rime_user_dir()?;
     let path = user_dir.join("custom_phrase.txt");
     if !path.exists() {
@@ -33,7 +37,7 @@ fn get_custom_phrases_sync() -> Result<Vec<PhraseEntry>, String> {
     Ok(phrases)
 }
 
-fn save_custom_phrases_sync(phrases: Vec<PhraseEntry>) -> Result<(), String> {
+pub(crate) fn save_custom_phrases_sync(phrases: Vec<PhraseEntry>) -> Result<(), String> {
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
     backup_user_config(&user_dir, BackupKind::BeforeSave)?;

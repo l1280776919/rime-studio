@@ -1,23 +1,27 @@
-fn rime_user_dir() -> Result<PathBuf, String> {
+use crate::*;
+use std::{env, ffi::OsStr, fs, path::{Path, PathBuf}, process::Command};
+use serde_yaml::{Mapping, Value};
+
+pub(crate) fn rime_user_dir() -> Result<PathBuf, String> {
     let appdata = env::var("APPDATA").map_err(|_| "APPDATA 环境变量不可用".to_string())?;
     Ok(PathBuf::from(appdata).join("Rime"))
 }
 
-fn app_data_dir() -> Result<PathBuf, String> {
+pub(crate) fn app_data_dir() -> Result<PathBuf, String> {
     let local_appdata =
         env::var("LOCALAPPDATA").map_err(|_| "LOCALAPPDATA 环境变量不可用".to_string())?;
     Ok(PathBuf::from(local_appdata).join("RimeStudio"))
 }
 
-fn read_to_string(path: &Path) -> String {
+pub(crate) fn read_to_string(path: &Path) -> String {
     fs::read_to_string(path).unwrap_or_default()
 }
 
-fn yaml_mapping_get<'a>(mapping: &'a Mapping, key: &str) -> Option<&'a Value> {
+pub(crate) fn yaml_mapping_get<'a>(mapping: &'a Mapping, key: &str) -> Option<&'a Value> {
     mapping.get(Value::String(key.to_string()))
 }
 
-fn yaml_path_get<'a>(value: &'a Value, key_path: &str) -> Option<&'a Value> {
+pub(crate) fn yaml_path_get<'a>(value: &'a Value, key_path: &str) -> Option<&'a Value> {
     let mut current = value;
     for key in key_path.split('/') {
         let Value::Mapping(mapping) = current else {
@@ -28,7 +32,7 @@ fn yaml_path_get<'a>(value: &'a Value, key_path: &str) -> Option<&'a Value> {
     Some(current)
 }
 
-fn yaml_value_to_string(value: &Value) -> Option<String> {
+pub(crate) fn yaml_value_to_string(value: &Value) -> Option<String> {
     match value {
         Value::String(value) => Some(value.clone()),
         Value::Number(value) => Some(value.to_string()),
@@ -37,7 +41,7 @@ fn yaml_value_to_string(value: &Value) -> Option<String> {
     }
 }
 
-fn yaml_lookup(contents: &str, key: &str) -> Option<Value> {
+pub(crate) fn yaml_lookup(contents: &str, key: &str) -> Option<Value> {
     let key = key.trim_matches('"').trim_end_matches(':');
     let document = serde_yaml::from_str::<Value>(contents).ok()?;
 
@@ -56,7 +60,7 @@ fn yaml_lookup(contents: &str, key: &str) -> Option<Value> {
         .cloned()
 }
 
-fn suppress_console_window(command: &mut Command) -> &mut Command {
+pub(crate) fn suppress_console_window(command: &mut Command) -> &mut Command {
     #[cfg(windows)]
     {
         command.creation_flags(CREATE_NO_WINDOW);
@@ -64,7 +68,7 @@ fn suppress_console_window(command: &mut Command) -> &mut Command {
     command
 }
 
-fn file_status(user_dir: &Path, name: &str) -> FileStatus {
+pub(crate) fn file_status(user_dir: &Path, name: &str) -> FileStatus {
     let path = user_dir.join(name);
     let metadata = fs::metadata(&path).ok();
 
@@ -80,11 +84,11 @@ fn file_status(user_dir: &Path, name: &str) -> FileStatus {
     }
 }
 
-fn parse_schema(default_custom: &str) -> Option<String> {
+pub(crate) fn parse_schema(default_custom: &str) -> Option<String> {
     parse_schema_list(default_custom).into_iter().next()
 }
 
-fn parse_schema_list(default_custom: &str) -> Vec<String> {
+pub(crate) fn parse_schema_list(default_custom: &str) -> Vec<String> {
     if let Some(Value::Sequence(schema_list)) = yaml_lookup(default_custom, "schema_list") {
         let schemas = schema_list
             .iter()
@@ -112,7 +116,7 @@ fn parse_schema_list(default_custom: &str) -> Vec<String> {
         .collect()
 }
 
-fn parse_u32_after_key(contents: &str, key: &str) -> Option<u32> {
+pub(crate) fn parse_u32_after_key(contents: &str, key: &str) -> Option<u32> {
     if let Some(value) = yaml_lookup(contents, key)
         .and_then(|value| yaml_value_to_string(&value))
         .and_then(|value| value.parse::<u32>().ok())
@@ -132,7 +136,7 @@ fn parse_u32_after_key(contents: &str, key: &str) -> Option<u32> {
     })
 }
 
-fn parse_quoted_value(contents: &str, key: &str) -> Option<String> {
+pub(crate) fn parse_quoted_value(contents: &str, key: &str) -> Option<String> {
     if let Some(value) = yaml_lookup(contents, key).and_then(|value| yaml_value_to_string(&value)) {
         return Some(value);
     }
@@ -149,7 +153,7 @@ fn parse_quoted_value(contents: &str, key: &str) -> Option<String> {
     })
 }
 
-fn parse_bool_after_key(contents: &str, key: &str) -> Option<bool> {
+pub(crate) fn parse_bool_after_key(contents: &str, key: &str) -> Option<bool> {
     if let Some(value) = yaml_lookup(contents, key) {
         match value {
             Value::Bool(value) => return Some(value),
@@ -181,7 +185,7 @@ fn parse_bool_after_key(contents: &str, key: &str) -> Option<bool> {
     })
 }
 
-fn parse_string_after_key(contents: &str, key: &str) -> Option<String> {
+pub(crate) fn parse_string_after_key(contents: &str, key: &str) -> Option<String> {
     if let Some(value) = yaml_lookup(contents, key)
         .and_then(|value| yaml_value_to_string(&value))
         .filter(|value| !value.is_empty())
@@ -205,7 +209,7 @@ fn parse_string_after_key(contents: &str, key: &str) -> Option<String> {
     })
 }
 
-fn normalize_color(value: Option<String>, fallback: &str) -> String {
+pub(crate) fn normalize_color(value: Option<String>, fallback: &str) -> String {
     value
         .map(|value| {
             value
@@ -218,7 +222,7 @@ fn normalize_color(value: Option<String>, fallback: &str) -> String {
         .unwrap_or_else(|| fallback.to_string())
 }
 
-fn weasel_deployers_under(root: &Path) -> Vec<PathBuf> {
+pub(crate) fn weasel_deployers_under(root: &Path) -> Vec<PathBuf> {
     fs::read_dir(root)
         .ok()
         .into_iter()
@@ -237,7 +241,7 @@ fn weasel_deployers_under(root: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-fn resolve_windows_shortcut(path: &Path) -> Option<PathBuf> {
+pub(crate) fn resolve_windows_shortcut(path: &Path) -> Option<PathBuf> {
     if path.extension().and_then(OsStr::to_str) != Some("lnk") {
         return Some(path.to_path_buf());
     }
@@ -263,7 +267,7 @@ fn resolve_windows_shortcut(path: &Path) -> Option<PathBuf> {
         .filter(|target| target.exists())
 }
 
-fn locate_deployer() -> Option<PathBuf> {
+pub(crate) fn locate_deployer() -> Option<PathBuf> {
     let start_menu_shortcut = PathBuf::from(
         r"C:\ProgramData\Microsoft\Windows\Start Menu\Programs\小狼毫输入法\【小狼毫】重新部署.lnk",
     );
@@ -291,7 +295,7 @@ fn locate_deployer() -> Option<PathBuf> {
         .find_map(|path| resolve_windows_shortcut(&path))
 }
 
-fn command_success(path: &Path, arg: &str) -> bool {
+pub(crate) fn command_success(path: &Path, arg: &str) -> bool {
     let mut command = Command::new(path);
     command.arg(arg);
     suppress_console_window(&mut command)
@@ -300,7 +304,7 @@ fn command_success(path: &Path, arg: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn command_path_success(command: &str, arg: &str) -> bool {
+pub(crate) fn command_path_success(command: &str, arg: &str) -> bool {
     let mut command = Command::new(command);
     command.arg(arg);
     suppress_console_window(&mut command)
@@ -309,7 +313,7 @@ fn command_path_success(command: &str, arg: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn locate_from_where(command: &str) -> Vec<PathBuf> {
+pub(crate) fn locate_from_where(command: &str) -> Vec<PathBuf> {
     let mut where_command = Command::new("where");
     where_command.arg(command);
     suppress_console_window(&mut where_command)
@@ -327,7 +331,7 @@ fn locate_from_where(command: &str) -> Vec<PathBuf> {
         .unwrap_or_default()
 }
 
-fn git_roots_from_path(path: &Path) -> Vec<PathBuf> {
+pub(crate) fn git_roots_from_path(path: &Path) -> Vec<PathBuf> {
     let mut roots = Vec::new();
     if let Some(parent) = path.parent() {
         if parent.file_name().and_then(OsStr::to_str) == Some("cmd")
@@ -341,7 +345,7 @@ fn git_roots_from_path(path: &Path) -> Vec<PathBuf> {
     roots
 }
 
-fn locate_git() -> Option<PathBuf> {
+pub(crate) fn locate_git() -> Option<PathBuf> {
     let mut candidates = vec![
         PathBuf::from(r"C:\Program Files\Git\cmd\git.exe"),
         PathBuf::from(r"C:\Program Files (x86)\Git\cmd\git.exe"),
@@ -362,7 +366,7 @@ fn locate_git() -> Option<PathBuf> {
         })
 }
 
-fn locate_git_bash() -> Option<PathBuf> {
+pub(crate) fn locate_git_bash() -> Option<PathBuf> {
     let mut candidates = vec![
         PathBuf::from(r"C:\Program Files\Git\bin\bash.exe"),
         PathBuf::from(r"C:\Program Files (x86)\Git\bin\bash.exe"),

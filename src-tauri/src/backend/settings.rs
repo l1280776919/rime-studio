@@ -1,9 +1,13 @@
-fn get_appearance_config_sync() -> Result<AppearanceConfig, String> {
+﻿use crate::backend::*;
+use crate::*;
+use std::{ffi::OsStr, fs, path::{Path, PathBuf}, process::Command};
+
+pub(crate) fn get_appearance_config_sync() -> Result<AppearanceConfig, String> {
     let user_dir = rime_user_dir()?;
     Ok(read_appearance_config(&user_dir))
 }
 
-fn detect_paging_keys(contents: &str) -> String {
+pub(crate) fn detect_paging_keys(contents: &str) -> String {
     if contents.contains("accept: Up") && contents.contains("send: Page_Up") {
         return "arrow_keys".to_string();
     }
@@ -13,7 +17,7 @@ fn detect_paging_keys(contents: &str) -> String {
     "comma_period".to_string()
 }
 
-fn detect_navigation_keys(contents: &str) -> String {
+pub(crate) fn detect_navigation_keys(contents: &str) -> String {
     // left_right when Left→Up (synthesize Up for selection) OR Left→Page_Up (extra paging)
     let left_sends_up = contents.contains("accept: Left") && contents.contains("send: Up");
     let left_sends_page = contents.contains("accept: Left") && contents.contains("send: Page_Up");
@@ -23,7 +27,7 @@ fn detect_navigation_keys(contents: &str) -> String {
     "up_down".to_string()
 }
 
-fn get_quick_settings_sync() -> Result<QuickSettingsConfig, String> {
+pub(crate) fn get_quick_settings_sync() -> Result<QuickSettingsConfig, String> {
     let user_dir = rime_user_dir()?;
     let default_custom = read_to_string(&user_dir.join("default.custom.yaml"));
     let appearance = read_appearance_config(&user_dir);
@@ -50,7 +54,7 @@ fn get_quick_settings_sync() -> Result<QuickSettingsConfig, String> {
     })
 }
 
-fn render_quick_default_custom(config: &QuickSettingsConfig) -> String {
+pub(crate) fn render_quick_default_custom(config: &QuickSettingsConfig) -> String {
     let schema_id = config.schema_id.replace(['/', '\\'], "").replace("..", "");
     let switch_value = if config.switch_key == "shift" {
         "commit_code"
@@ -95,7 +99,7 @@ fn render_quick_default_custom(config: &QuickSettingsConfig) -> String {
     default_contents.join("\n")
 }
 
-fn build_text_diff(old_contents: &str, new_contents: &str) -> Vec<String> {
+pub(crate) fn build_text_diff(old_contents: &str, new_contents: &str) -> Vec<String> {
     if old_contents == new_contents {
         return Vec::new();
     }
@@ -121,7 +125,7 @@ fn build_text_diff(old_contents: &str, new_contents: &str) -> Vec<String> {
     diff
 }
 
-fn preview_file(user_dir: &Path, name: &str, new_contents: String) -> ConfigPreviewFile {
+pub(crate) fn preview_file(user_dir: &Path, name: &str, new_contents: String) -> ConfigPreviewFile {
     let path = user_dir.join(name);
     let old_contents = read_to_string(&path);
     let diff_lines = build_text_diff(&old_contents, &new_contents);
@@ -134,7 +138,7 @@ fn preview_file(user_dir: &Path, name: &str, new_contents: String) -> ConfigPrev
     }
 }
 
-fn preview_quick_settings_sync(config: QuickSettingsConfig) -> Result<ConfigPreview, String> {
+pub(crate) fn preview_quick_settings_sync(config: QuickSettingsConfig) -> Result<ConfigPreview, String> {
     let user_dir = rime_user_dir()?;
     let mut appearance = read_appearance_config(&user_dir);
     appearance.page_size = config.page_size;
@@ -158,7 +162,7 @@ fn preview_quick_settings_sync(config: QuickSettingsConfig) -> Result<ConfigPrev
     })
 }
 
-fn save_quick_settings_sync(config: QuickSettingsConfig) -> Result<QuickSettingsConfig, String> {
+pub(crate) fn save_quick_settings_sync(config: QuickSettingsConfig) -> Result<QuickSettingsConfig, String> {
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
     backup_user_config(&user_dir, BackupKind::BeforeSave)?;
@@ -180,7 +184,7 @@ fn save_quick_settings_sync(config: QuickSettingsConfig) -> Result<QuickSettings
     get_quick_settings_sync()
 }
 
-fn push_check(checks: &mut Vec<ConfigHealthCheck>, name: &str, status: &str, detail: String) {
+pub(crate) fn push_check(checks: &mut Vec<ConfigHealthCheck>, name: &str, status: &str, detail: String) {
     checks.push(ConfigHealthCheck {
         name: name.to_string(),
         status: status.to_string(),
@@ -188,14 +192,14 @@ fn push_check(checks: &mut Vec<ConfigHealthCheck>, name: &str, status: &str, det
     });
 }
 
-fn patch_preamble_is_clean(contents: &str) -> bool {
+pub(crate) fn patch_preamble_is_clean(contents: &str) -> bool {
     contents
         .lines()
         .take_while(|line| line.trim() != "patch:")
         .all(|line| line.trim().is_empty() || line.trim_start().starts_with('#'))
 }
 
-fn count_patch_key(contents: &str, key: &str) -> usize {
+pub(crate) fn count_patch_key(contents: &str, key: &str) -> usize {
     contents
         .lines()
         .filter(|line| {
@@ -205,7 +209,7 @@ fn count_patch_key(contents: &str, key: &str) -> usize {
         .count()
 }
 
-fn first_patch_string(contents: &str, key: &str) -> Option<String> {
+pub(crate) fn first_patch_string(contents: &str, key: &str) -> Option<String> {
     contents.lines().find_map(|line| {
         let trimmed = line.trim_start().trim_matches('"');
         if !trimmed.starts_with(key) {
@@ -217,7 +221,7 @@ fn first_patch_string(contents: &str, key: &str) -> Option<String> {
     })
 }
 
-fn first_plain_value(contents: &str, key: &str) -> Option<String> {
+pub(crate) fn first_plain_value(contents: &str, key: &str) -> Option<String> {
     contents.lines().find_map(|line| {
         let trimmed = line.trim();
         if !trimmed.starts_with(key) {
@@ -230,7 +234,7 @@ fn first_plain_value(contents: &str, key: &str) -> Option<String> {
     })
 }
 
-fn nested_plain_value(contents: &str, section: &str, key: &str) -> Option<String> {
+pub(crate) fn nested_plain_value(contents: &str, section: &str, key: &str) -> Option<String> {
     let mut in_section = false;
     for line in contents.lines() {
         let trimmed = line.trim();
@@ -251,7 +255,7 @@ fn nested_plain_value(contents: &str, section: &str, key: &str) -> Option<String
     None
 }
 
-fn inspect_config_health_sync() -> Result<ConfigHealthReport, String> {
+pub(crate) fn inspect_config_health_sync() -> Result<ConfigHealthReport, String> {
     let user_dir = rime_user_dir()?;
     let default_custom_path = user_dir.join("default.custom.yaml");
     let weasel_custom_path = user_dir.join("weasel.custom.yaml");
@@ -498,7 +502,7 @@ fn inspect_config_health_sync() -> Result<ConfigHealthReport, String> {
     Ok(ConfigHealthReport { summary, checks })
 }
 
-fn repair_config_health_sync() -> Result<ConfigHealthReport, String> {
+pub(crate) fn repair_config_health_sync() -> Result<ConfigHealthReport, String> {
     let quick = get_quick_settings_sync().unwrap_or(QuickSettingsConfig {
         schema_id: "luna_pinyin_simp".to_string(),
         page_size: 5,
@@ -517,7 +521,7 @@ fn repair_config_health_sync() -> Result<ConfigHealthReport, String> {
     inspect_config_health_sync()
 }
 
-fn repair_config_health_item_sync(name: String) -> Result<ConfigHealthReport, String> {
+pub(crate) fn repair_config_health_item_sync(name: String) -> Result<ConfigHealthReport, String> {
     let name = name.trim();
     match name {
         "default.custom.yaml" | "方案列表" | "候选数量合并" => {
@@ -554,14 +558,14 @@ fn repair_config_health_item_sync(name: String) -> Result<ConfigHealthReport, St
     inspect_config_health_sync()
 }
 
-fn parse_patch_bool(contents: &str, key: &str, fallback: bool) -> bool {
+pub(crate) fn parse_patch_bool(contents: &str, key: &str, fallback: bool) -> bool {
     first_patch_string(contents, key)
         .and_then(|value| value.parse::<u32>().ok())
         .map(|value| value != 0)
         .unwrap_or(fallback)
 }
 
-fn get_rime_ice_settings_sync() -> Result<RimeIceSettings, String> {
+pub(crate) fn get_rime_ice_settings_sync() -> Result<RimeIceSettings, String> {
     let user_dir = rime_user_dir()?;
     let custom = read_to_string(&user_dir.join("rime_ice.custom.yaml"));
     Ok(RimeIceSettings {
@@ -576,18 +580,18 @@ fn get_rime_ice_settings_sync() -> Result<RimeIceSettings, String> {
     })
 }
 
-fn has_lmdg_grammar_patch(contents: &str) -> bool {
+pub(crate) fn has_lmdg_grammar_patch(contents: &str) -> bool {
     contents.contains("wanxiang-lts-zh-hans")
         || contents.contains("translator/contextual_suggestions")
 }
 
-fn has_fuzzy_pinyin_patch(contents: &str) -> bool {
+pub(crate) fn has_fuzzy_pinyin_patch(contents: &str) -> bool {
     contents.contains("speller/algebra/+")
         || contents.contains("derive/^([zcs])h/$1/")
         || contents.contains("derive/ang$/an/")
 }
 
-fn fuzzy_pinyin_algebra_rules() -> Vec<&'static str> {
+pub(crate) fn fuzzy_pinyin_algebra_rules() -> Vec<&'static str> {
     vec![
         "derive/^([zcs])h/$1/",
         "derive/^([zcs])([^h])/$1h$2/",
@@ -609,7 +613,7 @@ fn fuzzy_pinyin_algebra_rules() -> Vec<&'static str> {
     ]
 }
 
-fn render_rime_ice_custom(
+pub(crate) fn render_rime_ice_custom(
     settings: &RimeIceSettings,
     enable_lmdg_grammar: bool,
     enable_fuzzy_pinyin: bool,
@@ -664,7 +668,7 @@ fn render_rime_ice_custom(
     lines.join("\n")
 }
 
-fn save_rime_ice_settings_sync(settings: RimeIceSettings) -> Result<RimeIceSettings, String> {
+pub(crate) fn save_rime_ice_settings_sync(settings: RimeIceSettings) -> Result<RimeIceSettings, String> {
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
     let custom_path = user_dir.join("rime_ice.custom.yaml");
@@ -679,7 +683,7 @@ fn save_rime_ice_settings_sync(settings: RimeIceSettings) -> Result<RimeIceSetti
     Ok(settings)
 }
 
-fn save_appearance_config_sync(config: AppearanceConfig) -> Result<AppearanceConfig, String> {
+pub(crate) fn save_appearance_config_sync(config: AppearanceConfig) -> Result<AppearanceConfig, String> {
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
     backup_user_config(&user_dir, BackupKind::BeforeSave)?;
@@ -688,12 +692,12 @@ fn save_appearance_config_sync(config: AppearanceConfig) -> Result<AppearanceCon
     Ok(read_appearance_config(&user_dir))
 }
 
-fn list_backups_sync() -> Result<Vec<BackupEntry>, String> {
+pub(crate) fn list_backups_sync() -> Result<Vec<BackupEntry>, String> {
     let user_dir = rime_user_dir()?;
     list_backup_dirs(&user_dir)
 }
 
-fn create_backup_sync() -> Result<BackupEntry, String> {
+pub(crate) fn create_backup_sync() -> Result<BackupEntry, String> {
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
     let backup_dir = backup_user_config(&user_dir, BackupKind::Manual)?;
@@ -709,11 +713,11 @@ fn create_backup_sync() -> Result<BackupEntry, String> {
         .ok_or_else(|| "备份已创建但无法列出".to_string())
 }
 
-fn open_rime_user_dir_sync() -> Result<(), String> {
+pub(crate) fn open_rime_user_dir_sync() -> Result<(), String> {
     open_in_explorer(&rime_user_dir()?)
 }
 
-fn open_config_file_sync(name: String) -> Result<(), String> {
+pub(crate) fn open_config_file_sync(name: String) -> Result<(), String> {
     let allowed = [
         "default.custom.yaml",
         "weasel.custom.yaml",
@@ -736,50 +740,43 @@ fn open_config_file_sync(name: String) -> Result<(), String> {
     reveal_in_explorer(&path)
 }
 
-fn open_plum_dir_sync() -> Result<(), String> {
+pub(crate) fn open_plum_dir_sync() -> Result<(), String> {
     open_in_explorer(&app_data_dir()?.join("plum"))
 }
 
-fn open_backup_dir_sync(backup_name: String) -> Result<(), String> {
+pub(crate) fn open_backup_dir_sync(backup_name: String) -> Result<(), String> {
     let user_dir = rime_user_dir()?;
     let backup_dir = validated_backup_dir(&user_dir, &backup_name)?;
     open_in_explorer(&backup_dir)
 }
 
-fn restore_backup_sync(backup_name: String) -> Result<RestoreResult, String> {
+pub(crate) fn restore_backup_sync(backup_name: String) -> Result<RestoreResult, String> {
     let user_dir = rime_user_dir()?;
     let backup_dir = validated_backup_dir(&user_dir, &backup_name)?;
     restore_backup_dir(&user_dir, &backup_dir)
 }
 
-fn delete_backup_sync(backup_name: String) -> Result<(), String> {
+pub(crate) fn delete_backup_sync(backup_name: String) -> Result<(), String> {
     let user_dir = rime_user_dir()?;
     let backup_dir = validated_backup_dir(&user_dir, &backup_name)?;
     fs::remove_dir_all(&backup_dir).map_err(|err| format!("删除备份失败: {err}"))
 }
 
-fn delete_dictionary_sync(dict_name: String) -> Result<(), String> {
+pub(crate) fn delete_dictionary_sync(dict_name: String) -> Result<(), String> {
     let user_dir = rime_user_dir()?;
     let path = validate_dictionary_path(&user_dir, &dict_name)?;
     fs::remove_file(&path).map_err(|err| format!("删除词库失败: {err}"))
 }
 
-fn scan_dictionaries_sync_wrapper() -> Result<Vec<DictInfo>, String> {
+pub(crate) fn scan_dictionaries_sync_wrapper() -> Result<Vec<DictInfo>, String> {
     list_dictionaries_sync()
 }
 
-fn get_dict_health_sync_wrapper(dict_name: String) -> Result<DictHealth, String> {
+pub(crate) fn get_dict_health_sync_wrapper(dict_name: String) -> Result<DictHealth, String> {
     get_dict_health_sync(dict_name)
 }
 
-#[derive(Debug, Serialize)]
-struct RimeDownloadResult {
-    success: bool,
-    installer_path: Option<String>,
-    message: String,
-}
-
-fn download_github_release_installer<F>(
+pub(crate) fn download_github_release_installer<F>(
     api_url: &str,
     asset_filter: F,
     missing_asset_message: &str,
@@ -838,7 +835,7 @@ where
     })
 }
 
-fn download_rime_installer_sync() -> Result<RimeDownloadResult, String> {
+pub(crate) fn download_rime_installer_sync() -> Result<RimeDownloadResult, String> {
     download_github_release_installer(
         "https://api.github.com/repos/rime/weasel/releases/latest",
         |name| name.ends_with(".exe"),
@@ -847,7 +844,7 @@ fn download_rime_installer_sync() -> Result<RimeDownloadResult, String> {
     )
 }
 
-fn download_git_installer_sync() -> Result<RimeDownloadResult, String> {
+pub(crate) fn download_git_installer_sync() -> Result<RimeDownloadResult, String> {
     download_github_release_installer(
         "https://api.github.com/repos/git-for-windows/git/releases/latest",
         |name| name.starts_with("Git-") && name.ends_with(".exe") && name.contains("64-bit"),
@@ -856,7 +853,7 @@ fn download_git_installer_sync() -> Result<RimeDownloadResult, String> {
     )
 }
 
-fn validate_downloaded_installer_path(path: String) -> Result<PathBuf, String> {
+pub(crate) fn validate_downloaded_installer_path(path: String) -> Result<PathBuf, String> {
     let installer_path = PathBuf::from(path);
     if !installer_path.exists() || !installer_path.is_file() {
         return Err("安装包文件不存在".to_string());
@@ -880,7 +877,7 @@ fn validate_downloaded_installer_path(path: String) -> Result<PathBuf, String> {
     Ok(canonical_installer)
 }
 
-fn launch_installer_sync(path: String) -> Result<(), String> {
+pub(crate) fn launch_installer_sync(path: String) -> Result<(), String> {
     let installer_path = validate_downloaded_installer_path(path)?;
 
     Command::new(&installer_path)

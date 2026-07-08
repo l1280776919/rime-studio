@@ -166,8 +166,8 @@ function showFeatured() {
         </div>
 
         <el-table
-          :data="activeOnlineRows"
           v-loading="activeOnlineLoading"
+          :data="activeOnlineRows"
           stripe
           max-height="min(540px, 58vh)"
         >

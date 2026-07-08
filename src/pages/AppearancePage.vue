@@ -366,24 +366,28 @@ onMounted(loadAppearance);
                 type="button"
                 class="preset-chip"
                 :class="{ active: scheme.isActive, system: scheme.isSystem }"
-                @click="selectScheme(scheme)"
                 :title="scheme.isActive ? '当前使用中' : '点击使用此方案'"
+                @click="selectScheme(scheme)"
               >
-                <span class="preset-swatch" :style="{ background: rimeToCssColor(scheme.colors.hilited_back_color as string) }"></span>
+                <span class="preset-swatch" :style="{ background: rimeToCssColor(scheme.colors.hilited_back_color as string) }" />
                 {{ scheme.label }}
-                <span v-if="scheme.isActive" class="active-dot"></span>
+                <span v-if="scheme.isActive" class="active-dot" />
                 <el-button
                   v-if="scheme.isSystem"
                   link class="preset-copy"
-                  @click.stop="copyPreset(presets.find(p => p.name === scheme.name)!)"
                   title="复制为自定义方案"
-                ><el-icon><CopyDocument /></el-icon></el-button>
+                  @click.stop="copyPreset(presets.find(p => p.name === scheme.name)!)"
+                >
+                  <el-icon><CopyDocument /></el-icon>
+                </el-button>
                 <el-button
                   v-else
                   link class="preset-copy preset-delete"
-                  @click.stop="deleteCustomScheme(customSchemes.find(c => c.name === scheme.name)!)"
                   title="删除此方案"
-                >×</el-button>
+                  @click.stop="deleteCustomScheme(customSchemes.find(c => c.name === scheme.name)!)"
+                >
+                  ×
+                </el-button>
               </button>
             </div>
           </div>
@@ -433,9 +437,9 @@ onMounted(loadAppearance);
                   <code>{{ form[field.key] }}</code>
                   <el-color-picker
                     :model-value="rimeToCssColor(form[field.key])"
-                    @update:model-value="setColor(field.key, $event)"
                     size="small"
                     :disabled="isLocked"
+                    @update:model-value="setColor(field.key, $event)"
                   />
                 </label>
               </div>

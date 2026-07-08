@@ -1,4 +1,8 @@
-fn open_in_explorer(path: &Path) -> Result<(), String> {
+use crate::backend::*;
+use crate::*;
+use std::{fs, path::{Path, PathBuf}, process::Command};
+
+pub(crate) fn open_in_explorer(path: &Path) -> Result<(), String> {
     if !path.exists() {
         return Err(format!("路径不存在: {}", path.display()));
     }
@@ -10,7 +14,7 @@ fn open_in_explorer(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn reveal_in_explorer(path: &Path) -> Result<(), String> {
+pub(crate) fn reveal_in_explorer(path: &Path) -> Result<(), String> {
     if !path.exists() {
         return Err(format!("路径不存在: {}", path.display()));
     }
@@ -23,7 +27,7 @@ fn reveal_in_explorer(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn run_command(mut command: Command) -> Result<(bool, String), String> {
+pub(crate) fn run_command(mut command: Command) -> Result<(bool, String), String> {
     let output = suppress_console_window(&mut command)
         .output()
         .map_err(|err| format!("运行命令失败: {err}"))?;
@@ -35,7 +39,7 @@ fn run_command(mut command: Command) -> Result<(bool, String), String> {
     Ok((output.status.success(), log))
 }
 
-fn ensure_plum(plum_dir: &Path) -> Result<String, String> {
+pub(crate) fn ensure_plum(plum_dir: &Path) -> Result<String, String> {
     let git = locate_git().ok_or_else(|| "安装 rime-ice 需要 Git，但未找到".to_string())?;
 
     let mut log = String::new();
@@ -69,7 +73,7 @@ fn ensure_plum(plum_dir: &Path) -> Result<String, String> {
     Ok(log)
 }
 
-fn deploy_rime_internal() -> Result<DeployResult, String> {
+pub(crate) fn deploy_rime_internal() -> Result<DeployResult, String> {
     let deployer_path = locate_deployer().ok_or_else(|| "未找到 WeaselDeployer.exe".to_string())?;
 
     let mut command = Command::new(&deployer_path);
@@ -88,7 +92,7 @@ fn deploy_rime_internal() -> Result<DeployResult, String> {
     })
 }
 
-fn scan_rime_environment_sync() -> Result<RimeEnvironment, String> {
+pub(crate) fn scan_rime_environment_sync() -> Result<RimeEnvironment, String> {
     let user_dir = rime_user_dir()?;
     let build_dir = user_dir.join("build");
     let plum_dir = app_data_dir()?.join("plum");
@@ -128,11 +132,11 @@ fn scan_rime_environment_sync() -> Result<RimeEnvironment, String> {
     })
 }
 
-fn deploy_rime_sync() -> Result<DeployResult, String> {
+pub(crate) fn deploy_rime_sync() -> Result<DeployResult, String> {
     deploy_rime_internal()
 }
 
-fn install_rime_ice_sync(recipe: Option<String>) -> Result<InstallResult, String> {
+pub(crate) fn install_rime_ice_sync(recipe: Option<String>) -> Result<InstallResult, String> {
     let bash = locate_git_bash();
     if bash.is_none() {
         return Err("运行 rime-install 需要 Git Bash，但未找到".to_string());

@@ -1,4 +1,10 @@
-fn github_release_asset_url(api_url: &str, asset_name: &str) -> Result<(String, String), String> {
+use crate::backend::*;
+use crate::*;
+use tauri::Emitter;
+use std::time::{SystemTime, UNIX_EPOCH};
+use std::{ffi::OsStr, fs, path::{Path, PathBuf}, process::{self, Command}};
+
+pub(crate) fn github_release_asset_url(api_url: &str, asset_name: &str) -> Result<(String, String), String> {
     let response = ureq::get(api_url)
         .set("User-Agent", "RimeStudio/0.2")
         .set("Accept", "application/vnd.github+json")
@@ -30,7 +36,7 @@ fn github_release_asset_url(api_url: &str, asset_name: &str) -> Result<(String, 
     Err(format!("未在 RIME-LMDG 发布资源中找到 {asset_name}"))
 }
 
-fn unique_temp_dir(prefix: &str) -> Result<PathBuf, String> {
+pub(crate) fn unique_temp_dir(prefix: &str) -> Result<PathBuf, String> {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|err| format!("读取系统时间失败: {err}"))?
@@ -38,7 +44,7 @@ fn unique_temp_dir(prefix: &str) -> Result<PathBuf, String> {
     Ok(app_data_dir()?.join(format!("{prefix}-{}-{millis}", process::id())))
 }
 
-fn expand_zip_archive(zip_path: &Path, destination: &Path) -> Result<(), String> {
+pub(crate) fn expand_zip_archive(zip_path: &Path, destination: &Path) -> Result<(), String> {
     fs::create_dir_all(destination).map_err(|err| format!("创建解压目录失败: {err}"))?;
     let mut command = Command::new("powershell");
     command
@@ -57,7 +63,7 @@ fn expand_zip_archive(zip_path: &Path, destination: &Path) -> Result<(), String>
     }
 }
 
-fn safe_relative_path(path: &Path) -> bool {
+pub(crate) fn safe_relative_path(path: &Path) -> bool {
     path.components().all(|component| {
         matches!(
             component,
@@ -66,7 +72,7 @@ fn safe_relative_path(path: &Path) -> bool {
     })
 }
 
-fn copy_lmdg_dictionaries(source_dir: &Path, target_dir: &Path) -> Result<usize, String> {
+pub(crate) fn copy_lmdg_dictionaries(source_dir: &Path, target_dir: &Path) -> Result<usize, String> {
     fs::create_dir_all(target_dir).map_err(|err| format!("创建万象词库目录失败: {err}"))?;
     let mut installed = 0usize;
     let mut pending = vec![source_dir.to_path_buf()];
@@ -111,7 +117,7 @@ fn copy_lmdg_dictionaries(source_dir: &Path, target_dir: &Path) -> Result<usize,
     }
 }
 
-fn emit_download_progress(
+pub(crate) fn emit_download_progress(
     window: &tauri::Window,
     kind: &str,
     stage: &str,
@@ -132,7 +138,7 @@ fn emit_download_progress(
     );
 }
 
-fn install_lmdg_dicts_sync_with_progress<F>(progress: F) -> Result<LmdgInstallResult, String>
+pub(crate) fn install_lmdg_dicts_sync_with_progress<F>(progress: F) -> Result<LmdgInstallResult, String>
 where
     F: FnMut(u64, Option<u64>),
 {
@@ -167,7 +173,7 @@ where
     })
 }
 
-fn install_lmdg_grammar_sync_with_progress<F>(
+pub(crate) fn install_lmdg_grammar_sync_with_progress<F>(
     progress: F,
 ) -> Result<LmdgGrammarInstallResult, String>
 where
@@ -211,7 +217,7 @@ where
     })
 }
 
-fn uninstall_lmdg_grammar_sync() -> Result<LmdgGrammarUninstallResult, String> {
+pub(crate) fn uninstall_lmdg_grammar_sync() -> Result<LmdgGrammarUninstallResult, String> {
     let model_name = "wanxiang-lts-zh-hans";
     let asset_name = format!("{model_name}.gram");
     let user_dir = rime_user_dir()?;
@@ -247,7 +253,7 @@ fn uninstall_lmdg_grammar_sync() -> Result<LmdgGrammarUninstallResult, String> {
     })
 }
 
-fn preview_dictionary_import_sync(
+pub(crate) fn preview_dictionary_import_sync(
     source_name: String,
     data: Vec<u8>,
 ) -> Result<DictionaryImportPreview, String> {
@@ -276,7 +282,7 @@ fn preview_dictionary_import_sync(
     })
 }
 
-fn import_dictionary_sync(
+pub(crate) fn import_dictionary_sync(
     source_name: String,
     data: Vec<u8>,
 ) -> Result<DictionaryImportResult, String> {
@@ -297,7 +303,7 @@ fn import_dictionary_sync(
     })
 }
 
-fn export_dictionary_sync(dict_name: String) -> Result<DictionaryExportResult, String> {
+pub(crate) fn export_dictionary_sync(dict_name: String) -> Result<DictionaryExportResult, String> {
     let user_dir = rime_user_dir()?;
     let path = validate_dictionary_path(&user_dir, &dict_name)?;
 

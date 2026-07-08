@@ -1,24 +1,14 @@
+use crate::backend::*;
+use crate::*;
+
 const APP_RELEASE_API_URL: &str = "https://api.github.com/repos/l1280776919/rime-studio/releases/latest";
 const APP_RELEASES_URL: &str = "https://github.com/l1280776919/rime-studio/releases";
 
-#[derive(Debug, Serialize)]
-struct AppUpdateInfo {
-    current_version: String,
-    latest_version: Option<String>,
-    release_name: Option<String>,
-    release_notes: Option<String>,
-    published_at: Option<String>,
-    release_url: String,
-    asset_name: Option<String>,
-    asset_url: Option<String>,
-    update_available: bool,
-}
-
-fn normalize_version(value: &str) -> &str {
+pub(crate) fn normalize_version(value: &str) -> &str {
     value.trim().trim_start_matches('v').trim_start_matches('V')
 }
 
-fn parse_semver(value: &str) -> Option<(u64, u64, u64, Vec<String>)> {
+pub(crate) fn parse_semver(value: &str) -> Option<(u64, u64, u64, Vec<String>)> {
     let normalized = normalize_version(value);
     let (core, suffix) = normalized.split_once('-').unwrap_or((normalized, ""));
     let mut parts = core.split('.');
@@ -33,7 +23,7 @@ fn parse_semver(value: &str) -> Option<(u64, u64, u64, Vec<String>)> {
     Some((major, minor, patch, suffix_parts))
 }
 
-fn version_is_newer(latest: &str, current: &str) -> bool {
+pub(crate) fn version_is_newer(latest: &str, current: &str) -> bool {
     let Some((latest_major, latest_minor, latest_patch, latest_suffix)) = parse_semver(latest) else {
         return false;
     };
@@ -47,7 +37,7 @@ fn version_is_newer(latest: &str, current: &str) -> bool {
             && latest_suffix.is_empty())
 }
 
-fn release_asset_score(name: &str) -> i32 {
+pub(crate) fn release_asset_score(name: &str) -> i32 {
     let lower = name.to_ascii_lowercase();
     if lower.ends_with(".exe") {
         30
@@ -58,7 +48,7 @@ fn release_asset_score(name: &str) -> i32 {
     }
 }
 
-fn check_app_update_sync() -> Result<AppUpdateInfo, String> {
+pub(crate) fn check_app_update_sync() -> Result<AppUpdateInfo, String> {
     let current_version = env!("CARGO_PKG_VERSION").to_string();
     let response = ureq::get(APP_RELEASE_API_URL)
         .set("User-Agent", "RimeStudio/0.2")
@@ -128,7 +118,7 @@ mod app_update_tests {
     use super::version_is_newer;
 
     #[test]
-    fn compares_release_versions() {
+    pub(crate) fn compares_release_versions() {
         assert!(version_is_newer("v0.2.11", "0.2.10"));
         assert!(version_is_newer("1.0.0", "0.9.9"));
         assert!(!version_is_newer("v0.2.10", "0.2.10"));
@@ -136,7 +126,7 @@ mod app_update_tests {
     }
 
     #[test]
-    fn treats_stable_release_as_newer_than_current_prerelease() {
+    pub(crate) fn treats_stable_release_as_newer_than_current_prerelease() {
         assert!(version_is_newer("1.0.0", "1.0.0-beta.1"));
         assert!(!version_is_newer("1.0.0-beta.1", "1.0.0"));
     }

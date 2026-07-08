@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::backend::*;
+    use crate::*;
+    use std::{env, ffi::OsStr, fs, path::Path, process::{self}};
 
     #[test]
     fn parses_schema_list_from_yaml_patch() {

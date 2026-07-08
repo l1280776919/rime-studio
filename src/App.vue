@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onMounted, ref, watch } from "vue";
-import { ElMessage, ElMessageBox } from "element-plus";
+import { ElMessage } from "element-plus";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Brush,
@@ -19,12 +19,13 @@ import {
 } from "@element-plus/icons-vue";
 import type {
   BackupEntry,
-  DeployResult,
-  InstallResult,
-  RestoreResult,
   RimeEnvironment,
 } from "./types";
+import { useTheme } from "./composables/useTheme";
+import { useBackup } from "./composables/useBackup";
+import { useDeploy } from "./composables/useDeploy";
 
+// ── Lazy page components ──────────────────────────
 const AboutPage = defineAsyncComponent(() => import("./pages/AboutPage.vue"));
 const AppearancePage = defineAsyncComponent(() => import("./pages/AppearancePage.vue"));
 const BackupsPage = defineAsyncComponent(() => import("./pages/BackupsPage.vue"));
@@ -35,18 +36,27 @@ const PhrasesPage = defineAsyncComponent(() => import("./pages/PhrasesPage.vue")
 const QuickSettingsPage = defineAsyncComponent(() => import("./pages/QuickSettingsPage.vue"));
 const SchemasPage = defineAsyncComponent(() => import("./pages/SchemasPage.vue"));
 
+// ── Composables ────────────────────────────────────
+const { isDark, toggleTheme, initTheme } = useTheme();
+const {
+  backups,
+  backingUp,
+  restoringBackup,
+  deletingBackup,
+  loadBackups,
+  createManualBackup,
+  openBackupDir,
+  restoreBackup,
+  deleteBackupEntry,
+} = useBackup();
+const { deploying, installingRecipe, log, deploy, installRimeIce } = useDeploy();
+
+// ── Navigation ─────────────────────────────────────
 type PageKey = "overview" | "quick" | "schemas" | "configs" | "appearance" | "phrases" | "dictionaries" | "backups" | "about";
 
 const PAGE_KEYS: ReadonlySet<string> = new Set<PageKey>([
-  "overview",
-  "quick",
-  "schemas",
-  "configs",
-  "appearance",
-  "phrases",
-  "dictionaries",
-  "backups",
-  "about",
+  "overview", "quick", "schemas", "configs",
+  "appearance", "phrases", "dictionaries", "backups", "about",
 ]);
 
 function isPageKey(value: string): value is PageKey {
@@ -61,46 +71,13 @@ function navigateTo(key: string) {
 
 const activePage = ref<PageKey>("overview");
 const env = ref<RimeEnvironment>();
-const backups = ref<BackupEntry[]>([]);
-const status = ref("启动中...");
-const log = ref("");
 const scanning = ref(false);
-const deploying = ref(false);
-const backingUp = ref(false);
-const restoringBackup = ref<string>();
-const deletingBackup = ref<string>();
-const installingRecipe = ref<string>();
+const status = ref("启动中...");
 const elapsedSeconds = ref(0);
 let elapsedTimer: ReturnType<typeof setInterval> | undefined;
 
-const DARK_THEME_KEY = "rime-studio-theme";
-const isDark = ref(false);
-
-function applyTheme(dark: boolean) {
-  if (dark) {
-    document.documentElement.dataset.theme = "dark";
-  } else {
-    delete document.documentElement.dataset.theme;
-  }
-  localStorage.setItem(DARK_THEME_KEY, dark ? "dark" : "light");
-}
-
-function toggleTheme() {
-  isDark.value = !isDark.value;
-  applyTheme(isDark.value);
-}
-
-function initTheme() {
-  const stored = localStorage.getItem(DARK_THEME_KEY);
-  if (stored) {
-    isDark.value = stored === "dark";
-  } else {
-    isDark.value = window.matchMedia("(prefers-color-scheme: dark)").matches;
-  }
-  applyTheme(isDark.value);
-}
-
 const hasDeployer = computed(() => Boolean(env.value?.deployer_path));
+
 const pageTitle = computed(() => {
   const titles: Record<PageKey, string> = {
     overview: "Rime 配置控制台",
@@ -115,6 +92,7 @@ const pageTitle = computed(() => {
   };
   return titles[activePage.value];
 });
+
 const pageDescription = computed(() => {
   const descriptions: Record<PageKey, string> = {
     overview: "管理方案、外观、词库与部署状态。",
@@ -130,10 +108,7 @@ const pageDescription = computed(() => {
   return descriptions[activePage.value];
 });
 
-async function loadBackups() {
-  backups.value = await invoke<BackupEntry[]>("list_backups");
-}
-
+// ── Environment ────────────────────────────────────
 async function loadEnvironment() {
   scanning.value = true;
   status.value = "正在扫描 Rime 配置...";
@@ -150,23 +125,6 @@ async function loadEnvironment() {
   }
 }
 
-async function createManualBackup() {
-  backingUp.value = true;
-  status.value = "正在创建配置备份...";
-
-  try {
-    const backup = await invoke<BackupEntry>("create_backup");
-    await loadBackups();
-    status.value = `已创建备份：${backup.name}`;
-    ElMessage.success("备份已创建");
-  } catch (error) {
-    status.value = String(error);
-    ElMessage.error(String(error));
-  } finally {
-    backingUp.value = false;
-  }
-}
-
 async function openKnownPath(command: "open_rime_user_dir" | "open_plum_dir") {
   try {
     await invoke(command);
@@ -175,113 +133,51 @@ async function openKnownPath(command: "open_rime_user_dir" | "open_plum_dir") {
   }
 }
 
-async function openBackupDir(backup: BackupEntry) {
-  try {
-    await invoke("open_backup_dir", { backupName: backup.name });
-  } catch (error) {
-    ElMessage.error(String(error));
-  }
-}
-
-async function restoreBackup(backup: BackupEntry) {
-  try {
-    await ElMessageBox.confirm(
-      `将恢复备份 ${backup.name} 中的 ${backup.files} 个文件。恢复前会先为当前配置创建一份安全备份。`,
-      "恢复备份",
-      {
-        confirmButtonText: "恢复",
-        cancelButtonText: "取消",
-        type: "warning",
-      },
-    );
-  } catch {
-    return;
-  }
-
-  restoringBackup.value = backup.name;
-  status.value = `正在恢复备份：${backup.name}`;
-
-  try {
-    const result = await invoke<RestoreResult>("restore_backup", { backupName: backup.name });
-    await loadEnvironment();
-    status.value = `已恢复 ${result.restored_files} 个文件，恢复前备份：${result.safety_backup_dir}`;
-    ElMessage.success("备份已恢复");
-  } catch (error) {
-    status.value = String(error);
-    ElMessage.error(String(error));
-  } finally {
-    restoringBackup.value = undefined;
-  }
-}
-
-async function deleteBackupEntry(backup: BackupEntry) {
-  try {
-    await ElMessageBox.confirm(
-      `确定删除备份 ${backup.name}（${backup.files} 个文件）？此操作不可恢复。`,
-      "删除备份",
-      { confirmButtonText: "删除", cancelButtonText: "取消", type: "warning" },
-    );
-  } catch {
-    return;
-  }
-
-  deletingBackup.value = backup.name;
-  try {
-    await invoke("delete_backup", { backupName: backup.name });
-    await loadBackups();
-    ElMessage.success("备份已删除");
-  } catch (error) {
-    ElMessage.error(String(error));
-  } finally {
-    deletingBackup.value = undefined;
-  }
-}
-
-async function deploy() {
-  deploying.value = true;
+// ── Wrapper handlers (status updates) ──────────────
+async function handleDeploy() {
   status.value = "正在重新部署小狼毫...";
-
   try {
-    const result = await invoke<DeployResult>("deploy_rime");
+    await deploy();
     await loadEnvironment();
-    status.value = result.message;
-    ElMessage({
-      type: result.success ? "success" : "warning",
-      message: result.message,
-    });
+    status.value = "部署完成";
   } catch (error) {
     status.value = String(error);
-    ElMessage.error(String(error));
-  } finally {
-    deploying.value = false;
   }
 }
 
-async function installRimeIce(recipe: string) {
-  installingRecipe.value = recipe;
+async function handleInstallRimeIce(recipe: string) {
   status.value = `正在安装 ${recipe}...`;
-  log.value = "正在准备安装器...";
-
   try {
-    const result = await invoke<InstallResult>("install_rime_ice", { recipe });
+    await installRimeIce(recipe);
     await loadEnvironment();
-    status.value = result.success
-      ? `已安装 ${result.recipe}`
-      : `安装失败：${result.recipe}`;
-    log.value = result.log;
-    ElMessage({
-      type: result.success ? "success" : "error",
-      message: result.success ? "rime-ice 安装完成" : "rime-ice 安装失败",
-    });
+    status.value = `${recipe} 安装完成`;
   } catch (error) {
     status.value = String(error);
-    log.value = String(error);
-    ElMessage.error(String(error));
-  } finally {
-    installingRecipe.value = undefined;
   }
 }
 
+async function handleCreateBackup() {
+  status.value = "正在创建配置备份...";
+  try {
+    const backup = await createManualBackup();
+    if (backup) status.value = `已创建备份：${backup.name}`;
+  } catch (error) {
+    status.value = String(error);
+  }
+}
+
+async function handleRestoreBackup(backup: BackupEntry) {
+  status.value = `正在恢复备份：${backup.name}`;
+  try {
+    await restoreBackup(backup);
+    await loadEnvironment();
+    status.value = "备份已恢复";
+  } catch (error) {
+    status.value = String(error);
+  }
+}
+
+// ── Busy / Elapsed timer ──────────────────────────
 const isBusy = computed(
   () => scanning.value || deploying.value || backingUp.value || restoringBackup.value || installingRecipe.value,
 );
@@ -317,6 +213,7 @@ function formatElapsed(seconds: number) {
   return `${min}m ${sec}s`;
 }
 
+// ── Lifecycle ──────────────────────────────────────
 onMounted(() => {
   initTheme();
   loadEnvironment();
@@ -407,7 +304,7 @@ onMounted(() => {
               :disabled="!hasDeployer"
               :loading="deploying"
               :icon="UploadFilled"
-              @click="deploy"
+              @click="handleDeploy"
             >
               重新部署
             </el-button>
@@ -427,11 +324,11 @@ onMounted(() => {
               :restoring-backup="restoringBackup"
               :installing-recipe="installingRecipe"
               :deleting-backup="deletingBackup"
-              @create-backup="createManualBackup"
+              @create-backup="handleCreateBackup"
               @open-path="openKnownPath"
-              @install="installRimeIce"
+              @install="handleInstallRimeIce"
               @open-backup="openBackupDir"
-              @restore-backup="restoreBackup"
+              @restore-backup="handleRestoreBackup"
               @delete-backup="deleteBackupEntry"
             />
 
@@ -441,8 +338,8 @@ onMounted(() => {
               :env="env"
               :installing-recipe="installingRecipe"
               @saved="loadEnvironment"
-              @deploy="deploy"
-              @install="installRimeIce"
+              @deploy="handleDeploy"
+              @install="handleInstallRimeIce"
             />
 
             <SchemasPage
@@ -450,7 +347,7 @@ onMounted(() => {
               key="schemas"
               :env="env"
               @saved="loadEnvironment"
-              @deploy="deploy"
+              @deploy="handleDeploy"
             />
 
             <ConfigFilesPage
@@ -459,7 +356,7 @@ onMounted(() => {
               :env="env"
               :backing-up="backingUp"
               @refresh="loadEnvironment"
-              @create-backup="createManualBackup"
+              @create-backup="handleCreateBackup"
             />
 
             <AppearancePage
@@ -467,7 +364,7 @@ onMounted(() => {
               key="appearance"
               :env="env"
               @saved="loadEnvironment"
-              @deploy="deploy"
+              @deploy="handleDeploy"
             />
 
             <PhrasesPage
@@ -475,7 +372,7 @@ onMounted(() => {
               key="phrases"
               :env="env"
               @saved="loadEnvironment"
-              @deploy="deploy"
+              @deploy="handleDeploy"
             />
 
             <DictionariesPage
@@ -483,7 +380,7 @@ onMounted(() => {
               key="dictionaries"
               :env="env"
               @open-path="openKnownPath"
-              @deploy="deploy"
+              @deploy="handleDeploy"
             />
 
             <BackupsPage
@@ -493,9 +390,9 @@ onMounted(() => {
               :backing-up="backingUp"
               :restoring-backup="restoringBackup"
               :deleting-backup="deletingBackup"
-              @create-backup="createManualBackup"
+              @create-backup="handleCreateBackup"
               @open-backup="openBackupDir"
-              @restore-backup="restoreBackup"
+              @restore-backup="handleRestoreBackup"
               @delete-backup="deleteBackupEntry"
             />
 
@@ -503,7 +400,6 @@ onMounted(() => {
               v-else-if="activePage === 'about'"
               key="about"
             />
-
           </Transition>
         </div>
 

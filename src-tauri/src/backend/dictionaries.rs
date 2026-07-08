@@ -1,4 +1,11 @@
-fn list_dictionaries_sync() -> Result<Vec<DictInfo>, String> {
+use crate::backend::*;
+use crate::*;
+use serde_yaml::Value;
+use std::io::{Read, Write};
+use std::time::Instant;
+use std::{ffi::OsStr, fs, path::{Path, PathBuf}};
+
+pub(crate) fn list_dictionaries_sync() -> Result<Vec<DictInfo>, String> {
     let user_dir = rime_user_dir()?;
     if !user_dir.exists() {
         return Ok(Vec::new());
@@ -78,7 +85,7 @@ fn list_dictionaries_sync() -> Result<Vec<DictInfo>, String> {
     Ok(dicts)
 }
 
-fn validate_dictionary_path(user_dir: &Path, dict_name: &str) -> Result<PathBuf, String> {
+pub(crate) fn validate_dictionary_path(user_dir: &Path, dict_name: &str) -> Result<PathBuf, String> {
     if !dict_name.ends_with(".dict.yaml") {
         return Err("只能操作 .dict.yaml 词库文件".to_string());
     }
@@ -103,15 +110,15 @@ fn validate_dictionary_path(user_dir: &Path, dict_name: &str) -> Result<PathBuf,
     Ok(path)
 }
 
-fn dictionary_reference_from_name(name: &str) -> String {
+pub(crate) fn dictionary_reference_from_name(name: &str) -> String {
     name.trim_end_matches(".dict.yaml").replace('\\', "/")
 }
 
-fn dictionary_file_name_from_reference(reference: &str) -> String {
+pub(crate) fn dictionary_file_name_from_reference(reference: &str) -> String {
     format!("{}.dict.yaml", reference.trim_end_matches(".dict.yaml"))
 }
 
-fn parse_import_tables(contents: &str) -> Vec<String> {
+pub(crate) fn parse_import_tables(contents: &str) -> Vec<String> {
     if let Some(Value::Sequence(items)) = yaml_lookup(contents, "import_tables") {
         let imports = items
             .iter()
@@ -159,7 +166,7 @@ fn parse_import_tables(contents: &str) -> Vec<String> {
     imports
 }
 
-fn resolve_schema_path(user_dir: &Path, schema_id: &str) -> Option<PathBuf> {
+pub(crate) fn resolve_schema_path(user_dir: &Path, schema_id: &str) -> Option<PathBuf> {
     let user_schema = user_dir.join(format!("{schema_id}.schema.yaml"));
     if user_schema.exists() {
         return Some(user_schema);
@@ -178,7 +185,7 @@ fn resolve_schema_path(user_dir: &Path, schema_id: &str) -> Option<PathBuf> {
         .find(|path| path.exists())
 }
 
-fn current_schema_dictionary(user_dir: &Path) -> (Option<String>, Option<String>, Option<String>) {
+pub(crate) fn current_schema_dictionary(user_dir: &Path) -> (Option<String>, Option<String>, Option<String>) {
     let schema_id = parse_schema(&read_to_string(&user_dir.join("default.custom.yaml")));
     let Some(schema_id_value) = schema_id.as_deref() else {
         return (schema_id, None, None);
@@ -198,11 +205,11 @@ fn current_schema_dictionary(user_dir: &Path) -> (Option<String>, Option<String>
     (schema_id, schema_name, dictionary)
 }
 
-fn dict_info_to_reference(info: &DictInfo) -> String {
+pub(crate) fn dict_info_to_reference(info: &DictInfo) -> String {
     dictionary_reference_from_name(&info.name)
 }
 
-fn read_dictionary_config_sync() -> Result<DictionaryConfig, String> {
+pub(crate) fn read_dictionary_config_sync() -> Result<DictionaryConfig, String> {
     let user_dir = rime_user_dir()?;
     let dictionaries = list_dictionaries_sync()?;
     let (schema_id, schema_name, main_dictionary) = current_schema_dictionary(&user_dir);
@@ -273,7 +280,7 @@ fn read_dictionary_config_sync() -> Result<DictionaryConfig, String> {
     })
 }
 
-fn render_main_dictionary(dictionary_id: &str, imports: &[String]) -> String {
+pub(crate) fn render_main_dictionary(dictionary_id: &str, imports: &[String]) -> String {
     let mut contents = vec![
         "---".to_string(),
         format!("name: {dictionary_id}"),
@@ -289,7 +296,7 @@ fn render_main_dictionary(dictionary_id: &str, imports: &[String]) -> String {
     contents.join("\n")
 }
 
-fn save_dictionary_imports_sync(imports: Vec<String>) -> Result<DictionaryConfig, String> {
+pub(crate) fn save_dictionary_imports_sync(imports: Vec<String>) -> Result<DictionaryConfig, String> {
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
     let (_, _, main_dictionary) = current_schema_dictionary(&user_dir);
@@ -320,7 +327,7 @@ fn save_dictionary_imports_sync(imports: Vec<String>) -> Result<DictionaryConfig
     read_dictionary_config_sync()
 }
 
-fn add_dictionary_to_current_schema_sync(reference: String) -> Result<DictionaryConfig, String> {
+pub(crate) fn add_dictionary_to_current_schema_sync(reference: String) -> Result<DictionaryConfig, String> {
     let config = read_dictionary_config_sync()?;
     let reference = reference
         .trim()
@@ -342,7 +349,7 @@ fn add_dictionary_to_current_schema_sync(reference: String) -> Result<Dictionary
     save_dictionary_imports_sync(imports)
 }
 
-fn remove_dictionary_from_current_schema_sync(
+pub(crate) fn remove_dictionary_from_current_schema_sync(
     reference: String,
 ) -> Result<DictionaryConfig, String> {
     let config = read_dictionary_config_sync()?;
@@ -360,14 +367,14 @@ fn remove_dictionary_from_current_schema_sync(
     save_dictionary_imports_sync(imports)
 }
 
-fn get_dict_health_sync(dict_name: String) -> Result<DictHealth, String> {
+pub(crate) fn get_dict_health_sync(dict_name: String) -> Result<DictHealth, String> {
     let user_dir = rime_user_dir()?;
     let path = validate_dictionary_path(&user_dir, &dict_name)?;
 
     analyze_sogou(&path).ok_or_else(|| "词库分析失败".to_string())
 }
 
-fn remove_duplicate_dictionary_lines(contents: &str) -> (String, usize) {
+pub(crate) fn remove_duplicate_dictionary_lines(contents: &str) -> (String, usize) {
     let mut seen = std::collections::HashSet::new();
     let mut removed = 0usize;
     let mut lines = Vec::new();
@@ -388,7 +395,7 @@ fn remove_duplicate_dictionary_lines(contents: &str) -> (String, usize) {
     (cleaned, removed)
 }
 
-fn clean_dictionary_duplicates_sync(dict_name: String) -> Result<DictionaryCleanResult, String> {
+pub(crate) fn clean_dictionary_duplicates_sync(dict_name: String) -> Result<DictionaryCleanResult, String> {
     let user_dir = rime_user_dir()?;
     let path = validate_dictionary_path(&user_dir, &dict_name)?;
     let contents = fs::read_to_string(&path).map_err(|err| format!("读取词库失败: {err}"))?;
@@ -415,7 +422,7 @@ fn clean_dictionary_duplicates_sync(dict_name: String) -> Result<DictionaryClean
     })
 }
 
-fn sanitize_dict_id(source_name: &str) -> String {
+pub(crate) fn sanitize_dict_id(source_name: &str) -> String {
     let stem = Path::new(source_name)
         .file_stem()
         .and_then(OsStr::to_str)
@@ -436,7 +443,7 @@ fn sanitize_dict_id(source_name: &str) -> String {
     }
 }
 
-fn sanitize_dict_file_name(source_name: &str) -> String {
+pub(crate) fn sanitize_dict_file_name(source_name: &str) -> String {
     let id = sanitize_dict_id(source_name);
     if id.ends_with(".dict") {
         format!("{id}.yaml")
@@ -447,12 +454,12 @@ fn sanitize_dict_file_name(source_name: &str) -> String {
     }
 }
 
-fn read_u16_le(data: &[u8], offset: usize) -> Option<u16> {
+pub(crate) fn read_u16_le(data: &[u8], offset: usize) -> Option<u16> {
     let bytes = data.get(offset..offset + 2)?;
     Some(u16::from_le_bytes([bytes[0], bytes[1]]))
 }
 
-fn decode_utf16_le(data: &[u8]) -> String {
+pub(crate) fn decode_utf16_le(data: &[u8]) -> String {
     let units = data
         .chunks_exact(2)
         .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
@@ -463,7 +470,7 @@ fn decode_utf16_le(data: &[u8]) -> String {
         .to_string()
 }
 
-fn parse_scel_entries(data: &[u8]) -> Result<(Vec<DictionaryEntry>, usize), String> {
+pub(crate) fn parse_scel_entries(data: &[u8]) -> Result<(Vec<DictionaryEntry>, usize), String> {
     const PINYIN_TABLE_OFFSET: usize = 0x1540;
 
     if data.len() <= PINYIN_TABLE_OFFSET + 4 {
@@ -561,7 +568,7 @@ fn parse_scel_entries(data: &[u8]) -> Result<(Vec<DictionaryEntry>, usize), Stri
     }
 }
 
-fn is_sogou_bin_word(value: &str) -> bool {
+pub(crate) fn is_sogou_bin_word(value: &str) -> bool {
     !value.is_empty()
         && value.chars().count() <= 80
         && value.chars().all(|ch| {
@@ -572,7 +579,7 @@ fn is_sogou_bin_word(value: &str) -> bool {
         })
 }
 
-fn sogou_bin_code_from_indexes(index_bytes: &[u8]) -> Option<String> {
+pub(crate) fn sogou_bin_code_from_indexes(index_bytes: &[u8]) -> Option<String> {
     let mut syllables = Vec::new();
     for chunk in index_bytes.chunks_exact(2) {
         let index = u16::from_le_bytes([chunk[0], chunk[1]]) as usize;
@@ -590,7 +597,7 @@ fn sogou_bin_code_from_indexes(index_bytes: &[u8]) -> Option<String> {
     }
 }
 
-fn parse_sogou_bin_entries(data: &[u8]) -> Result<(Vec<DictionaryEntry>, usize), String> {
+pub(crate) fn parse_sogou_bin_entries(data: &[u8]) -> Result<(Vec<DictionaryEntry>, usize), String> {
     if !data.starts_with(b"SGPU") {
         return Err("不是支持的搜狗用户词库 .bin 备份文件".to_string());
     }
@@ -669,7 +676,7 @@ fn parse_sogou_bin_entries(data: &[u8]) -> Result<(Vec<DictionaryEntry>, usize),
     Ok((entries, skipped))
 }
 
-fn parse_text_dictionary_entries(contents: &str) -> (Vec<DictionaryEntry>, usize) {
+pub(crate) fn parse_text_dictionary_entries(contents: &str) -> (Vec<DictionaryEntry>, usize) {
     let mut entries = Vec::new();
     let mut skipped = 0usize;
     let mut past_header = !contents.lines().any(|line| line.trim() == "...");
@@ -702,7 +709,7 @@ fn parse_text_dictionary_entries(contents: &str) -> (Vec<DictionaryEntry>, usize
     (entries, skipped)
 }
 
-fn render_rime_dictionary(dict_id: &str, entries: &[DictionaryEntry]) -> String {
+pub(crate) fn render_rime_dictionary(dict_id: &str, entries: &[DictionaryEntry]) -> String {
     let mut contents = vec![
         "# Imported by Rime Studio.".to_string(),
         "---".to_string(),
@@ -719,7 +726,7 @@ fn render_rime_dictionary(dict_id: &str, entries: &[DictionaryEntry]) -> String 
     contents.join("\n")
 }
 
-fn parse_dictionary_import_payload(
+pub(crate) fn parse_dictionary_import_payload(
     source_name: String,
     data: Vec<u8>,
 ) -> Result<(String, String, Vec<DictionaryEntry>, usize, String), String> {
@@ -770,7 +777,7 @@ fn parse_dictionary_import_payload(
     ))
 }
 
-fn url_encode_component(value: &str) -> String {
+pub(crate) fn url_encode_component(value: &str) -> String {
     let mut encoded = String::new();
     for byte in value.bytes() {
         if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
@@ -782,7 +789,7 @@ fn url_encode_component(value: &str) -> String {
     encoded
 }
 
-fn sogou_dictionary_url(id: &str, title: &str) -> String {
+pub(crate) fn sogou_dictionary_url(id: &str, title: &str) -> String {
     format!(
         "https://pinyin.sogou.com/d/dict/download_cell.php?id={}&name={}&f=detail",
         url_encode_component(id),
@@ -790,7 +797,7 @@ fn sogou_dictionary_url(id: &str, title: &str) -> String {
     )
 }
 
-fn online_dictionary_categories() -> Vec<OnlineDictionaryCategory> {
+pub(crate) fn online_dictionary_categories() -> Vec<OnlineDictionaryCategory> {
     vec![
         OnlineDictionaryCategory {
             id: "167".to_string(),
@@ -845,7 +852,7 @@ fn online_dictionary_categories() -> Vec<OnlineDictionaryCategory> {
     ]
 }
 
-fn online_dictionary_catalog() -> Vec<OnlineDictionary> {
+pub(crate) fn online_dictionary_catalog() -> Vec<OnlineDictionary> {
     vec![
         OnlineDictionary {
             id: "sogou_trending".to_string(),
@@ -922,7 +929,7 @@ fn online_dictionary_catalog() -> Vec<OnlineDictionary> {
     ]
 }
 
-fn html_entity_decode(value: &str) -> String {
+pub(crate) fn html_entity_decode(value: &str) -> String {
     value
         .replace("&nbsp;", " ")
         .replace("&amp;", "&")
@@ -932,7 +939,7 @@ fn html_entity_decode(value: &str) -> String {
         .replace("&#39;", "'")
 }
 
-fn strip_html_tags(value: &str) -> String {
+pub(crate) fn strip_html_tags(value: &str) -> String {
     let mut output = String::new();
     let mut in_tag = false;
     for ch in value.chars() {
@@ -946,14 +953,14 @@ fn strip_html_tags(value: &str) -> String {
     html_entity_decode(output.trim())
 }
 
-fn find_between<'a>(contents: &'a str, start: &str, end: &str) -> Option<&'a str> {
+pub(crate) fn find_between<'a>(contents: &'a str, start: &str, end: &str) -> Option<&'a str> {
     let start_index = contents.find(start)? + start.len();
     let rest = &contents[start_index..];
     let end_index = rest.find(end)?;
     Some(&rest[..end_index])
 }
 
-fn extract_detail_title(block: &str) -> Option<(String, String)> {
+pub(crate) fn extract_detail_title(block: &str) -> Option<(String, String)> {
     let link = find_between(block, "<div class=\"detail_title\"><a href='", "</a>")?;
     let (href, title_part) = link.split_once("'>")?;
     let id = href.rsplit('/').next()?.trim();
@@ -963,7 +970,7 @@ fn extract_detail_title(block: &str) -> Option<(String, String)> {
     Some((id.to_string(), strip_html_tags(title_part)))
 }
 
-fn extract_show_contents(block: &str) -> Vec<String> {
+pub(crate) fn extract_show_contents(block: &str) -> Vec<String> {
     let mut contents = Vec::new();
     let mut rest = block;
     while let Some(start) = rest.find("<div class=\"show_content\">") {
@@ -977,7 +984,7 @@ fn extract_show_contents(block: &str) -> Vec<String> {
     contents
 }
 
-fn parse_sogou_category_page(category_id: &str, html: &str) -> Vec<OnlineDictionary> {
+pub(crate) fn parse_sogou_category_page(category_id: &str, html: &str) -> Vec<OnlineDictionary> {
     let category_title = online_dictionary_categories()
         .into_iter()
         .find(|category| category.id == category_id)
@@ -1025,20 +1032,20 @@ fn parse_sogou_category_page(category_id: &str, html: &str) -> Vec<OnlineDiction
     result
 }
 
-fn sogou_detail_id(detail_url: &str) -> Option<&str> {
+pub(crate) fn sogou_detail_id(detail_url: &str) -> Option<&str> {
     detail_url
         .rsplit('/')
         .next()
         .filter(|value| !value.is_empty())
 }
 
-fn online_dictionary_by_id(id: &str) -> Option<OnlineDictionary> {
+pub(crate) fn online_dictionary_by_id(id: &str) -> Option<OnlineDictionary> {
     online_dictionary_catalog()
         .into_iter()
         .find(|entry| entry.id == id)
 }
 
-fn dictionary_source_name_from_url(url: &str, fallback: &str) -> String {
+pub(crate) fn dictionary_source_name_from_url(url: &str, fallback: &str) -> String {
     let without_query = url.split(['?', '#']).next().unwrap_or(url);
     let name = without_query
         .rsplit('/')
@@ -1053,7 +1060,7 @@ fn dictionary_source_name_from_url(url: &str, fallback: &str) -> String {
     }
 }
 
-fn validate_dictionary_download_url(url: &str) -> Result<(), String> {
+pub(crate) fn validate_dictionary_download_url(url: &str) -> Result<(), String> {
     let lower = url.to_lowercase();
     if lower.starts_with("https://") || lower.starts_with("http://") {
         Ok(())
@@ -1062,7 +1069,7 @@ fn validate_dictionary_download_url(url: &str) -> Result<(), String> {
     }
 }
 
-fn download_dictionary_bytes(url: &str, referer: Option<&str>) -> Result<Vec<u8>, String> {
+pub(crate) fn download_dictionary_bytes(url: &str, referer: Option<&str>) -> Result<Vec<u8>, String> {
     validate_dictionary_download_url(url)?;
     let mut request = ureq::get(url)
         .set("User-Agent", "RimeStudio/0.2")
@@ -1090,7 +1097,7 @@ fn download_dictionary_bytes(url: &str, referer: Option<&str>) -> Result<Vec<u8>
     Ok(data)
 }
 
-fn download_url_to_file_with_progress<F>(
+pub(crate) fn download_url_to_file_with_progress<F>(
     url: &str,
     destination: &Path,
     max_bytes: usize,
@@ -1152,7 +1159,7 @@ where
     Ok(())
 }
 
-fn resolve_sogou_detail_download(
+pub(crate) fn resolve_sogou_detail_download(
     url: &str,
     source_name: Option<String>,
 ) -> Result<Option<(String, String, Option<String>)>, String> {
@@ -1196,7 +1203,7 @@ fn resolve_sogou_detail_download(
     )))
 }
 
-fn download_dictionary_import_source(
+pub(crate) fn download_dictionary_import_source(
     url: String,
     source_name: Option<String>,
 ) -> Result<(String, Vec<u8>), String> {
@@ -1214,22 +1221,22 @@ fn download_dictionary_import_source(
     Ok((source_name, data))
 }
 
-fn download_online_dictionary(entry: &OnlineDictionary) -> Result<Vec<u8>, String> {
+pub(crate) fn download_online_dictionary(entry: &OnlineDictionary) -> Result<Vec<u8>, String> {
     let detail_id =
         sogou_detail_id(&entry.detail_url).ok_or_else(|| "在线词库详情地址无效".to_string())?;
     let url = sogou_dictionary_url(detail_id, &entry.title);
     download_dictionary_bytes(&url, Some(&entry.detail_url))
 }
 
-fn list_online_dictionaries_sync() -> Result<Vec<OnlineDictionary>, String> {
+pub(crate) fn list_online_dictionaries_sync() -> Result<Vec<OnlineDictionary>, String> {
     Ok(online_dictionary_catalog())
 }
 
-fn list_online_dictionary_categories_sync() -> Result<Vec<OnlineDictionaryCategory>, String> {
+pub(crate) fn list_online_dictionary_categories_sync() -> Result<Vec<OnlineDictionaryCategory>, String> {
     Ok(online_dictionary_categories())
 }
 
-fn list_online_dictionaries_by_category_sync(
+pub(crate) fn list_online_dictionaries_by_category_sync(
     category_id: String,
 ) -> Result<Vec<OnlineDictionary>, String> {
     let category = online_dictionary_categories()
@@ -1256,19 +1263,19 @@ fn list_online_dictionaries_by_category_sync(
     }
 }
 
-fn preview_online_dictionary_import_sync(id: String) -> Result<DictionaryImportPreview, String> {
+pub(crate) fn preview_online_dictionary_import_sync(id: String) -> Result<DictionaryImportPreview, String> {
     let entry = online_dictionary_by_id(&id).ok_or_else(|| "未找到在线词库".to_string())?;
     let data = download_online_dictionary(&entry)?;
     preview_dictionary_import_sync(entry.source_name, data)
 }
 
-fn import_online_dictionary_sync(id: String) -> Result<DictionaryImportResult, String> {
+pub(crate) fn import_online_dictionary_sync(id: String) -> Result<DictionaryImportResult, String> {
     let entry = online_dictionary_by_id(&id).ok_or_else(|| "未找到在线词库".to_string())?;
     let data = download_online_dictionary(&entry)?;
     import_dictionary_sync(entry.source_name, data)
 }
 
-fn preview_dictionary_url_import_sync(
+pub(crate) fn preview_dictionary_url_import_sync(
     url: String,
     source_name: Option<String>,
 ) -> Result<DictionaryImportPreview, String> {
@@ -1276,7 +1283,7 @@ fn preview_dictionary_url_import_sync(
     preview_dictionary_import_sync(source_name, data)
 }
 
-fn import_dictionary_url_sync(
+pub(crate) fn import_dictionary_url_sync(
     url: String,
     source_name: Option<String>,
 ) -> Result<DictionaryImportResult, String> {

@@ -1,4 +1,8 @@
-fn read_appearance_config(user_dir: &Path) -> AppearanceConfig {
+use crate::backend::*;
+use crate::*;
+use std::{fs, path::{Path, PathBuf}};
+
+pub(crate) fn read_appearance_config(user_dir: &Path) -> AppearanceConfig {
     let weasel_custom = read_to_string(&user_dir.join("weasel.custom.yaml"));
     let theme_name = parse_string_after_key(&weasel_custom, "style/color_scheme")
         .or_else(|| parse_quoted_value(&weasel_custom, "name:"))
@@ -76,7 +80,7 @@ fn read_appearance_config(user_dir: &Path) -> AppearanceConfig {
     }
 }
 
-fn render_weasel_custom(config: &AppearanceConfig) -> String {
+pub(crate) fn render_weasel_custom(config: &AppearanceConfig) -> String {
     let scheme_key = format!("preset_color_schemes/{}/", config.theme_name);
     let mut lines = vec![
         "# Managed by Rime Studio. Previous versions are kept in RimeStudio backups.".to_string(),
@@ -139,7 +143,7 @@ fn render_weasel_custom(config: &AppearanceConfig) -> String {
     lines.join("\n")
 }
 
-fn write_appearance_config(
+pub(crate) fn write_appearance_config(
     user_dir: &Path,
     config: &AppearanceConfig,
     include_behavior: bool,

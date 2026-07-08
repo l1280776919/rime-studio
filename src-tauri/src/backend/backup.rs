@@ -1,4 +1,9 @@
-fn is_dictionary_entry_line(trimmed: &str) -> bool {
+use crate::backend::*;
+use crate::*;
+use std::collections::HashSet;
+use std::{ffi::OsStr, fs, io::{self}, path::{Path, PathBuf}, process::{self}, time::{SystemTime, UNIX_EPOCH}};
+
+pub(crate) fn is_dictionary_entry_line(trimmed: &str) -> bool {
     !trimmed.is_empty()
         && !trimmed.starts_with('#')
         && trimmed != "---"
@@ -9,7 +14,7 @@ fn is_dictionary_entry_line(trimmed: &str) -> bool {
         && trimmed.contains('\t')
 }
 
-fn analyze_sogou(path: &Path) -> Option<DictHealth> {
+pub(crate) fn analyze_sogou(path: &Path) -> Option<DictHealth> {
     let contents = fs::read_to_string(path).ok()?;
     let mut entries = 0usize;
     let mut duplicate_exact_lines = 0usize;
@@ -40,7 +45,7 @@ fn analyze_sogou(path: &Path) -> Option<DictHealth> {
     })
 }
 
-fn timestamp() -> String {
+pub(crate) fn timestamp() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     SystemTime::now()
@@ -49,7 +54,7 @@ fn timestamp() -> String {
         .unwrap_or_else(|_| "unknown-time".to_string())
 }
 
-fn copy_if_exists(source: &Path, target: &Path) -> io::Result<()> {
+pub(crate) fn copy_if_exists(source: &Path, target: &Path) -> io::Result<()> {
     if source.exists() {
         fs::copy(source, target)?;
     }
@@ -57,7 +62,7 @@ fn copy_if_exists(source: &Path, target: &Path) -> io::Result<()> {
 }
 
 #[derive(Clone, Copy)]
-enum BackupKind {
+pub(crate) enum BackupKind {
     Manual,
     BeforeSave,
     BeforeRestore,
@@ -65,7 +70,7 @@ enum BackupKind {
 }
 
 impl BackupKind {
-    fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             BackupKind::Manual => "manual",
             BackupKind::BeforeSave => "before-save",
@@ -75,7 +80,7 @@ impl BackupKind {
     }
 }
 
-fn backup_kind_from_name(name: &str) -> String {
+pub(crate) fn backup_kind_from_name(name: &str) -> String {
     let marker = "backup-rime-studio-";
     let Some(rest) = name.strip_prefix(marker) else {
         return BackupKind::Manual.as_str().to_string();
@@ -92,7 +97,7 @@ fn backup_kind_from_name(name: &str) -> String {
     }
 }
 
-fn create_unique_backup_dir(backup_root: &Path, kind: BackupKind) -> Result<PathBuf, String> {
+pub(crate) fn create_unique_backup_dir(backup_root: &Path, kind: BackupKind) -> Result<PathBuf, String> {
     for suffix in 0..100 {
         let base = format!("backup-rime-studio-{}-{}", kind.as_str(), timestamp());
         let name = if suffix == 0 {
@@ -110,11 +115,11 @@ fn create_unique_backup_dir(backup_root: &Path, kind: BackupKind) -> Result<Path
     Err("创建备份目录失败: 无法生成唯一目录名".to_string())
 }
 
-fn is_auto_backup_kind(kind: &str) -> bool {
+pub(crate) fn is_auto_backup_kind(kind: &str) -> bool {
     matches!(kind, "before-save" | "before-restore" | "before-install")
 }
 
-fn backup_dir_modified(path: &Path) -> Option<u64> {
+pub(crate) fn backup_dir_modified(path: &Path) -> Option<u64> {
     fs::metadata(path)
         .ok()
         .and_then(|metadata| metadata.modified().ok())
@@ -122,7 +127,7 @@ fn backup_dir_modified(path: &Path) -> Option<u64> {
         .map(|duration| duration.as_secs())
 }
 
-fn prune_old_auto_backups(backup_root: &Path, keep_limit: usize) -> Result<usize, String> {
+pub(crate) fn prune_old_auto_backups(backup_root: &Path, keep_limit: usize) -> Result<usize, String> {
     if !backup_root.exists() {
         return Ok(0);
     }
@@ -159,7 +164,7 @@ fn prune_old_auto_backups(backup_root: &Path, keep_limit: usize) -> Result<usize
     Ok(removed)
 }
 
-fn write_text_file(path: &Path, contents: &str, context: &str) -> Result<(), String> {
+pub(crate) fn write_text_file(path: &Path, contents: &str, context: &str) -> Result<(), String> {
     let parent = path
         .parent()
         .ok_or_else(|| format!("{context}: 目标路径无效"))?;
@@ -195,7 +200,7 @@ fn write_text_file(path: &Path, contents: &str, context: &str) -> Result<(), Str
     Ok(())
 }
 
-fn is_managed_config_file(name: &str) -> bool {
+pub(crate) fn is_managed_config_file(name: &str) -> bool {
     name.ends_with(".custom.yaml")
         || name.ends_with(".dict.yaml")
         || name == "custom_phrase.txt"
@@ -203,7 +208,7 @@ fn is_managed_config_file(name: &str) -> bool {
         || name == "weasel.yaml"
 }
 
-fn backup_user_config(user_dir: &Path, kind: BackupKind) -> Result<PathBuf, String> {
+pub(crate) fn backup_user_config(user_dir: &Path, kind: BackupKind) -> Result<PathBuf, String> {
     let backup_root = app_data_dir()?;
     fs::create_dir_all(&backup_root).map_err(|err| format!("创建备份根目录失败: {err}"))?;
     let backup_dir = create_unique_backup_dir(&backup_root, kind)?;
@@ -232,7 +237,7 @@ fn backup_user_config(user_dir: &Path, kind: BackupKind) -> Result<PathBuf, Stri
     Ok(backup_dir)
 }
 
-fn list_backup_dirs(_user_dir: &Path) -> Result<Vec<BackupEntry>, String> {
+pub(crate) fn list_backup_dirs(_user_dir: &Path) -> Result<Vec<BackupEntry>, String> {
     let backup_root = app_data_dir()?;
     if !backup_root.exists() {
         return Ok(Vec::new());
@@ -282,7 +287,7 @@ fn list_backup_dirs(_user_dir: &Path) -> Result<Vec<BackupEntry>, String> {
     Ok(backups)
 }
 
-fn validated_backup_dir(_user_dir: &Path, backup_name: &str) -> Result<PathBuf, String> {
+pub(crate) fn validated_backup_dir(_user_dir: &Path, backup_name: &str) -> Result<PathBuf, String> {
     if !backup_name.starts_with("backup-rime-studio-")
         || backup_name.contains('/')
         || backup_name.contains('\\')
@@ -300,7 +305,7 @@ fn validated_backup_dir(_user_dir: &Path, backup_name: &str) -> Result<PathBuf, 
     Ok(backup_dir)
 }
 
-fn restore_backup_dir(user_dir: &Path, backup_dir: &Path) -> Result<RestoreResult, String> {
+pub(crate) fn restore_backup_dir(user_dir: &Path, backup_dir: &Path) -> Result<RestoreResult, String> {
     let safety_backup_dir = backup_user_config(user_dir, BackupKind::BeforeRestore)?;
     let mut restored_files = 0usize;
 
