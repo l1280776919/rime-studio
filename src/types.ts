@@ -199,3 +199,19 @@ export type DictionaryConfig = {
   available: DictInfo[];
   missing: DictionaryReference[];
 };
+
+export type OnlineDictionary = {
+  id: string;
+  title: string;
+  category: string;
+  description: string;
+  source: string;
+  source_name: string;
+  detail_url: string;
+};
+
+export type OnlineDictionaryCategory = {
+  id: string;
+  title: string;
+  description: string;
+};

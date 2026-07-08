@@ -82,9 +82,15 @@ import { formatBytes, formatTime } from "../utils";
 
 const downloadingRime = ref(false);
 const downloadStatus = ref("");
+const downloadingGit = ref(false);
+const gitDownloadStatus = ref("");
 
 async function openRimeDownload() {
   await openUrl("https://rime.im/download/");
+}
+
+async function openGitDownload() {
+  await openUrl("https://git-scm.com/download/win");
 }
 
 async function autoDownloadAndInstall() {
@@ -114,6 +120,34 @@ async function autoDownloadAndInstall() {
     await openRimeDownload();
   } finally {
     downloadingRime.value = false;
+  }
+}
+
+async function autoDownloadGitAndInstall() {
+  downloadingGit.value = true;
+  gitDownloadStatus.value = "正在获取最新版本信息...";
+
+  try {
+    gitDownloadStatus.value = "正在下载 Git for Windows 安装包...";
+    const result = await invoke<{ success: boolean; installer_path?: string; message: string }>(
+      "download_git_installer",
+    );
+
+    if (!result.success || !result.installer_path) {
+      ElMessage.warning("自动下载 Git 失败，将跳转到官网下载");
+      await openGitDownload();
+      return;
+    }
+
+    gitDownloadStatus.value = "正在启动 Git 安装程序...";
+    await invoke("launch_git_installer", { path: result.installer_path });
+    ElMessage.success("Git 安装程序已启动，请按提示完成安装");
+    gitDownloadStatus.value = "安装程序已启动 — 完成后返回此页面点击刷新";
+  } catch (error) {
+    ElMessage.warning(`自动安装 Git 失败: ${String(error)}，将跳转到官网`);
+    await openGitDownload();
+  } finally {
+    downloadingGit.value = false;
   }
 }
 
@@ -315,6 +349,26 @@ function backupKindType(kind: string) {
             </el-tag>
           </div>
         </template>
+
+        <div v-if="!toolsReady" class="tool-install-callout">
+          <div>
+            <strong>需要先安装 Git for Windows</strong>
+            <span>安装 rime-ice 需要 Git 和 Git Bash。完成安装后回到这里点击刷新。</span>
+          </div>
+          <div class="tool-install-actions">
+            <el-button
+              type="primary"
+              :icon="Download"
+              :loading="downloadingGit"
+              @click="autoDownloadGitAndInstall"
+            >
+              {{ downloadingGit ? gitDownloadStatus : "自动下载安装 Git" }}
+            </el-button>
+            <el-button :disabled="downloadingGit" @click="openGitDownload">
+              手动下载
+            </el-button>
+          </div>
+        </div>
 
         <div class="recipe-list">
           <button

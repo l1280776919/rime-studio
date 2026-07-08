@@ -753,6 +753,45 @@ button:active {
   width: 100%;
 }
 
+.tool-install-callout {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 14px;
+  color: var(--ink-700);
+  background: var(--el-color-warning-light-9);
+  border: 1px solid var(--el-color-warning-light-7);
+  border-radius: var(--radius-sm);
+}
+
+.tool-install-callout strong,
+.tool-install-callout span {
+  display: block;
+}
+
+.tool-install-callout strong {
+  color: var(--ink-800);
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.tool-install-callout span {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.tool-install-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.tool-install-actions .el-button {
+  justify-content: flex-start;
+  margin-left: 0;
+  width: 100%;
+}
+
 /* Recipe cards */
 .recipe-card {
   display: flex;
@@ -3428,6 +3467,11 @@ button:active {
   gap: 14px;
 }
 
+.url-import-form {
+  display: grid;
+  gap: 12px;
+}
+
 .phrase-actions {
   display: grid;
   gap: 10px;
@@ -3488,6 +3532,227 @@ button:active {
   display: flex;
   justify-content: center;
   white-space: nowrap;
+}
+
+.online-dict-controls {
+  align-items: start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-bottom: 12px;
+}
+
+.online-dict-controls .el-segmented {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.online-dict-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.online-dict-actions .el-button {
+  margin-left: 0;
+}
+
+.online-dict-tabs {
+  min-width: 0;
+}
+
+.online-dictionary-dialog .el-dialog__body {
+  padding-top: 8px;
+}
+
+.online-workbench-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 230px minmax(0, 1fr);
+}
+
+.online-category-rail {
+  align-content: start;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  display: grid;
+  gap: 6px;
+  max-height: 510px;
+  overflow: auto;
+  padding: 8px;
+}
+
+.online-category-button {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  color: var(--ink-700);
+  cursor: pointer;
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  text-align: left;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.online-category-button:hover {
+  background: var(--surface);
+  border-color: var(--brand-200);
+}
+
+.online-category-button:active {
+  transform: translateY(1px);
+}
+
+.online-category-button.active {
+  background: var(--surface);
+  border-color: var(--brand-300);
+  color: var(--ink-900);
+}
+
+.online-category-button strong {
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.online-category-button small {
+  color: var(--ink-500);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.online-results-panel {
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.online-results-header {
+  align-items: start;
+  background: var(--surface);
+  border-bottom: 1px solid var(--color-line);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 12px;
+}
+
+.online-results-header > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.online-results-header strong {
+  color: var(--ink-800);
+  font-size: 14px;
+  font-weight: 780;
+}
+
+.online-results-header small {
+  color: var(--ink-500);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.online-dict-title-cell {
+  display: grid;
+  gap: 3px;
+}
+
+.online-dict-title-cell strong {
+  color: var(--ink-800);
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.online-dict-title-cell small,
+.online-dict-description {
+  color: var(--ink-500);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.online-dict-list {
+  display: grid;
+  gap: 14px;
+}
+
+.online-dict-group {
+  display: grid;
+  gap: 8px;
+}
+
+.online-category-picker {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.online-category-picker .el-select {
+  width: 100%;
+}
+
+.online-dict-category {
+  color: var(--ink-500);
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0;
+}
+
+.online-dict-item {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  color: var(--ink-800);
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 10px;
+  text-align: left;
+  width: 100%;
+}
+
+.online-dict-item:hover:not(:disabled) {
+  background: var(--brand-50);
+  border-color: var(--brand-200);
+}
+
+.online-dict-item:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.online-dict-item span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.online-dict-item strong {
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.online-dict-item small {
+  color: var(--ink-500);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.online-dict-item .el-icon {
+  color: var(--brand-500);
+  flex: 0 0 auto;
 }
 
 .dictionaries-grid .el-table__row {
@@ -3599,6 +3864,10 @@ button:active {
   .workspace {
     padding: 16px 20px;
   }
+
+  .online-workbench-grid {
+    grid-template-columns: 190px minmax(0, 1fr);
+  }
 }
 
 @media (max-width: 1040px) {
@@ -3658,6 +3927,31 @@ button:active {
 
   .config-files-actions {
     flex-wrap: wrap;
+  }
+
+  .online-dict-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .online-workbench-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .online-category-rail {
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(150px, 190px);
+    grid-template-columns: none;
+    max-height: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .online-results-header {
+    grid-template-columns: 1fr;
+  }
+
+  .online-dict-actions {
+    justify-content: flex-start;
   }
 
   .backup-summary-row {
