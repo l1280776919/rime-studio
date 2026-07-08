@@ -1,6 +1,6 @@
 use crate::backend::*;
 use crate::*;
-use std::{fs, path::{Path, PathBuf}, process::Command};
+use std::{fs, path::Path, process::Command};
 
 pub(crate) fn open_in_explorer(path: &Path) -> Result<(), String> {
     if !path.exists() {
@@ -137,11 +137,7 @@ pub(crate) fn deploy_rime_sync() -> Result<DeployResult, String> {
 }
 
 pub(crate) fn install_rime_ice_sync(recipe: Option<String>) -> Result<InstallResult, String> {
-    let bash = locate_git_bash();
-    if bash.is_none() {
-        return Err("运行 rime-install 需要 Git Bash，但未找到".to_string());
-    }
-    let bash = bash.unwrap();
+    let bash = locate_git_bash().ok_or("运行 rime-install 需要 Git Bash，但未找到")?;
 
     let recipe = recipe.unwrap_or_else(|| "iDvel/rime-ice:others/recipes/full".to_string());
     let user_dir = rime_user_dir()?;
@@ -200,4 +196,3 @@ pub(crate) fn install_rime_ice_sync(recipe: Option<String>) -> Result<InstallRes
         }
     }
 }
-

@@ -1,6 +1,11 @@
-﻿use crate::backend::*;
+use crate::backend::*;
 use crate::*;
-use std::{ffi::OsStr, fs, path::{Path, PathBuf}, process::Command};
+use std::{
+    ffi::OsStr,
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 pub(crate) fn get_appearance_config_sync() -> Result<AppearanceConfig, String> {
     let user_dir = rime_user_dir()?;
@@ -138,7 +143,9 @@ pub(crate) fn preview_file(user_dir: &Path, name: &str, new_contents: String) ->
     }
 }
 
-pub(crate) fn preview_quick_settings_sync(config: QuickSettingsConfig) -> Result<ConfigPreview, String> {
+pub(crate) fn preview_quick_settings_sync(
+    config: QuickSettingsConfig,
+) -> Result<ConfigPreview, String> {
     let user_dir = rime_user_dir()?;
     let mut appearance = read_appearance_config(&user_dir);
     appearance.page_size = config.page_size;
@@ -162,7 +169,9 @@ pub(crate) fn preview_quick_settings_sync(config: QuickSettingsConfig) -> Result
     })
 }
 
-pub(crate) fn save_quick_settings_sync(config: QuickSettingsConfig) -> Result<QuickSettingsConfig, String> {
+pub(crate) fn save_quick_settings_sync(
+    config: QuickSettingsConfig,
+) -> Result<QuickSettingsConfig, String> {
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
     backup_user_config(&user_dir, BackupKind::BeforeSave)?;
@@ -184,7 +193,12 @@ pub(crate) fn save_quick_settings_sync(config: QuickSettingsConfig) -> Result<Qu
     get_quick_settings_sync()
 }
 
-pub(crate) fn push_check(checks: &mut Vec<ConfigHealthCheck>, name: &str, status: &str, detail: String) {
+pub(crate) fn push_check(
+    checks: &mut Vec<ConfigHealthCheck>,
+    name: &str,
+    status: &str,
+    detail: String,
+) {
     checks.push(ConfigHealthCheck {
         name: name.to_string(),
         status: status.to_string(),
@@ -668,7 +682,9 @@ pub(crate) fn render_rime_ice_custom(
     lines.join("\n")
 }
 
-pub(crate) fn save_rime_ice_settings_sync(settings: RimeIceSettings) -> Result<RimeIceSettings, String> {
+pub(crate) fn save_rime_ice_settings_sync(
+    settings: RimeIceSettings,
+) -> Result<RimeIceSettings, String> {
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
     let custom_path = user_dir.join("rime_ice.custom.yaml");
@@ -683,7 +699,9 @@ pub(crate) fn save_rime_ice_settings_sync(settings: RimeIceSettings) -> Result<R
     Ok(settings)
 }
 
-pub(crate) fn save_appearance_config_sync(config: AppearanceConfig) -> Result<AppearanceConfig, String> {
+pub(crate) fn save_appearance_config_sync(
+    config: AppearanceConfig,
+) -> Result<AppearanceConfig, String> {
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
     backup_user_config(&user_dir, BackupKind::BeforeSave)?;
@@ -886,4 +904,3 @@ pub(crate) fn launch_installer_sync(path: String) -> Result<(), String> {
 
     Ok(())
 }
-

@@ -8,6 +8,8 @@ import pkg from "../../package.json";
 import type { AppUpdateInfo } from "../types";
 
 const checkingUpdate = ref(false);
+const downloadingUpdate = ref(false);
+const downloadStatus = ref("");
 const updateInfo = ref<AppUpdateInfo>();
 
 const releaseNotesPreview = computed(() => {
@@ -73,21 +75,36 @@ async function openReleasePage() {
   await openUrl(url);
 }
 
-async function openDownloadAsset() {
-  const url = updateInfo.value?.asset_url ?? updateInfo.value?.release_url;
-  if (!url) {
-    await openReleasePage();
-    return;
-  }
-  await openUrl(url);
-}
-
 async function handleUpdateAction() {
   if (!updateInfo.value || !updateInfo.value.update_available) {
     await checkUpdate();
     return;
   }
-  await openDownloadAsset();
+
+  downloadingUpdate.value = true;
+  downloadStatus.value = "正在下载更新...";
+
+  try {
+    const result = await invoke<{ success: boolean; installer_path?: string; message: string }>(
+      "download_app_update",
+    );
+
+    if (!result.success || !result.installer_path) {
+      ElMessage.warning("下载失败，将跳转到发布页面");
+      await openReleasePage();
+      return;
+    }
+
+    downloadStatus.value = "正在启动安装程序...";
+    await invoke("launch_rime_installer", { path: result.installer_path });
+    ElMessage.success("安装程序已启动，请按提示完成安装");
+    downloadStatus.value = "安装程序已启动";
+  } catch (error) {
+    ElMessage.warning(`自动更新失败: ${String(error)}，将跳转到发布页面`);
+    await openReleasePage();
+  } finally {
+    downloadingUpdate.value = false;
+  }
 }
 
 onMounted(() => {
@@ -140,14 +157,17 @@ onMounted(() => {
               </div>
               <p>{{ updateState.detail }}</p>
             </div>
-            <el-button
-              type="primary"
-              :icon="updateInfo?.update_available ? UploadFilled : Refresh"
-              :loading="checkingUpdate"
-              @click="handleUpdateAction"
-            >
-              {{ updateState.actionText }}
-            </el-button>
+            <div class="update-action-col">
+              <el-button
+                type="primary"
+                :icon="downloadingUpdate ? Refresh : (updateInfo?.update_available ? UploadFilled : Refresh)"
+                :loading="checkingUpdate || downloadingUpdate"
+                :disabled="downloadingUpdate"
+                @click="handleUpdateAction"
+              >
+                {{ downloadingUpdate ? downloadStatus : updateState.actionText }}
+              </el-button>
+            </div>
           </div>
 
           <div class="update-version-grid">

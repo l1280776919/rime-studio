@@ -1,7 +1,12 @@
 use crate::backend::*;
 use crate::*;
-use std::collections::HashSet;
-use std::{ffi::OsStr, fs, io::{self}, path::{Path, PathBuf}, process::{self}, time::{SystemTime, UNIX_EPOCH}};
+use std::{
+    ffi::OsStr,
+    fs,
+    io::{self},
+    path::{Path, PathBuf},
+    process::{self},
+};
 
 pub(crate) fn is_dictionary_entry_line(trimmed: &str) -> bool {
     !trimmed.is_empty()
@@ -97,7 +102,10 @@ pub(crate) fn backup_kind_from_name(name: &str) -> String {
     }
 }
 
-pub(crate) fn create_unique_backup_dir(backup_root: &Path, kind: BackupKind) -> Result<PathBuf, String> {
+pub(crate) fn create_unique_backup_dir(
+    backup_root: &Path,
+    kind: BackupKind,
+) -> Result<PathBuf, String> {
     for suffix in 0..100 {
         let base = format!("backup-rime-studio-{}-{}", kind.as_str(), timestamp());
         let name = if suffix == 0 {
@@ -127,7 +135,10 @@ pub(crate) fn backup_dir_modified(path: &Path) -> Option<u64> {
         .map(|duration| duration.as_secs())
 }
 
-pub(crate) fn prune_old_auto_backups(backup_root: &Path, keep_limit: usize) -> Result<usize, String> {
+pub(crate) fn prune_old_auto_backups(
+    backup_root: &Path,
+    keep_limit: usize,
+) -> Result<usize, String> {
     if !backup_root.exists() {
         return Ok(0);
     }
@@ -305,7 +316,10 @@ pub(crate) fn validated_backup_dir(_user_dir: &Path, backup_name: &str) -> Resul
     Ok(backup_dir)
 }
 
-pub(crate) fn restore_backup_dir(user_dir: &Path, backup_dir: &Path) -> Result<RestoreResult, String> {
+pub(crate) fn restore_backup_dir(
+    user_dir: &Path,
+    backup_dir: &Path,
+) -> Result<RestoreResult, String> {
     let safety_backup_dir = backup_user_config(user_dir, BackupKind::BeforeRestore)?;
     let mut restored_files = 0usize;
 
@@ -332,4 +346,3 @@ pub(crate) fn restore_backup_dir(user_dir: &Path, backup_dir: &Path) -> Result<R
         safety_backup_dir: safety_backup_dir.display().to_string(),
     })
 }
-

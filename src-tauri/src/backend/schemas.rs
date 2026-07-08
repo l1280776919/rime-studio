@@ -244,7 +244,9 @@ pub(crate) fn render_default_custom_with_schema_list(
     default_contents.join("\n")
 }
 
-pub(crate) fn save_active_schema_list_sync(schema_ids: Vec<String>) -> Result<QuickSettingsConfig, String> {
+pub(crate) fn save_active_schema_list_sync(
+    schema_ids: Vec<String>,
+) -> Result<QuickSettingsConfig, String> {
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
     let safe_schema_ids = sanitize_schema_ids(schema_ids);
@@ -305,4 +307,3 @@ pub(crate) fn open_schema_dir_sync(path: String) -> Result<(), String> {
         .ok_or_else(|| "方案文件目录无效".to_string())?;
     open_in_explorer(parent)
 }
-

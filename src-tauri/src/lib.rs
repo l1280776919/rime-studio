@@ -1,5 +1,3 @@
-use tauri::Emitter;
-
 pub(crate) mod types;
 pub(crate) use types::*;
 
@@ -34,6 +32,11 @@ async fn install_rime_ice(recipe: Option<String>) -> Result<InstallResult, Strin
 #[tauri::command]
 async fn check_app_update() -> Result<AppUpdateInfo, String> {
     run_blocking(check_app_update_sync).await
+}
+
+#[tauri::command]
+async fn download_app_update() -> Result<RimeDownloadResult, String> {
+    run_blocking(download_app_update_sync).await
 }
 
 #[tauri::command]
@@ -326,6 +329,7 @@ pub fn run() {
             deploy_rime,
             install_rime_ice,
             check_app_update,
+            download_app_update,
             get_appearance_config,
             get_quick_settings,
             save_quick_settings,

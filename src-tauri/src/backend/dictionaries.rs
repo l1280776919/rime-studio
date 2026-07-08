@@ -3,7 +3,11 @@ use crate::*;
 use serde_yaml::Value;
 use std::io::{Read, Write};
 use std::time::Instant;
-use std::{ffi::OsStr, fs, path::{Path, PathBuf}};
+use std::{
+    ffi::OsStr,
+    fs,
+    path::{Path, PathBuf},
+};
 
 pub(crate) fn list_dictionaries_sync() -> Result<Vec<DictInfo>, String> {
     let user_dir = rime_user_dir()?;
@@ -85,7 +89,10 @@ pub(crate) fn list_dictionaries_sync() -> Result<Vec<DictInfo>, String> {
     Ok(dicts)
 }
 
-pub(crate) fn validate_dictionary_path(user_dir: &Path, dict_name: &str) -> Result<PathBuf, String> {
+pub(crate) fn validate_dictionary_path(
+    user_dir: &Path,
+    dict_name: &str,
+) -> Result<PathBuf, String> {
     if !dict_name.ends_with(".dict.yaml") {
         return Err("只能操作 .dict.yaml 词库文件".to_string());
     }
@@ -185,7 +192,9 @@ pub(crate) fn resolve_schema_path(user_dir: &Path, schema_id: &str) -> Option<Pa
         .find(|path| path.exists())
 }
 
-pub(crate) fn current_schema_dictionary(user_dir: &Path) -> (Option<String>, Option<String>, Option<String>) {
+pub(crate) fn current_schema_dictionary(
+    user_dir: &Path,
+) -> (Option<String>, Option<String>, Option<String>) {
     let schema_id = parse_schema(&read_to_string(&user_dir.join("default.custom.yaml")));
     let Some(schema_id_value) = schema_id.as_deref() else {
         return (schema_id, None, None);
@@ -296,7 +305,9 @@ pub(crate) fn render_main_dictionary(dictionary_id: &str, imports: &[String]) ->
     contents.join("\n")
 }
 
-pub(crate) fn save_dictionary_imports_sync(imports: Vec<String>) -> Result<DictionaryConfig, String> {
+pub(crate) fn save_dictionary_imports_sync(
+    imports: Vec<String>,
+) -> Result<DictionaryConfig, String> {
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
     let (_, _, main_dictionary) = current_schema_dictionary(&user_dir);
@@ -327,7 +338,9 @@ pub(crate) fn save_dictionary_imports_sync(imports: Vec<String>) -> Result<Dicti
     read_dictionary_config_sync()
 }
 
-pub(crate) fn add_dictionary_to_current_schema_sync(reference: String) -> Result<DictionaryConfig, String> {
+pub(crate) fn add_dictionary_to_current_schema_sync(
+    reference: String,
+) -> Result<DictionaryConfig, String> {
     let config = read_dictionary_config_sync()?;
     let reference = reference
         .trim()
@@ -395,7 +408,9 @@ pub(crate) fn remove_duplicate_dictionary_lines(contents: &str) -> (String, usiz
     (cleaned, removed)
 }
 
-pub(crate) fn clean_dictionary_duplicates_sync(dict_name: String) -> Result<DictionaryCleanResult, String> {
+pub(crate) fn clean_dictionary_duplicates_sync(
+    dict_name: String,
+) -> Result<DictionaryCleanResult, String> {
     let user_dir = rime_user_dir()?;
     let path = validate_dictionary_path(&user_dir, &dict_name)?;
     let contents = fs::read_to_string(&path).map_err(|err| format!("读取词库失败: {err}"))?;
@@ -597,7 +612,9 @@ pub(crate) fn sogou_bin_code_from_indexes(index_bytes: &[u8]) -> Option<String> 
     }
 }
 
-pub(crate) fn parse_sogou_bin_entries(data: &[u8]) -> Result<(Vec<DictionaryEntry>, usize), String> {
+pub(crate) fn parse_sogou_bin_entries(
+    data: &[u8],
+) -> Result<(Vec<DictionaryEntry>, usize), String> {
     if !data.starts_with(b"SGPU") {
         return Err("不是支持的搜狗用户词库 .bin 备份文件".to_string());
     }
@@ -1069,7 +1086,10 @@ pub(crate) fn validate_dictionary_download_url(url: &str) -> Result<(), String> 
     }
 }
 
-pub(crate) fn download_dictionary_bytes(url: &str, referer: Option<&str>) -> Result<Vec<u8>, String> {
+pub(crate) fn download_dictionary_bytes(
+    url: &str,
+    referer: Option<&str>,
+) -> Result<Vec<u8>, String> {
     validate_dictionary_download_url(url)?;
     let mut request = ureq::get(url)
         .set("User-Agent", "RimeStudio/0.2")
@@ -1232,7 +1252,8 @@ pub(crate) fn list_online_dictionaries_sync() -> Result<Vec<OnlineDictionary>, S
     Ok(online_dictionary_catalog())
 }
 
-pub(crate) fn list_online_dictionary_categories_sync() -> Result<Vec<OnlineDictionaryCategory>, String> {
+pub(crate) fn list_online_dictionary_categories_sync(
+) -> Result<Vec<OnlineDictionaryCategory>, String> {
     Ok(online_dictionary_categories())
 }
 
@@ -1263,7 +1284,9 @@ pub(crate) fn list_online_dictionaries_by_category_sync(
     }
 }
 
-pub(crate) fn preview_online_dictionary_import_sync(id: String) -> Result<DictionaryImportPreview, String> {
+pub(crate) fn preview_online_dictionary_import_sync(
+    id: String,
+) -> Result<DictionaryImportPreview, String> {
     let entry = online_dictionary_by_id(&id).ok_or_else(|| "未找到在线词库".to_string())?;
     let data = download_online_dictionary(&entry)?;
     preview_dictionary_import_sync(entry.source_name, data)
@@ -1290,4 +1313,3 @@ pub(crate) fn import_dictionary_url_sync(
     let (source_name, data) = download_dictionary_import_source(url, source_name)?;
     import_dictionary_sync(source_name, data)
 }
-
