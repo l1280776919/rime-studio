@@ -20,10 +20,7 @@ fn normalize_version(value: &str) -> &str {
 
 fn parse_semver(value: &str) -> Option<(u64, u64, u64, Vec<String>)> {
     let normalized = normalize_version(value);
-    let (core, suffix) = normalized
-        .split_once('-')
-        .map(|(core, suffix)| (core, suffix))
-        .unwrap_or((normalized, ""));
+    let (core, suffix) = normalized.split_once('-').unwrap_or((normalized, ""));
     let mut parts = core.split('.');
     let major = parts.next()?.parse::<u64>().ok()?;
     let minor = parts.next().unwrap_or("0").parse::<u64>().ok()?;
