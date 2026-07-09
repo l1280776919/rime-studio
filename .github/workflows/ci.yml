@@ -92,6 +92,14 @@ jobs:
           # Update Cargo.toml
           sed -i "s/^version = .*/version = \"$VERSION\"/" src-tauri/Cargo.toml
           
+          # Update tauri.conf.json
+          node -e "
+          const fs = require('fs');
+          const config = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
+          config.version = '$VERSION';
+          fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(config, null, 2) + '\n');
+          "
+          
           # Update package.json
           node -e "
           const fs = require('fs');
