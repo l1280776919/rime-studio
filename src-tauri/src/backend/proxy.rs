@@ -207,10 +207,22 @@ mod tests {
     fn proxy_env_vars_format() {
         // This test only verifies the format, not actual proxy detection
         let vars = [
-            ("http_proxy".to_string(), "http://127.0.0.1:7890".to_string()),
-            ("https_proxy".to_string(), "http://127.0.0.1:7890".to_string()),
-            ("HTTP_PROXY".to_string(), "http://127.0.0.1:7890".to_string()),
-            ("HTTPS_PROXY".to_string(), "http://127.0.0.1:7890".to_string()),
+            (
+                "http_proxy".to_string(),
+                "http://127.0.0.1:7890".to_string(),
+            ),
+            (
+                "https_proxy".to_string(),
+                "http://127.0.0.1:7890".to_string(),
+            ),
+            (
+                "HTTP_PROXY".to_string(),
+                "http://127.0.0.1:7890".to_string(),
+            ),
+            (
+                "HTTPS_PROXY".to_string(),
+                "http://127.0.0.1:7890".to_string(),
+            ),
         ];
         assert_eq!(vars.len(), 4);
         assert!(vars.iter().any(|(k, _)| k == "http_proxy"));

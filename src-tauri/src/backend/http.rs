@@ -31,7 +31,11 @@ fn create_http_agent() -> ureq::Agent {
                 ureq::AgentBuilder::new().proxy(proxy).build()
             }
             Err(e) => {
-                log::warn!("Failed to create proxy from '{}': {}, using direct connection", proxy_url, e);
+                log::warn!(
+                    "Failed to create proxy from '{}': {}, using direct connection",
+                    proxy_url,
+                    e
+                );
                 ureq::Agent::new()
             }
         }

@@ -54,11 +54,7 @@ pub(crate) fn ensure_plum(plum_dir: &Path) -> Result<String, RimeError> {
     let mut log = String::new();
     if plum_dir.join(".git").exists() {
         let mut command = Command::new(&git);
-        command
-            .arg("-C")
-            .arg(plum_dir)
-            .arg("pull")
-            .arg("--ff-only");
+        command.arg("-C").arg(plum_dir).arg("pull").arg("--ff-only");
         for (key, value) in &proxy_envs {
             command.env(key, value);
         }
