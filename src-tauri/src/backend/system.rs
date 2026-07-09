@@ -50,10 +50,18 @@ pub(crate) fn ensure_plum(plum_dir: &Path) -> Result<String, RimeError> {
         RimeError::CommandExecutionFailed("安装 rime-ice 需要 Git，但未找到".to_string())
     })?;
 
+    let proxy_envs = get_proxy_env_vars();
     let mut log = String::new();
     if plum_dir.join(".git").exists() {
         let mut command = Command::new(&git);
-        command.arg("-C").arg(plum_dir).arg("pull").arg("--ff-only");
+        command
+            .arg("-C")
+            .arg(plum_dir)
+            .arg("pull")
+            .arg("--ff-only");
+        for (key, value) in &proxy_envs {
+            command.env(key, value);
+        }
         let (success, command_log) = run_command(command)?;
         log.push_str(&command_log);
         if !success {
@@ -75,6 +83,9 @@ pub(crate) fn ensure_plum(plum_dir: &Path) -> Result<String, RimeError> {
             .arg("1")
             .arg("https://github.com/rime/plum.git")
             .arg(plum_dir);
+        for (key, value) in &proxy_envs {
+            command.env(key, value);
+        }
         let (success, command_log) = run_command(command)?;
         log.push_str(&command_log);
         if !success {
@@ -174,12 +185,16 @@ pub(crate) fn install_rime_ice_sync(recipe: Option<String>) -> Result<InstallRes
     log.push_str(&recipe);
     log.push('\n');
 
+    let proxy_envs = get_proxy_env_vars();
     let mut command = Command::new(&bash);
     command
         .arg("rime-install")
         .arg(&recipe)
         .current_dir(&plum_dir)
         .env("rime_dir", &user_dir);
+    for (key, value) in &proxy_envs {
+        command.env(key, value);
+    }
     let (install_success, install_log) = run_command(command)?;
     log.push_str(&install_log);
 

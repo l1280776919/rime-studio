@@ -815,9 +815,7 @@ pub(crate) fn download_github_release_installer<F>(
 where
     F: Fn(&str) -> bool,
 {
-    let response = ureq::get(api_url)
-        .set("User-Agent", "RimeStudio/0.1")
-        .set("Accept", "application/vnd.github+json")
+    let response = http_get(api_url)
         .call()
         .map_err(|err| RimeError::NetworkError(format!("获取发布信息失败: {err}")))?;
 
@@ -852,8 +850,9 @@ where
         .map_err(|err| RimeError::DownloadError(format!("创建下载目录失败: {err}")))?;
     let dest_path = dest_dir.join(&filename);
 
-    let response = ureq::get(&download_url)
-        .set("User-Agent", "RimeStudio/0.1")
+    let response = http_agent()
+        .get(&download_url)
+        .set("User-Agent", "RimeStudio/0.4")
         .call()
         .map_err(|err| RimeError::DownloadError(format!("下载失败: {err}")))?;
 

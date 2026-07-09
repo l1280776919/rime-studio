@@ -1116,8 +1116,9 @@ pub(crate) fn download_dictionary_bytes(
     referer: Option<&str>,
 ) -> Result<Vec<u8>, RimeError> {
     validate_dictionary_download_url(url)?;
-    let mut request = ureq::get(url)
-        .set("User-Agent", "RimeStudio/0.2")
+    let mut request = http_agent()
+        .get(url)
+        .set("User-Agent", "RimeStudio/0.4")
         .set("Accept", "*/*");
     if let Some(referer) = referer {
         request = request.set("Referer", referer);
@@ -1156,8 +1157,9 @@ where
     F: FnMut(u64, Option<u64>),
 {
     validate_dictionary_download_url(url)?;
-    let response = ureq::get(url)
-        .set("User-Agent", "RimeStudio/0.2")
+    let response = http_agent()
+        .get(url)
+        .set("User-Agent", "RimeStudio/0.4")
         .set("Accept", "*/*")
         .call()
         .map_err(|err| RimeError::DownloadError(format!("下载失败: {err}")))?;
@@ -1225,8 +1227,9 @@ pub(crate) fn resolve_sogou_detail_download(
         ));
     }
 
-    let response = ureq::get(url)
-        .set("User-Agent", "RimeStudio/0.2")
+    let response = http_agent()
+        .get(url)
+        .set("User-Agent", "RimeStudio/0.4")
         .set("Accept", "text/html,*/*")
         .call()
         .map_err(|err| RimeError::NetworkError(format!("读取搜狗词库详情页失败: {err}")))?;
@@ -1297,8 +1300,9 @@ pub(crate) fn list_online_dictionaries_by_category_sync(
         "https://pinyin.sogou.com/dict/cate/index/{}/download",
         category.id
     );
-    let response = ureq::get(&url)
-        .set("User-Agent", "RimeStudio/0.2")
+    let response = http_agent()
+        .get(&url)
+        .set("User-Agent", "RimeStudio/0.4")
         .set("Accept", "text/html,*/*")
         .call()
         .map_err(|err| RimeError::NetworkError(format!("读取在线词库分类失败: {err}")))?;

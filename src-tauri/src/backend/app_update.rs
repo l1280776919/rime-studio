@@ -55,9 +55,7 @@ pub(crate) fn release_asset_score(name: &str) -> i32 {
 
 pub(crate) fn check_app_update_sync() -> Result<AppUpdateInfo, RimeError> {
     let current_version = env!("CARGO_PKG_VERSION").to_string();
-    let response = ureq::get(APP_RELEASE_API_URL)
-        .set("User-Agent", "RimeStudio/0.2")
-        .set("Accept", "application/vnd.github+json")
+    let response = http_get(APP_RELEASE_API_URL)
         .call()
         .map_err(|err| RimeError::NetworkError(format!("获取 Rime Studio 发布信息失败: {err}")))?;
 
@@ -135,8 +133,9 @@ pub(crate) fn download_app_update_sync() -> Result<RimeDownloadResult, RimeError
     // Remove partially downloaded file first
     let _ = fs::remove_file(&dest_path);
 
-    let response = ureq::get(&download_url)
-        .set("User-Agent", "RimeStudio/0.2")
+    let response = http_agent()
+        .get(&download_url)
+        .set("User-Agent", "RimeStudio/0.4")
         .call()
         .map_err(|err| RimeError::DownloadError(format!("下载失败: {err}")))?;
 

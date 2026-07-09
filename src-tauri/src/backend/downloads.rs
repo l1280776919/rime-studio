@@ -13,9 +13,7 @@ pub(crate) fn github_release_asset_url(
     api_url: &str,
     asset_name: &str,
 ) -> Result<(String, String), RimeError> {
-    let response = ureq::get(api_url)
-        .set("User-Agent", "RimeStudio/0.2")
-        .set("Accept", "application/vnd.github+json")
+    let response = http_get(api_url)
         .call()
         .map_err(|err| RimeError::NetworkError(format!("获取 GitHub 发布信息失败: {err}")))?;
     let releases: serde_json::Value = response
