@@ -82,6 +82,28 @@ jobs:
         with:
           workspaces: src-tauri
 
+      - name: Sync version from tag
+        shell: bash
+        run: |
+          # Extract version from tag (v0.3.0 -> 0.3.0)
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          
+          # Update Cargo.toml
+          sed -i "s/^version = .*/version = \"$VERSION\"/" src-tauri/Cargo.toml
+          
+          # Update package.json
+          node -e "
+          const fs = require('fs');
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          pkg.version = '$VERSION';
+          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          
+          echo "Synced version to $VERSION"
+          grep "^version" src-tauri/Cargo.toml
+          node -e "console.log('package.json version:', require('./package.json').version)"
+
       - name: Build Tauri (release)
         run: npm run tauri build
         env:

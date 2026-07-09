@@ -1,6 +1,6 @@
 [package]
 name = "rime-studio"
-version = "0.2.18"
+version = "0.3.0"  # 唯一版本号来源，tauri.conf.json 通过 ${CargoPKG_VERSION} 引用
 description = "A desktop configuration manager for Rime and rime-ice"
 authors = ["Rime Studio"]
 edition = "2021"
