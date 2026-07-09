@@ -105,7 +105,7 @@ pub(crate) fn backup_kind_from_name(name: &str) -> String {
 pub(crate) fn create_unique_backup_dir(
     backup_root: &Path,
     kind: BackupKind,
-) -> Result<PathBuf, String> {
+) -> Result<PathBuf, RimeError> {
     for suffix in 0..100 {
         let base = format!("backup-rime-studio-{}-{}", kind.as_str(), timestamp());
         let name = if suffix == 0 {
@@ -115,12 +115,15 @@ pub(crate) fn create_unique_backup_dir(
         };
         let path = backup_root.join(name);
         if !path.exists() {
-            fs::create_dir_all(&path).map_err(|err| format!("创建备份目录失败: {err}"))?;
+            fs::create_dir_all(&path)
+                .map_err(|err| RimeError::BackupError(format!("创建备份目录失败: {err}")))?;
             return Ok(path);
         }
     }
 
-    Err("创建备份目录失败: 无法生成唯一目录名".to_string())
+    Err(RimeError::BackupError(
+        "创建备份目录失败: 无法生成唯一目录名".to_string(),
+    ))
 }
 
 pub(crate) fn is_auto_backup_kind(kind: &str) -> bool {
@@ -138,15 +141,17 @@ pub(crate) fn backup_dir_modified(path: &Path) -> Option<u64> {
 pub(crate) fn prune_old_auto_backups(
     backup_root: &Path,
     keep_limit: usize,
-) -> Result<usize, String> {
+) -> Result<usize, RimeError> {
     if !backup_root.exists() {
         return Ok(0);
     }
 
     let mut auto_backups = Vec::new();
-    for entry in fs::read_dir(backup_root).map_err(|err| format!("读取备份目录失败: {err}"))?
+    for entry in fs::read_dir(backup_root)
+        .map_err(|err| RimeError::BackupError(format!("读取备份目录失败: {err}")))?
     {
-        let entry = entry.map_err(|err| format!("检查备份目录失败: {err}"))?;
+        let entry =
+            entry.map_err(|err| RimeError::BackupError(format!("检查备份目录失败: {err}")))?;
         let path = entry.path();
         if !path.is_dir() {
             continue;
@@ -168,43 +173,48 @@ pub(crate) fn prune_old_auto_backups(
     auto_backups.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.cmp(&a.1)));
     let mut removed = 0usize;
     for (_, _, path) in auto_backups.into_iter().skip(keep_limit) {
-        fs::remove_dir_all(&path).map_err(|err| format!("清理旧自动备份失败: {err}"))?;
+        fs::remove_dir_all(&path)
+            .map_err(|err| RimeError::BackupError(format!("清理旧自动备份失败: {err}")))?;
         removed += 1;
     }
 
     Ok(removed)
 }
 
-pub(crate) fn write_text_file(path: &Path, contents: &str, context: &str) -> Result<(), String> {
+pub(crate) fn write_text_file(path: &Path, contents: &str, context: &str) -> Result<(), RimeError> {
     let parent = path
         .parent()
-        .ok_or_else(|| format!("{context}: 目标路径无效"))?;
-    fs::create_dir_all(parent).map_err(|err| format!("{context}: 创建目录失败: {err}"))?;
+        .ok_or_else(|| RimeError::FileOperationError(format!("{context}: 目标路径无效")))?;
+    fs::create_dir_all(parent)
+        .map_err(|err| RimeError::FileOperationError(format!("{context}: 创建目录失败: {err}")))?;
 
     let file_name = path
         .file_name()
         .and_then(OsStr::to_str)
-        .ok_or_else(|| format!("{context}: 文件名无效"))?;
+        .ok_or_else(|| RimeError::FileOperationError(format!("{context}: 文件名无效")))?;
     let temp_path = parent.join(format!(
         ".{file_name}.{}.{}.tmp",
         process::id(),
         timestamp()
     ));
 
-    fs::write(&temp_path, contents).map_err(|err| format!("{context}: {err}"))?;
+    fs::write(&temp_path, contents)
+        .map_err(|err| RimeError::FileOperationError(format!("{context}: {err}")))?;
     if let Err(rename_err) = fs::rename(&temp_path, path) {
         if path.exists() {
             fs::remove_file(path).map_err(|remove_err| {
                 let _ = fs::remove_file(&temp_path);
-                format!("{context}: 替换旧文件失败: {remove_err}")
+                RimeError::FileOperationError(format!("{context}: 替换旧文件失败: {remove_err}"))
             })?;
             fs::rename(&temp_path, path).map_err(|retry_err| {
                 let _ = fs::remove_file(&temp_path);
-                format!("{context}: {retry_err}")
+                RimeError::FileOperationError(format!("{context}: {retry_err}"))
             })?;
         } else {
             let _ = fs::remove_file(&temp_path);
-            return Err(format!("{context}: {rename_err}"));
+            return Err(RimeError::FileOperationError(format!(
+                "{context}: {rename_err}"
+            )));
         }
     }
 
@@ -219,13 +229,17 @@ pub(crate) fn is_managed_config_file(name: &str) -> bool {
         || name == "weasel.yaml"
 }
 
-pub(crate) fn backup_user_config(user_dir: &Path, kind: BackupKind) -> Result<PathBuf, String> {
+pub(crate) fn backup_user_config(user_dir: &Path, kind: BackupKind) -> Result<PathBuf, RimeError> {
     let backup_root = app_data_dir()?;
-    fs::create_dir_all(&backup_root).map_err(|err| format!("创建备份根目录失败: {err}"))?;
+    fs::create_dir_all(&backup_root)
+        .map_err(|err| RimeError::BackupError(format!("创建备份根目录失败: {err}")))?;
     let backup_dir = create_unique_backup_dir(&backup_root, kind)?;
 
-    for entry in fs::read_dir(user_dir).map_err(|err| format!("读取 Rime 目录失败: {err}"))? {
-        let entry = entry.map_err(|err| format!("检查 Rime 文件失败: {err}"))?;
+    for entry in fs::read_dir(user_dir)
+        .map_err(|err| RimeError::BackupError(format!("读取 Rime 目录失败: {err}")))?
+    {
+        let entry =
+            entry.map_err(|err| RimeError::BackupError(format!("检查 Rime 文件失败: {err}")))?;
         let path = entry.path();
         if !path.is_file() {
             continue;
@@ -237,7 +251,7 @@ pub(crate) fn backup_user_config(user_dir: &Path, kind: BackupKind) -> Result<Pa
 
         if is_managed_config_file(name) {
             copy_if_exists(&path, &backup_dir.join(name))
-                .map_err(|err| format!("备份 {name} 失败: {err}"))?;
+                .map_err(|err| RimeError::BackupError(format!("备份 {name} 失败: {err}")))?;
         }
     }
 
@@ -248,16 +262,18 @@ pub(crate) fn backup_user_config(user_dir: &Path, kind: BackupKind) -> Result<Pa
     Ok(backup_dir)
 }
 
-pub(crate) fn list_backup_dirs(_user_dir: &Path) -> Result<Vec<BackupEntry>, String> {
+pub(crate) fn list_backup_dirs(_user_dir: &Path) -> Result<Vec<BackupEntry>, RimeError> {
     let backup_root = app_data_dir()?;
     if !backup_root.exists() {
         return Ok(Vec::new());
     }
 
     let mut backups = Vec::new();
-    for entry in fs::read_dir(&backup_root).map_err(|err| format!("读取备份目录失败: {err}"))?
+    for entry in fs::read_dir(&backup_root)
+        .map_err(|err| RimeError::BackupError(format!("读取备份目录失败: {err}")))?
     {
-        let entry = entry.map_err(|err| format!("检查 Rime 文件失败: {err}"))?;
+        let entry =
+            entry.map_err(|err| RimeError::BackupError(format!("检查 Rime 文件失败: {err}")))?;
         let path = entry.path();
         if !path.is_dir() {
             continue;
@@ -298,19 +314,22 @@ pub(crate) fn list_backup_dirs(_user_dir: &Path) -> Result<Vec<BackupEntry>, Str
     Ok(backups)
 }
 
-pub(crate) fn validated_backup_dir(_user_dir: &Path, backup_name: &str) -> Result<PathBuf, String> {
+pub(crate) fn validated_backup_dir(
+    _user_dir: &Path,
+    backup_name: &str,
+) -> Result<PathBuf, RimeError> {
     if !backup_name.starts_with("backup-rime-studio-")
         || backup_name.contains('/')
         || backup_name.contains('\\')
         || backup_name.contains("..")
     {
-        return Err("无效的备份名称".to_string());
+        return Err(RimeError::BackupError("无效的备份名称".to_string()));
     }
 
     let backup_root = app_data_dir()?;
     let backup_dir = backup_root.join(backup_name);
     if !backup_dir.is_dir() {
-        return Err(format!("备份不存在: {backup_name}"));
+        return Err(RimeError::BackupError(format!("备份不存在: {backup_name}")));
     }
 
     Ok(backup_dir)
@@ -319,12 +338,15 @@ pub(crate) fn validated_backup_dir(_user_dir: &Path, backup_name: &str) -> Resul
 pub(crate) fn restore_backup_dir(
     user_dir: &Path,
     backup_dir: &Path,
-) -> Result<RestoreResult, String> {
+) -> Result<RestoreResult, RimeError> {
     let safety_backup_dir = backup_user_config(user_dir, BackupKind::BeforeRestore)?;
     let mut restored_files = 0usize;
 
-    for entry in fs::read_dir(backup_dir).map_err(|err| format!("读取备份失败: {err}"))? {
-        let entry = entry.map_err(|err| format!("检查备份文件失败: {err}"))?;
+    for entry in fs::read_dir(backup_dir)
+        .map_err(|err| RimeError::BackupError(format!("读取备份失败: {err}")))?
+    {
+        let entry =
+            entry.map_err(|err| RimeError::BackupError(format!("检查备份文件失败: {err}")))?;
         let source = entry.path();
         if !source.is_file() {
             continue;
@@ -337,7 +359,8 @@ pub(crate) fn restore_backup_dir(
             continue;
         }
 
-        fs::copy(&source, user_dir.join(name)).map_err(|err| format!("恢复 {name} 失败: {err}"))?;
+        fs::copy(&source, user_dir.join(name))
+            .map_err(|err| RimeError::BackupError(format!("恢复 {name} 失败: {err}")))?;
         restored_files += 1;
     }
 

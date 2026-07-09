@@ -1,10 +1,92 @@
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 #[cfg(windows)]
 pub(crate) use std::os::windows::process::CommandExt;
 
 #[cfg(windows)]
 pub(crate) const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+// ── Error types ────────────────────────────────────
+#[derive(Debug, Error)]
+pub(crate) enum RimeError {
+    #[error("YAML 解析失败: {0}")]
+    YamlParseError(String),
+
+    #[error("文件操作失败: {0}")]
+    FileOperationError(String),
+
+    #[error("词库路径无效: {0}")]
+    InvalidDictionaryPath(String),
+
+    #[error("词库文件不存在: {0}")]
+    DictionaryNotFound(String),
+
+    #[error("配置文件不存在: {0}")]
+    ConfigNotFound(String),
+
+    #[error("部署器未找到: {0}")]
+    DeployerNotFound(String),
+
+    #[error("命令执行失败: {0}")]
+    CommandExecutionFailed(String),
+
+    #[error("网络请求失败: {0}")]
+    NetworkError(String),
+
+    #[error("下载失败: {0}")]
+    DownloadError(String),
+
+    #[error("备份操作失败: {0}")]
+    BackupError(String),
+
+    #[error("方案操作失败: {0}")]
+    SchemaError(String),
+
+    #[error("设置操作失败: {0}")]
+    SettingsError(String),
+
+    #[error("JSON 序列化失败: {0}")]
+    JsonSerializationError(String),
+
+    #[error("环境变量不可用: {0}")]
+    EnvVarNotFound(String),
+}
+
+// 为 RimeError 实现 serde::Serialize 以便在 Tauri 命令中返回
+impl Serialize for RimeError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+// 实现从各种错误类型到 RimeError 的转换
+impl From<std::io::Error> for RimeError {
+    fn from(err: std::io::Error) -> Self {
+        RimeError::FileOperationError(err.to_string())
+    }
+}
+
+impl From<serde_yaml::Error> for RimeError {
+    fn from(err: serde_yaml::Error) -> Self {
+        RimeError::YamlParseError(err.to_string())
+    }
+}
+
+impl From<serde_json::Error> for RimeError {
+    fn from(err: serde_json::Error) -> Self {
+        RimeError::JsonSerializationError(err.to_string())
+    }
+}
+
+impl From<ureq::Error> for RimeError {
+    fn from(err: ureq::Error) -> Self {
+        RimeError::NetworkError(err.to_string())
+    }
+}
 
 pub(crate) type DictionaryEntry = (String, String, i32);
 pub(crate) const AUTO_BACKUP_KEEP_LIMIT: usize = 30;

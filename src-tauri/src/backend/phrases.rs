@@ -2,15 +2,15 @@ use crate::backend::*;
 use crate::*;
 use std::fs;
 
-pub(crate) fn get_custom_phrases_sync() -> Result<Vec<PhraseEntry>, String> {
+pub(crate) fn get_custom_phrases_sync() -> Result<Vec<PhraseEntry>, RimeError> {
     let user_dir = rime_user_dir()?;
     let path = user_dir.join("custom_phrase.txt");
     if !path.exists() {
         return Ok(Vec::new());
     }
 
-    let contents =
-        fs::read_to_string(&path).map_err(|err| format!("读取自定义短语文件失败: {err}"))?;
+    let contents = fs::read_to_string(&path)
+        .map_err(|err| RimeError::FileOperationError(format!("读取自定义短语文件失败: {err}")))?;
 
     let mut phrases = Vec::new();
     for line in contents.lines() {
@@ -37,9 +37,10 @@ pub(crate) fn get_custom_phrases_sync() -> Result<Vec<PhraseEntry>, String> {
     Ok(phrases)
 }
 
-pub(crate) fn save_custom_phrases_sync(phrases: Vec<PhraseEntry>) -> Result<(), String> {
+pub(crate) fn save_custom_phrases_sync(phrases: Vec<PhraseEntry>) -> Result<(), RimeError> {
     let user_dir = rime_user_dir()?;
-    fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
+    fs::create_dir_all(&user_dir)
+        .map_err(|err| RimeError::FileOperationError(format!("创建 Rime 目录失败: {err}")))?;
     backup_user_config(&user_dir, BackupKind::BeforeSave)?;
 
     let path = user_dir.join("custom_phrase.txt");

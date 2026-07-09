@@ -2,35 +2,41 @@ use crate::backend::*;
 use crate::*;
 use std::{fs, path::Path, process::Command};
 
-pub(crate) fn open_in_explorer(path: &Path) -> Result<(), String> {
+pub(crate) fn open_in_explorer(path: &Path) -> Result<(), RimeError> {
     if !path.exists() {
-        return Err(format!("路径不存在: {}", path.display()));
+        return Err(RimeError::FileOperationError(format!(
+            "路径不存在: {}",
+            path.display()
+        )));
     }
 
     Command::new("explorer")
         .arg(path)
         .spawn()
-        .map_err(|err| format!("打开资源管理器失败: {err}"))?;
+        .map_err(|err| RimeError::CommandExecutionFailed(format!("打开资源管理器失败: {err}")))?;
     Ok(())
 }
 
-pub(crate) fn reveal_in_explorer(path: &Path) -> Result<(), String> {
+pub(crate) fn reveal_in_explorer(path: &Path) -> Result<(), RimeError> {
     if !path.exists() {
-        return Err(format!("路径不存在: {}", path.display()));
+        return Err(RimeError::FileOperationError(format!(
+            "路径不存在: {}",
+            path.display()
+        )));
     }
 
     Command::new("explorer")
         .arg("/select,")
         .arg(path)
         .spawn()
-        .map_err(|err| format!("打开资源管理器失败: {err}"))?;
+        .map_err(|err| RimeError::CommandExecutionFailed(format!("打开资源管理器失败: {err}")))?;
     Ok(())
 }
 
-pub(crate) fn run_command(mut command: Command) -> Result<(bool, String), String> {
+pub(crate) fn run_command(mut command: Command) -> Result<(bool, String), RimeError> {
     let output = suppress_console_window(&mut command)
         .output()
-        .map_err(|err| format!("运行命令失败: {err}"))?;
+        .map_err(|err| RimeError::CommandExecutionFailed(format!("运行命令失败: {err}")))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -39,8 +45,10 @@ pub(crate) fn run_command(mut command: Command) -> Result<(bool, String), String
     Ok((output.status.success(), log))
 }
 
-pub(crate) fn ensure_plum(plum_dir: &Path) -> Result<String, String> {
-    let git = locate_git().ok_or_else(|| "安装 rime-ice 需要 Git，但未找到".to_string())?;
+pub(crate) fn ensure_plum(plum_dir: &Path) -> Result<String, RimeError> {
+    let git = locate_git().ok_or_else(|| {
+        RimeError::CommandExecutionFailed("安装 rime-ice 需要 Git，但未找到".to_string())
+    })?;
 
     let mut log = String::new();
     if plum_dir.join(".git").exists() {
@@ -49,11 +57,15 @@ pub(crate) fn ensure_plum(plum_dir: &Path) -> Result<String, String> {
         let (success, command_log) = run_command(command)?;
         log.push_str(&command_log);
         if !success {
-            return Err(format!("更新 plum 失败:\n{log}"));
+            return Err(RimeError::CommandExecutionFailed(format!(
+                "更新 plum 失败:\n{log}"
+            )));
         }
     } else {
         if let Some(parent) = plum_dir.parent() {
-            fs::create_dir_all(parent).map_err(|err| format!("创建应用数据目录失败: {err}"))?;
+            fs::create_dir_all(parent).map_err(|err| {
+                RimeError::FileOperationError(format!("创建应用数据目录失败: {err}"))
+            })?;
         }
 
         let mut command = Command::new(&git);
@@ -66,25 +78,28 @@ pub(crate) fn ensure_plum(plum_dir: &Path) -> Result<String, String> {
         let (success, command_log) = run_command(command)?;
         log.push_str(&command_log);
         if !success {
-            return Err(format!("克隆 plum 失败:\n{log}"));
+            return Err(RimeError::CommandExecutionFailed(format!(
+                "克隆 plum 失败:\n{log}"
+            )));
         }
     }
 
     Ok(log)
 }
 
-pub(crate) fn deploy_rime_internal() -> Result<DeployResult, String> {
-    let deployer_path = locate_deployer().ok_or_else(|| "未找到 WeaselDeployer.exe".to_string())?;
+pub(crate) fn deploy_rime_internal() -> Result<DeployResult, RimeError> {
+    let deployer_path = locate_deployer()
+        .ok_or_else(|| RimeError::DeployerNotFound("未找到 WeaselDeployer.exe".to_string()))?;
 
     let mut command = Command::new(&deployer_path);
     command.arg("/deploy").current_dir(
         deployer_path
             .parent()
-            .ok_or_else(|| "部署器路径异常".to_string())?,
+            .ok_or_else(|| RimeError::DeployerNotFound("部署器路径异常".to_string()))?,
     );
     suppress_console_window(&mut command)
         .spawn()
-        .map_err(|err| format!("运行部署器失败: {err}"))?;
+        .map_err(|err| RimeError::CommandExecutionFailed(format!("运行部署器失败: {err}")))?;
 
     Ok(DeployResult {
         success: true,
@@ -92,7 +107,7 @@ pub(crate) fn deploy_rime_internal() -> Result<DeployResult, String> {
     })
 }
 
-pub(crate) fn scan_rime_environment_sync() -> Result<RimeEnvironment, String> {
+pub(crate) fn scan_rime_environment_sync() -> Result<RimeEnvironment, RimeError> {
     let user_dir = rime_user_dir()?;
     let build_dir = user_dir.join("build");
     let plum_dir = app_data_dir()?.join("plum");
@@ -132,16 +147,19 @@ pub(crate) fn scan_rime_environment_sync() -> Result<RimeEnvironment, String> {
     })
 }
 
-pub(crate) fn deploy_rime_sync() -> Result<DeployResult, String> {
+pub(crate) fn deploy_rime_sync() -> Result<DeployResult, RimeError> {
     deploy_rime_internal()
 }
 
-pub(crate) fn install_rime_ice_sync(recipe: Option<String>) -> Result<InstallResult, String> {
-    let bash = locate_git_bash().ok_or("运行 rime-install 需要 Git Bash，但未找到")?;
+pub(crate) fn install_rime_ice_sync(recipe: Option<String>) -> Result<InstallResult, RimeError> {
+    let bash = locate_git_bash().ok_or_else(|| {
+        RimeError::CommandExecutionFailed("运行 rime-install 需要 Git Bash，但未找到".to_string())
+    })?;
 
     let recipe = recipe.unwrap_or_else(|| "iDvel/rime-ice:others/recipes/full".to_string());
     let user_dir = rime_user_dir()?;
-    fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
+    fs::create_dir_all(&user_dir)
+        .map_err(|err| RimeError::FileOperationError(format!("创建 Rime 目录失败: {err}")))?;
     let backup_dir = backup_user_config(&user_dir, BackupKind::BeforeInstall)?;
     let backup_dir_display = backup_dir.display().to_string();
     let plum_dir = app_data_dir()?.join("plum");
@@ -186,7 +204,7 @@ pub(crate) fn install_rime_ice_sync(recipe: Option<String>) -> Result<InstallRes
             })
         }
         Err(err) => {
-            log.push_str(&err);
+            log.push_str(&err.to_string());
             Ok(InstallResult {
                 success: false,
                 recipe,

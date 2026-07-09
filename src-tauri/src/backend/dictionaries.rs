@@ -9,7 +9,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub(crate) fn list_dictionaries_sync() -> Result<Vec<DictInfo>, String> {
+pub(crate) fn list_dictionaries_sync() -> Result<Vec<DictInfo>, RimeError> {
     let user_dir = rime_user_dir()?;
     if !user_dir.exists() {
         return Ok(Vec::new());
@@ -19,10 +19,12 @@ pub(crate) fn list_dictionaries_sync() -> Result<Vec<DictInfo>, String> {
     let mut pending_dirs = vec![user_dir.clone()];
 
     while let Some(dir) = pending_dirs.pop() {
-        let entries = fs::read_dir(&dir).map_err(|err| format!("读取 Rime 目录失败: {err}"))?;
+        let entries = fs::read_dir(&dir)
+            .map_err(|err| RimeError::FileOperationError(format!("读取 Rime 目录失败: {err}")))?;
 
         for entry in entries {
-            let entry = entry.map_err(|err| format!("检查文件失败: {err}"))?;
+            let entry = entry
+                .map_err(|err| RimeError::FileOperationError(format!("检查文件失败: {err}")))?;
             let path = entry.path();
             if path.is_dir() {
                 pending_dirs.push(path);
@@ -92,9 +94,11 @@ pub(crate) fn list_dictionaries_sync() -> Result<Vec<DictInfo>, String> {
 pub(crate) fn validate_dictionary_path(
     user_dir: &Path,
     dict_name: &str,
-) -> Result<PathBuf, String> {
+) -> Result<PathBuf, RimeError> {
     if !dict_name.ends_with(".dict.yaml") {
-        return Err("只能操作 .dict.yaml 词库文件".to_string());
+        return Err(RimeError::InvalidDictionaryPath(
+            "只能操作 .dict.yaml 词库文件".to_string(),
+        ));
     }
 
     let relative = PathBuf::from(dict_name.replace('\\', "/"));
@@ -106,12 +110,12 @@ pub(crate) fn validate_dictionary_path(
                 | std::path::Component::ParentDir
         )
     }) {
-        return Err("词库路径无效".to_string());
+        return Err(RimeError::InvalidDictionaryPath("词库路径无效".to_string()));
     }
 
     let path = user_dir.join(relative);
     if !path.exists() || !path.is_file() {
-        return Err("词库文件不存在".to_string());
+        return Err(RimeError::DictionaryNotFound("词库文件不存在".to_string()));
     }
 
     Ok(path)
@@ -218,7 +222,7 @@ pub(crate) fn dict_info_to_reference(info: &DictInfo) -> String {
     dictionary_reference_from_name(&info.name)
 }
 
-pub(crate) fn read_dictionary_config_sync() -> Result<DictionaryConfig, String> {
+pub(crate) fn read_dictionary_config_sync() -> Result<DictionaryConfig, RimeError> {
     let user_dir = rime_user_dir()?;
     let dictionaries = list_dictionaries_sync()?;
     let (schema_id, schema_name, main_dictionary) = current_schema_dictionary(&user_dir);
@@ -307,11 +311,13 @@ pub(crate) fn render_main_dictionary(dictionary_id: &str, imports: &[String]) ->
 
 pub(crate) fn save_dictionary_imports_sync(
     imports: Vec<String>,
-) -> Result<DictionaryConfig, String> {
+) -> Result<DictionaryConfig, RimeError> {
     let user_dir = rime_user_dir()?;
-    fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
+    fs::create_dir_all(&user_dir)
+        .map_err(|err| RimeError::FileOperationError(format!("创建 Rime 目录失败: {err}")))?;
     let (_, _, main_dictionary) = current_schema_dictionary(&user_dir);
-    let main_dictionary = main_dictionary.ok_or_else(|| "当前方案未找到主词库".to_string())?;
+    let main_dictionary = main_dictionary
+        .ok_or_else(|| RimeError::ConfigNotFound("当前方案未找到主词库".to_string()))?;
     backup_user_config(&user_dir, BackupKind::BeforeSave)?;
 
     let mut seen = std::collections::HashSet::new();
@@ -340,14 +346,16 @@ pub(crate) fn save_dictionary_imports_sync(
 
 pub(crate) fn add_dictionary_to_current_schema_sync(
     reference: String,
-) -> Result<DictionaryConfig, String> {
+) -> Result<DictionaryConfig, RimeError> {
     let config = read_dictionary_config_sync()?;
     let reference = reference
         .trim()
         .trim_end_matches(".dict.yaml")
         .replace('\\', "/");
     if reference.is_empty() {
-        return Err("词库引用不能为空".to_string());
+        return Err(RimeError::InvalidDictionaryPath(
+            "词库引用不能为空".to_string(),
+        ));
     }
 
     let mut imports = config
@@ -364,7 +372,7 @@ pub(crate) fn add_dictionary_to_current_schema_sync(
 
 pub(crate) fn remove_dictionary_from_current_schema_sync(
     reference: String,
-) -> Result<DictionaryConfig, String> {
+) -> Result<DictionaryConfig, RimeError> {
     let config = read_dictionary_config_sync()?;
     let reference = reference
         .trim()
@@ -380,11 +388,11 @@ pub(crate) fn remove_dictionary_from_current_schema_sync(
     save_dictionary_imports_sync(imports)
 }
 
-pub(crate) fn get_dict_health_sync(dict_name: String) -> Result<DictHealth, String> {
+pub(crate) fn get_dict_health_sync(dict_name: String) -> Result<DictHealth, RimeError> {
     let user_dir = rime_user_dir()?;
     let path = validate_dictionary_path(&user_dir, &dict_name)?;
 
-    analyze_sogou(&path).ok_or_else(|| "词库分析失败".to_string())
+    analyze_sogou(&path).ok_or_else(|| RimeError::DictionaryNotFound("词库分析失败".to_string()))
 }
 
 pub(crate) fn remove_duplicate_dictionary_lines(contents: &str) -> (String, usize) {
@@ -410,10 +418,11 @@ pub(crate) fn remove_duplicate_dictionary_lines(contents: &str) -> (String, usiz
 
 pub(crate) fn clean_dictionary_duplicates_sync(
     dict_name: String,
-) -> Result<DictionaryCleanResult, String> {
+) -> Result<DictionaryCleanResult, RimeError> {
     let user_dir = rime_user_dir()?;
     let path = validate_dictionary_path(&user_dir, &dict_name)?;
-    let contents = fs::read_to_string(&path).map_err(|err| format!("读取词库失败: {err}"))?;
+    let contents = fs::read_to_string(&path)
+        .map_err(|err| RimeError::FileOperationError(format!("读取词库失败: {err}")))?;
     let (cleaned, removed_duplicate_lines) = remove_duplicate_dictionary_lines(&contents);
 
     let backup_dir = if removed_duplicate_lines > 0 {
@@ -485,16 +494,18 @@ pub(crate) fn decode_utf16_le(data: &[u8]) -> String {
         .to_string()
 }
 
-pub(crate) fn parse_scel_entries(data: &[u8]) -> Result<(Vec<DictionaryEntry>, usize), String> {
+pub(crate) fn parse_scel_entries(data: &[u8]) -> Result<(Vec<DictionaryEntry>, usize), RimeError> {
     const PINYIN_TABLE_OFFSET: usize = 0x1540;
 
     if data.len() <= PINYIN_TABLE_OFFSET + 4 {
-        return Err("搜狗 .scel 文件过小或格式不正确".to_string());
+        return Err(RimeError::InvalidDictionaryPath(
+            "搜狗 .scel 文件过小或格式不正确".to_string(),
+        ));
     }
 
     let pinyin_count = read_u16_le(data, PINYIN_TABLE_OFFSET)
         .map(usize::from)
-        .ok_or_else(|| "搜狗 .scel 拼音表损坏".to_string())?;
+        .ok_or_else(|| RimeError::InvalidDictionaryPath("搜狗 .scel 拼音表损坏".to_string()))?;
     let mut pinyin_table = std::collections::HashMap::<u16, String>::new();
     let mut offset = PINYIN_TABLE_OFFSET + 4;
     for _ in 0..pinyin_count {
@@ -577,7 +588,9 @@ pub(crate) fn parse_scel_entries(data: &[u8]) -> Result<(Vec<DictionaryEntry>, u
     }
 
     if entries.is_empty() {
-        Err("未能从搜狗 .scel 文件中解析出词条".to_string())
+        Err(RimeError::InvalidDictionaryPath(
+            "未能从搜狗 .scel 文件中解析出词条".to_string(),
+        ))
     } else {
         Ok((entries, skipped))
     }
@@ -614,9 +627,11 @@ pub(crate) fn sogou_bin_code_from_indexes(index_bytes: &[u8]) -> Option<String> 
 
 pub(crate) fn parse_sogou_bin_entries(
     data: &[u8],
-) -> Result<(Vec<DictionaryEntry>, usize), String> {
+) -> Result<(Vec<DictionaryEntry>, usize), RimeError> {
     if !data.starts_with(b"SGPU") {
-        return Err("不是支持的搜狗用户词库 .bin 备份文件".to_string());
+        return Err(RimeError::InvalidDictionaryPath(
+            "不是支持的搜狗用户词库 .bin 备份文件".to_string(),
+        ));
     }
 
     let mut weighted = std::collections::BTreeMap::<(String, String), i32>::new();
@@ -683,7 +698,9 @@ pub(crate) fn parse_sogou_bin_entries(
     }
 
     if weighted.is_empty() {
-        return Err("未能从搜狗 .bin 备份中解析出可导入词条".to_string());
+        return Err(RimeError::InvalidDictionaryPath(
+            "未能从搜狗 .bin 备份中解析出可导入词条".to_string(),
+        ));
     }
 
     let entries = weighted
@@ -746,12 +763,14 @@ pub(crate) fn render_rime_dictionary(dict_id: &str, entries: &[DictionaryEntry])
 pub(crate) fn parse_dictionary_import_payload(
     source_name: String,
     data: Vec<u8>,
-) -> Result<(String, String, Vec<DictionaryEntry>, usize, String), String> {
+) -> Result<(String, String, Vec<DictionaryEntry>, usize, String), RimeError> {
     if data.is_empty() {
-        return Err("导入文件为空".to_string());
+        return Err(RimeError::InvalidDictionaryPath("导入文件为空".to_string()));
     }
     if data.len() > 64 * 1024 * 1024 {
-        return Err("导入文件超过 64MB".to_string());
+        return Err(RimeError::InvalidDictionaryPath(
+            "导入文件超过 64MB".to_string(),
+        ));
     }
 
     let dict_name = sanitize_dict_file_name(&source_name);
@@ -767,7 +786,9 @@ pub(crate) fn parse_dictionary_import_payload(
         (entries, skipped, rendered)
     } else {
         let contents = String::from_utf8(data).map_err(|_| {
-            "文本词库需要使用 UTF-8 编码；搜狗二进制词库请导入 .scel 文件".to_string()
+            RimeError::InvalidDictionaryPath(
+                "文本词库需要使用 UTF-8 编码；搜狗二进制词库请导入 .scel 文件".to_string(),
+            )
         })?;
         let (entries, skipped) = parse_text_dictionary_entries(&contents);
         let rendered = if lower_name.ends_with(".dict.yaml")
@@ -781,7 +802,9 @@ pub(crate) fn parse_dictionary_import_payload(
     };
 
     if entries.is_empty() {
-        return Err("未解析到有效词条".to_string());
+        return Err(RimeError::InvalidDictionaryPath(
+            "未解析到有效词条".to_string(),
+        ));
     }
 
     let reference = dictionary_reference_from_name(dict_id);
@@ -1077,19 +1100,21 @@ pub(crate) fn dictionary_source_name_from_url(url: &str, fallback: &str) -> Stri
     }
 }
 
-pub(crate) fn validate_dictionary_download_url(url: &str) -> Result<(), String> {
+pub(crate) fn validate_dictionary_download_url(url: &str) -> Result<(), RimeError> {
     let lower = url.to_lowercase();
     if lower.starts_with("https://") || lower.starts_with("http://") {
         Ok(())
     } else {
-        Err("只支持 http:// 或 https:// 在线词库地址".to_string())
+        Err(RimeError::InvalidDictionaryPath(
+            "只支持 http:// 或 https:// 在线词库地址".to_string(),
+        ))
     }
 }
 
 pub(crate) fn download_dictionary_bytes(
     url: &str,
     referer: Option<&str>,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, RimeError> {
     validate_dictionary_download_url(url)?;
     let mut request = ureq::get(url)
         .set("User-Agent", "RimeStudio/0.2")
@@ -1100,19 +1125,21 @@ pub(crate) fn download_dictionary_bytes(
 
     let response = request
         .call()
-        .map_err(|err| format!("下载在线词库失败: {err}"))?;
+        .map_err(|err| RimeError::NetworkError(format!("下载在线词库失败: {err}")))?;
     let mut reader = response
         .into_reader()
         .take((MAX_DICTIONARY_DOWNLOAD_BYTES + 1) as u64);
     let mut data = Vec::new();
     reader
         .read_to_end(&mut data)
-        .map_err(|err| format!("读取在线词库失败: {err}"))?;
+        .map_err(|err| RimeError::NetworkError(format!("读取在线词库失败: {err}")))?;
     if data.is_empty() {
-        return Err("在线词库下载结果为空".to_string());
+        return Err(RimeError::DownloadError("在线词库下载结果为空".to_string()));
     }
     if data.len() > MAX_DICTIONARY_DOWNLOAD_BYTES {
-        return Err("在线词库超过 64MB，已取消导入".to_string());
+        return Err(RimeError::DownloadError(
+            "在线词库超过 64MB，已取消导入".to_string(),
+        ));
     }
     Ok(data)
 }
@@ -1124,7 +1151,7 @@ pub(crate) fn download_url_to_file_with_progress<F>(
     empty_message: &str,
     too_large_message: &str,
     mut progress: F,
-) -> Result<(), String>
+) -> Result<(), RimeError>
 where
     F: FnMut(u64, Option<u64>),
 {
@@ -1133,17 +1160,17 @@ where
         .set("User-Agent", "RimeStudio/0.2")
         .set("Accept", "*/*")
         .call()
-        .map_err(|err| format!("下载失败: {err}"))?;
+        .map_err(|err| RimeError::DownloadError(format!("下载失败: {err}")))?;
     let total_bytes = response
         .header("Content-Length")
         .and_then(|value| value.parse::<u64>().ok());
     if total_bytes.is_some_and(|value| value > max_bytes as u64) {
-        return Err(too_large_message.to_string());
+        return Err(RimeError::DownloadError(too_large_message.to_string()));
     }
 
     let mut reader = response.into_reader();
-    let mut file =
-        fs::File::create(destination).map_err(|err| format!("创建下载文件失败: {err}"))?;
+    let mut file = fs::File::create(destination)
+        .map_err(|err| RimeError::FileOperationError(format!("创建下载文件失败: {err}")))?;
     let mut buffer = [0u8; 64 * 1024];
     let mut downloaded = 0u64;
     let mut last_emit = Instant::now();
@@ -1152,17 +1179,17 @@ where
     loop {
         let read = reader
             .read(&mut buffer)
-            .map_err(|err| format!("读取下载内容失败: {err}"))?;
+            .map_err(|err| RimeError::DownloadError(format!("读取下载内容失败: {err}")))?;
         if read == 0 {
             break;
         }
         downloaded += read as u64;
         if downloaded > max_bytes as u64 {
             let _ = fs::remove_file(destination);
-            return Err(too_large_message.to_string());
+            return Err(RimeError::DownloadError(too_large_message.to_string()));
         }
         file.write_all(&buffer[..read])
-            .map_err(|err| format!("保存下载文件失败: {err}"))?;
+            .map_err(|err| RimeError::FileOperationError(format!("保存下载文件失败: {err}")))?;
         if last_emit.elapsed().as_millis() >= 200 || total_bytes == Some(downloaded) {
             progress(downloaded, total_bytes);
             last_emit = Instant::now();
@@ -1171,10 +1198,10 @@ where
 
     if downloaded == 0 {
         let _ = fs::remove_file(destination);
-        return Err(empty_message.to_string());
+        return Err(RimeError::DownloadError(empty_message.to_string()));
     }
     file.flush()
-        .map_err(|err| format!("保存下载文件失败: {err}"))?;
+        .map_err(|err| RimeError::FileOperationError(format!("保存下载文件失败: {err}")))?;
     progress(downloaded, total_bytes);
     Ok(())
 }
@@ -1182,7 +1209,7 @@ where
 pub(crate) fn resolve_sogou_detail_download(
     url: &str,
     source_name: Option<String>,
-) -> Result<Option<(String, String, Option<String>)>, String> {
+) -> Result<Option<(String, String, Option<String>)>, RimeError> {
     let marker = "pinyin.sogou.com/dict/detail/index/";
     let Some(marker_index) = url.find(marker) else {
         return Ok(None);
@@ -1193,17 +1220,19 @@ pub(crate) fn resolve_sogou_detail_download(
         .unwrap_or_default()
         .trim();
     if id.is_empty() {
-        return Err("搜狗词库详情页地址缺少词库 ID".to_string());
+        return Err(RimeError::InvalidDictionaryPath(
+            "搜狗词库详情页地址缺少词库 ID".to_string(),
+        ));
     }
 
     let response = ureq::get(url)
         .set("User-Agent", "RimeStudio/0.2")
         .set("Accept", "text/html,*/*")
         .call()
-        .map_err(|err| format!("读取搜狗词库详情页失败: {err}"))?;
+        .map_err(|err| RimeError::NetworkError(format!("读取搜狗词库详情页失败: {err}")))?;
     let html = response
         .into_string()
-        .map_err(|err| format!("解析搜狗词库详情页失败: {err}"))?;
+        .map_err(|err| RimeError::NetworkError(format!("解析搜狗词库详情页失败: {err}")))?;
     let title = find_between(&html, "<div class=\"dict_detail_title\">", "</div>")
         .map(strip_html_tags)
         .or_else(|| {
@@ -1226,7 +1255,7 @@ pub(crate) fn resolve_sogou_detail_download(
 pub(crate) fn download_dictionary_import_source(
     url: String,
     source_name: Option<String>,
-) -> Result<(String, Vec<u8>), String> {
+) -> Result<(String, Vec<u8>), RimeError> {
     if let Some((download_url, source_name, referer)) =
         resolve_sogou_detail_download(&url, source_name.clone())?
     {
@@ -1241,29 +1270,29 @@ pub(crate) fn download_dictionary_import_source(
     Ok((source_name, data))
 }
 
-pub(crate) fn download_online_dictionary(entry: &OnlineDictionary) -> Result<Vec<u8>, String> {
-    let detail_id =
-        sogou_detail_id(&entry.detail_url).ok_or_else(|| "在线词库详情地址无效".to_string())?;
+pub(crate) fn download_online_dictionary(entry: &OnlineDictionary) -> Result<Vec<u8>, RimeError> {
+    let detail_id = sogou_detail_id(&entry.detail_url)
+        .ok_or_else(|| RimeError::InvalidDictionaryPath("在线词库详情地址无效".to_string()))?;
     let url = sogou_dictionary_url(detail_id, &entry.title);
     download_dictionary_bytes(&url, Some(&entry.detail_url))
 }
 
-pub(crate) fn list_online_dictionaries_sync() -> Result<Vec<OnlineDictionary>, String> {
+pub(crate) fn list_online_dictionaries_sync() -> Result<Vec<OnlineDictionary>, RimeError> {
     Ok(online_dictionary_catalog())
 }
 
 pub(crate) fn list_online_dictionary_categories_sync(
-) -> Result<Vec<OnlineDictionaryCategory>, String> {
+) -> Result<Vec<OnlineDictionaryCategory>, RimeError> {
     Ok(online_dictionary_categories())
 }
 
 pub(crate) fn list_online_dictionaries_by_category_sync(
     category_id: String,
-) -> Result<Vec<OnlineDictionary>, String> {
+) -> Result<Vec<OnlineDictionary>, RimeError> {
     let category = online_dictionary_categories()
         .into_iter()
         .find(|category| category.id == category_id)
-        .ok_or_else(|| "未找到在线词库分类".to_string())?;
+        .ok_or_else(|| RimeError::NetworkError("未找到在线词库分类".to_string()))?;
     let url = format!(
         "https://pinyin.sogou.com/dict/cate/index/{}/download",
         category.id
@@ -1272,13 +1301,15 @@ pub(crate) fn list_online_dictionaries_by_category_sync(
         .set("User-Agent", "RimeStudio/0.2")
         .set("Accept", "text/html,*/*")
         .call()
-        .map_err(|err| format!("读取在线词库分类失败: {err}"))?;
+        .map_err(|err| RimeError::NetworkError(format!("读取在线词库分类失败: {err}")))?;
     let html = response
         .into_string()
-        .map_err(|err| format!("解析在线词库分类失败: {err}"))?;
+        .map_err(|err| RimeError::NetworkError(format!("解析在线词库分类失败: {err}")))?;
     let dictionaries = parse_sogou_category_page(&category.id, &html);
     if dictionaries.is_empty() {
-        Err("这个分类没有解析到可导入词库".to_string())
+        Err(RimeError::NetworkError(
+            "这个分类没有解析到可导入词库".to_string(),
+        ))
     } else {
         Ok(dictionaries)
     }
@@ -1286,14 +1317,18 @@ pub(crate) fn list_online_dictionaries_by_category_sync(
 
 pub(crate) fn preview_online_dictionary_import_sync(
     id: String,
-) -> Result<DictionaryImportPreview, String> {
-    let entry = online_dictionary_by_id(&id).ok_or_else(|| "未找到在线词库".to_string())?;
+) -> Result<DictionaryImportPreview, RimeError> {
+    let entry = online_dictionary_by_id(&id)
+        .ok_or_else(|| RimeError::NetworkError("未找到在线词库".to_string()))?;
     let data = download_online_dictionary(&entry)?;
     preview_dictionary_import_sync(entry.source_name, data)
 }
 
-pub(crate) fn import_online_dictionary_sync(id: String) -> Result<DictionaryImportResult, String> {
-    let entry = online_dictionary_by_id(&id).ok_or_else(|| "未找到在线词库".to_string())?;
+pub(crate) fn import_online_dictionary_sync(
+    id: String,
+) -> Result<DictionaryImportResult, RimeError> {
+    let entry = online_dictionary_by_id(&id)
+        .ok_or_else(|| RimeError::NetworkError("未找到在线词库".to_string()))?;
     let data = download_online_dictionary(&entry)?;
     import_dictionary_sync(entry.source_name, data)
 }
@@ -1301,7 +1336,7 @@ pub(crate) fn import_online_dictionary_sync(id: String) -> Result<DictionaryImpo
 pub(crate) fn preview_dictionary_url_import_sync(
     url: String,
     source_name: Option<String>,
-) -> Result<DictionaryImportPreview, String> {
+) -> Result<DictionaryImportPreview, RimeError> {
     let (source_name, data) = download_dictionary_import_source(url, source_name)?;
     preview_dictionary_import_sync(source_name, data)
 }
@@ -1309,7 +1344,7 @@ pub(crate) fn preview_dictionary_url_import_sync(
 pub(crate) fn import_dictionary_url_sync(
     url: String,
     source_name: Option<String>,
-) -> Result<DictionaryImportResult, String> {
+) -> Result<DictionaryImportResult, RimeError> {
     let (source_name, data) = download_dictionary_import_source(url, source_name)?;
     import_dictionary_sync(source_name, data)
 }

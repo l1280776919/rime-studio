@@ -8,14 +8,15 @@ use std::{
     process::Command,
 };
 
-pub(crate) fn rime_user_dir() -> Result<PathBuf, String> {
-    let appdata = env::var("APPDATA").map_err(|_| "APPDATA 环境变量不可用".to_string())?;
+pub(crate) fn rime_user_dir() -> Result<PathBuf, RimeError> {
+    let appdata = env::var("APPDATA")
+        .map_err(|_| RimeError::EnvVarNotFound("APPDATA 环境变量不可用".to_string()))?;
     Ok(PathBuf::from(appdata).join("Rime"))
 }
 
-pub(crate) fn app_data_dir() -> Result<PathBuf, String> {
-    let local_appdata =
-        env::var("LOCALAPPDATA").map_err(|_| "LOCALAPPDATA 环境变量不可用".to_string())?;
+pub(crate) fn app_data_dir() -> Result<PathBuf, RimeError> {
+    let local_appdata = env::var("LOCALAPPDATA")
+        .map_err(|_| RimeError::EnvVarNotFound("LOCALAPPDATA 环境变量不可用".to_string()))?;
     Ok(PathBuf::from(local_appdata).join("RimeStudio"))
 }
 

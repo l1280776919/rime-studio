@@ -147,8 +147,9 @@ pub(crate) fn write_appearance_config(
     user_dir: &Path,
     config: &AppearanceConfig,
     include_behavior: bool,
-) -> Result<(), String> {
-    fs::create_dir_all(user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
+) -> Result<(), RimeError> {
+    fs::create_dir_all(user_dir)
+        .map_err(|err| RimeError::FileOperationError(format!("创建 Rime 目录失败: {err}")))?;
     let path = user_dir.join("weasel.custom.yaml");
     let _ = include_behavior;
     write_text_file(&path, &render_weasel_custom(config), "写入外观配置文件失败")

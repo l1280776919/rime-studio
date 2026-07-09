@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
 import { invoke } from "@tauri-apps/api/core";
+import { useErrorHandler } from "../composables/useErrorHandler";
 import {
   Check,
   Connection,
@@ -46,6 +47,8 @@ const schemas = ref<SchemaInfo[]>([]);
 const healthReport = ref<ConfigHealthReport>();
 const configPreview = ref<ConfigPreview>();
 let postDeployTimer: ReturnType<typeof setTimeout> | undefined;
+
+const { withErrorHandling } = useErrorHandler();
 
 const form = reactive<QuickSettingsConfig>({
   schema_id: "rime_ice",
@@ -94,10 +97,11 @@ function schedulePostDeployCheck() {
   }
   postDeployChecking.value = true;
   postDeployTimer = setTimeout(async () => {
-    try {
-      healthReport.value = await invoke<ConfigHealthReport>("inspect_config_health");
-      const hasError = healthReport.value.checks.some((check) => check.status === "error");
-      const hasWarning = healthReport.value.checks.some((check) => check.status === "warning");
+    const report = await withErrorHandling(() => invoke<ConfigHealthReport>("inspect_config_health"));
+    if (report) {
+      healthReport.value = report;
+      const hasError = report.checks.some((check) => check.status === "error");
+      const hasWarning = report.checks.some((check) => check.status === "warning");
       if (hasError) {
         ElMessage.warning("部署后复检仍有阻断项");
       } else if (hasWarning) {
@@ -105,42 +109,37 @@ function schedulePostDeployCheck() {
       } else {
         ElMessage.success("部署后复检通过");
       }
-    } catch (error) {
-      ElMessage.error(String(error));
-    } finally {
-      postDeployChecking.value = false;
-      postDeployTimer = undefined;
     }
+    postDeployChecking.value = false;
+    postDeployTimer = undefined;
   }, 3000);
 }
 
 async function loadQuickSettings() {
   loading.value = true;
-  try {
-    const [config, schemaList, report, rimeIceSettings] = await Promise.all([
-      invoke<QuickSettingsConfig>("get_quick_settings"),
-      invoke<SchemaInfo[]>("list_schemas"),
-      invoke<ConfigHealthReport>("inspect_config_health"),
-      invoke<RimeIceSettings>("get_rime_ice_settings"),
-    ]);
+  const result = await withErrorHandling(() => Promise.all([
+    invoke<QuickSettingsConfig>("get_quick_settings"),
+    invoke<SchemaInfo[]>("list_schemas"),
+    invoke<ConfigHealthReport>("inspect_config_health"),
+    invoke<RimeIceSettings>("get_rime_ice_settings"),
+  ]));
+  if (result) {
+    const [config, schemaList, report, rimeIceSettings] = result;
     applyConfig(config);
     schemas.value = schemaList;
     healthReport.value = report;
     Object.assign(iceSettings, rimeIceSettings);
-  } catch (error) {
-    ElMessage.error(String(error));
-  } finally {
-    loading.value = false;
   }
+  loading.value = false;
 }
 
 async function saveQuickSettings(shouldDeploy = false) {
   saving.value = !shouldDeploy;
   deploying.value = shouldDeploy;
-  try {
-    const config = await invoke<QuickSettingsConfig>("save_quick_settings", {
-      config: { ...form },
-    });
+  const config = await withErrorHandling(() => invoke<QuickSettingsConfig>("save_quick_settings", {
+    config: { ...form },
+  }));
+  if (config) {
     applyConfig(config);
     emit("saved");
     ElMessage.success(shouldDeploy ? "快速设置已保存，开始部署" : "快速设置已保存");
@@ -148,93 +147,79 @@ async function saveQuickSettings(shouldDeploy = false) {
       emit("deploy");
       schedulePostDeployCheck();
     }
-  } catch (error) {
-    ElMessage.error(String(error));
-  } finally {
-    saving.value = false;
-    deploying.value = false;
   }
+  saving.value = false;
+  deploying.value = false;
 }
 
 async function previewQuickSettings() {
   previewing.value = true;
-  try {
-    configPreview.value = await invoke<ConfigPreview>("preview_quick_settings", {
-      config: { ...form },
-    });
+  const preview = await withErrorHandling(() => invoke<ConfigPreview>("preview_quick_settings", {
+    config: { ...form },
+  }));
+  if (preview) {
+    configPreview.value = preview;
     showPreviewDialog.value = true;
-  } catch (error) {
-    ElMessage.error(String(error));
-  } finally {
-    previewing.value = false;
   }
+  previewing.value = false;
 }
 
 async function inspectHealth() {
   checkingHealth.value = true;
-  try {
-    healthReport.value = await invoke<ConfigHealthReport>("inspect_config_health");
-    const hasError = healthReport.value.checks.some((check) => check.status === "error");
+  const report = await withErrorHandling(() => invoke<ConfigHealthReport>("inspect_config_health"));
+  if (report) {
+    healthReport.value = report;
+    const hasError = report.checks.some((check) => check.status === "error");
     if (hasError) {
       ElMessage.warning("发现配置阻断项，建议重新保存快速设置和主题");
     } else {
       ElMessage.success("配置体检完成");
     }
-  } catch (error) {
-    ElMessage.error(String(error));
-  } finally {
-    checkingHealth.value = false;
   }
+  checkingHealth.value = false;
 }
 
 async function repairHealth() {
   repairingHealth.value = true;
-  try {
-    healthReport.value = await invoke<ConfigHealthReport>("repair_config_health");
+  const report = await withErrorHandling(() => invoke<ConfigHealthReport>("repair_config_health"));
+  if (report) {
+    healthReport.value = report;
     emit("saved");
     ElMessage.success("已重写干净配置并启动部署");
     schedulePostDeployCheck();
-  } catch (error) {
-    ElMessage.error(String(error));
-  } finally {
-    repairingHealth.value = false;
   }
+  repairingHealth.value = false;
 }
 
 async function repairHealthItem(check: ConfigHealthCheck) {
   repairingHealthItem.value = check.name;
-  try {
-    healthReport.value = await invoke<ConfigHealthReport>("repair_config_health_item", {
-      name: check.name,
-    });
+  const report = await withErrorHandling(() => invoke<ConfigHealthReport>("repair_config_health_item", {
+    name: check.name,
+  }));
+  if (report) {
+    healthReport.value = report;
     emit("saved");
     if (check.name === "主题合并" || check.name === "候选数量合并") {
       schedulePostDeployCheck();
     }
     ElMessage.success(`已修复 ${check.name}`);
-  } catch (error) {
-    ElMessage.error(String(error));
-  } finally {
-    repairingHealthItem.value = undefined;
   }
+  repairingHealthItem.value = undefined;
 }
 
 async function saveIceSettings() {
   savingIceSettings.value = true;
-  try {
-    const settings = await invoke<RimeIceSettings>("save_rime_ice_settings", {
-      settings: { ...iceSettings },
-    });
+  const settings = await withErrorHandling(() => invoke<RimeIceSettings>("save_rime_ice_settings", {
+    settings: { ...iceSettings },
+  }));
+  if (settings) {
     Object.assign(iceSettings, settings);
     emit("saved");
     emit("deploy");
     schedulePostDeployCheck();
     ElMessage.success("雾凇组件已保存，开始部署");
-  } catch (error) {
-    ElMessage.error(String(error));
-  } finally {
-    savingIceSettings.value = false;
   }
+  savingIceSettings.value = false;
 }
 
 function chooseSchema(id: string) {

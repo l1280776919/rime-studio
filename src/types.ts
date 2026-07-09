@@ -240,6 +240,14 @@ export type LmdgGrammarUninstallResult = {
   message: string;
 };
 
+export type LmdgDownloadProgress = {
+  kind: "grammar" | "dicts";
+  stage: string;
+  downloaded_bytes: number;
+  total_bytes?: number;
+  percent?: number;
+};
+
 export type AppUpdateInfo = {
   current_version: string;
   latest_version?: string;

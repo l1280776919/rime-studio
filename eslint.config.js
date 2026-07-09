@@ -12,6 +12,31 @@ export default [
       parserOptions: {
         parser: tseslint.parser,
       },
+      globals: {
+        // Browser globals
+        window: "readonly",
+        document: "readonly",
+        navigator: "readonly",
+        localStorage: "readonly",
+        sessionStorage: "readonly",
+        console: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        setInterval: "readonly",
+        clearInterval: "readonly",
+        URL: "readonly",
+        Blob: "readonly",
+        HTMLInputElement: "readonly",
+        Event: "readonly",
+        XMLHttpRequest: "readonly",
+        fetch: "readonly",
+        // Node.js globals
+        process: "readonly",
+        __dirname: "readonly",
+        __filename: "readonly",
+        Buffer: "readonly",
+        global: "readonly",
+      },
     },
   },
   {

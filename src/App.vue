@@ -1,22 +1,10 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onMounted, ref, watch } from "vue";
-import { ElMessage } from "element-plus";
+import { useErrorHandler } from "./composables/useErrorHandler";
 import { invoke } from "@tauri-apps/api/core";
-import {
-  Brush,
-  Collection,
-  Document,
-  EditPen,
-  Files,
-  FolderOpened,
-  InfoFilled,
-  MagicStick,
-  Monitor,
-  Moon,
-  Refresh,
-  Sunny,
-  UploadFilled,
-} from "@element-plus/icons-vue";
+import AppSidebar from "./components/layout/AppSidebar.vue";
+import AppTopbar from "./components/layout/AppTopbar.vue";
+import AppStatusbar from "./components/layout/AppStatusbar.vue";
 import type {
   BackupEntry,
   RimeEnvironment,
@@ -37,7 +25,7 @@ const QuickSettingsPage = defineAsyncComponent(() => import("./pages/QuickSettin
 const SchemasPage = defineAsyncComponent(() => import("./pages/SchemasPage.vue"));
 
 // ── Composables ────────────────────────────────────
-const { isDark, toggleTheme, initTheme } = useTheme();
+const { initTheme } = useTheme();
 const {
   backups,
   backingUp,
@@ -50,6 +38,7 @@ const {
   deleteBackupEntry,
 } = useBackup();
 const { deploying, installingRecipe, log, deploy, installRimeIce } = useDeploy();
+const { withErrorHandling } = useErrorHandler();
 
 // ── Navigation ─────────────────────────────────────
 type PageKey = "overview" | "quick" | "schemas" | "configs" | "appearance" | "phrases" | "dictionaries" | "backups" | "about";
@@ -113,24 +102,20 @@ async function loadEnvironment() {
   scanning.value = true;
   status.value = "正在扫描 Rime 配置...";
 
-  try {
+  const result = await withErrorHandling(async () => {
     env.value = await invoke<RimeEnvironment>("scan_rime_environment");
     await loadBackups();
+  });
+
+  if (result !== undefined) {
     status.value = "扫描完成";
-  } catch (error) {
-    status.value = String(error);
-    ElMessage.error(String(error));
-  } finally {
-    scanning.value = false;
   }
+
+  scanning.value = false;
 }
 
 async function openKnownPath(command: "open_rime_user_dir" | "open_plum_dir") {
-  try {
-    await invoke(command);
-  } catch (error) {
-    ElMessage.error(String(error));
-  }
+  await withErrorHandling(() => invoke(command));
 }
 
 // ── Wrapper handlers (status updates) ──────────────
@@ -178,8 +163,8 @@ async function handleRestoreBackup(backup: BackupEntry) {
 }
 
 // ── Busy / Elapsed timer ──────────────────────────
-const isBusy = computed(
-  () => scanning.value || deploying.value || backingUp.value || restoringBackup.value || installingRecipe.value,
+const isBusy = computed<boolean>(
+  () => !!(scanning.value || deploying.value || backingUp.value || restoringBackup.value || installingRecipe.value),
 );
 
 function startElapsedTimer() {
@@ -206,13 +191,6 @@ watch(isBusy, (busy) => {
   }
 });
 
-function formatElapsed(seconds: number) {
-  if (seconds < 60) return `${seconds}s`;
-  const min = Math.floor(seconds / 60);
-  const sec = seconds % 60;
-  return `${min}m ${sec}s`;
-}
-
 // ── Lifecycle ──────────────────────────────────────
 onMounted(() => {
   initTheme();
@@ -223,93 +201,18 @@ onMounted(() => {
 <template>
   <el-config-provider>
     <main class="studio-shell">
-      <aside class="sidebar">
-        <div class="brand">
-          <div class="brand-mark">R</div>
-          <div>
-            <h1>Rime Studio</h1>
-            <p>小狼毫配置工作台</p>
-          </div>
-        </div>
-
-        <el-menu class="nav-menu" :default-active="activePage" @select="navigateTo">
-          <el-menu-item index="overview">
-            <el-icon><Monitor /></el-icon>
-            <span>概览</span>
-          </el-menu-item>
-          <el-menu-item index="quick">
-            <el-icon><MagicStick /></el-icon>
-            <span>快速设置</span>
-          </el-menu-item>
-          <el-menu-item index="schemas">
-            <el-icon><Files /></el-icon>
-            <span>方案</span>
-          </el-menu-item>
-          <el-menu-item index="configs">
-            <el-icon><Document /></el-icon>
-            <span>配置</span>
-          </el-menu-item>
-          <el-menu-item index="appearance">
-            <el-icon><Brush /></el-icon>
-            <span>主题</span>
-          </el-menu-item>
-          <el-menu-item index="phrases">
-            <el-icon><EditPen /></el-icon>
-            <span>短语</span>
-          </el-menu-item>
-          <el-menu-item index="dictionaries">
-            <el-icon><Collection /></el-icon>
-            <span>词库</span>
-          </el-menu-item>
-          <el-menu-item index="backups">
-            <el-icon><FolderOpened /></el-icon>
-            <span>备份</span>
-          </el-menu-item>
-          <el-menu-item index="about">
-            <el-icon><InfoFilled /></el-icon>
-            <span>关于</span>
-          </el-menu-item>
-        </el-menu>
-
-        <div class="theme-toggle">
-          <el-button
-            :icon="isDark ? Sunny : Moon"
-            circle
-            size="small"
-            @click="toggleTheme"
-          />
-          <span>{{ isDark ? "深色模式" : "浅色模式" }}</span>
-        </div>
-
-        <div class="sidebar-card">
-          <span>用户目录</span>
-          <strong>{{ env?.user_dir ? "已连接" : "等待扫描" }}</strong>
-          <p>{{ env?.user_dir ?? "启动后自动读取 APPDATA 下的 Rime 目录" }}</p>
-        </div>
-      </aside>
+      <AppSidebar :env="env" :active-page="activePage" @navigate="navigateTo" />
 
       <section class="workspace surface">
-        <header class="topbar">
-          <div>
-            <span class="eyebrow">Windows Weasel</span>
-            <h2>{{ pageTitle }}</h2>
-            <p>{{ pageDescription }}</p>
-          </div>
-          <div class="toolbar-actions">
-            <el-button :loading="scanning" :icon="Refresh" @click="loadEnvironment">
-              刷新
-            </el-button>
-            <el-button
-              type="primary"
-              :disabled="!hasDeployer"
-              :loading="deploying"
-              :icon="UploadFilled"
-              @click="handleDeploy"
-            >
-              重新部署
-            </el-button>
-          </div>
-        </header>
+        <AppTopbar
+          :page-title="pageTitle"
+          :page-description="pageDescription"
+          :scanning="scanning"
+          :has-deployer="hasDeployer"
+          :deploying="deploying"
+          @refresh="loadEnvironment"
+          @deploy="handleDeploy"
+        />
 
         <div class="page-container">
           <Transition name="page" mode="out-in">
@@ -403,9 +306,7 @@ onMounted(() => {
           </Transition>
         </div>
 
-        <footer class="statusbar" :class="{ busy: isBusy }">
-          <span>{{ status }}<template v-if="isBusy && elapsedSeconds"> (已用时 {{ formatElapsed(elapsedSeconds) }})</template></span>
-        </footer>
+        <AppStatusbar :status="status" :is-busy="isBusy" :elapsed-seconds="elapsedSeconds" />
       </section>
     </main>
   </el-config-provider>

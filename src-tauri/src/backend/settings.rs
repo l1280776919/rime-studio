@@ -7,7 +7,7 @@ use std::{
     process::Command,
 };
 
-pub(crate) fn get_appearance_config_sync() -> Result<AppearanceConfig, String> {
+pub(crate) fn get_appearance_config_sync() -> Result<AppearanceConfig, RimeError> {
     let user_dir = rime_user_dir()?;
     Ok(read_appearance_config(&user_dir))
 }
@@ -32,7 +32,7 @@ pub(crate) fn detect_navigation_keys(contents: &str) -> String {
     "up_down".to_string()
 }
 
-pub(crate) fn get_quick_settings_sync() -> Result<QuickSettingsConfig, String> {
+pub(crate) fn get_quick_settings_sync() -> Result<QuickSettingsConfig, RimeError> {
     let user_dir = rime_user_dir()?;
     let default_custom = read_to_string(&user_dir.join("default.custom.yaml"));
     let appearance = read_appearance_config(&user_dir);
@@ -145,7 +145,7 @@ pub(crate) fn preview_file(user_dir: &Path, name: &str, new_contents: String) ->
 
 pub(crate) fn preview_quick_settings_sync(
     config: QuickSettingsConfig,
-) -> Result<ConfigPreview, String> {
+) -> Result<ConfigPreview, RimeError> {
     let user_dir = rime_user_dir()?;
     let mut appearance = read_appearance_config(&user_dir);
     appearance.page_size = config.page_size;
@@ -171,9 +171,10 @@ pub(crate) fn preview_quick_settings_sync(
 
 pub(crate) fn save_quick_settings_sync(
     config: QuickSettingsConfig,
-) -> Result<QuickSettingsConfig, String> {
+) -> Result<QuickSettingsConfig, RimeError> {
     let user_dir = rime_user_dir()?;
-    fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
+    fs::create_dir_all(&user_dir)
+        .map_err(|err| RimeError::SettingsError(format!("创建 Rime 目录失败: {err}")))?;
     backup_user_config(&user_dir, BackupKind::BeforeSave)?;
 
     let default_custom_path = user_dir.join("default.custom.yaml");
@@ -269,7 +270,7 @@ pub(crate) fn nested_plain_value(contents: &str, section: &str, key: &str) -> Op
     None
 }
 
-pub(crate) fn inspect_config_health_sync() -> Result<ConfigHealthReport, String> {
+pub(crate) fn inspect_config_health_sync() -> Result<ConfigHealthReport, RimeError> {
     let user_dir = rime_user_dir()?;
     let default_custom_path = user_dir.join("default.custom.yaml");
     let weasel_custom_path = user_dir.join("weasel.custom.yaml");
@@ -516,7 +517,7 @@ pub(crate) fn inspect_config_health_sync() -> Result<ConfigHealthReport, String>
     Ok(ConfigHealthReport { summary, checks })
 }
 
-pub(crate) fn repair_config_health_sync() -> Result<ConfigHealthReport, String> {
+pub(crate) fn repair_config_health_sync() -> Result<ConfigHealthReport, RimeError> {
     let quick = get_quick_settings_sync().unwrap_or(QuickSettingsConfig {
         schema_id: "luna_pinyin_simp".to_string(),
         page_size: 5,
@@ -535,7 +536,9 @@ pub(crate) fn repair_config_health_sync() -> Result<ConfigHealthReport, String> 
     inspect_config_health_sync()
 }
 
-pub(crate) fn repair_config_health_item_sync(name: String) -> Result<ConfigHealthReport, String> {
+pub(crate) fn repair_config_health_item_sync(
+    name: String,
+) -> Result<ConfigHealthReport, RimeError> {
     let name = name.trim();
     match name {
         "default.custom.yaml" | "方案列表" | "候选数量合并" => {
@@ -565,7 +568,9 @@ pub(crate) fn repair_config_health_item_sync(name: String) -> Result<ConfigHealt
             save_rime_ice_settings_sync(settings)?;
         }
         _ => {
-            return Err(format!("暂不支持单项修复: {name}"));
+            return Err(RimeError::SettingsError(format!(
+                "暂不支持单项修复: {name}"
+            )));
         }
     }
 
@@ -579,7 +584,7 @@ pub(crate) fn parse_patch_bool(contents: &str, key: &str, fallback: bool) -> boo
         .unwrap_or(fallback)
 }
 
-pub(crate) fn get_rime_ice_settings_sync() -> Result<RimeIceSettings, String> {
+pub(crate) fn get_rime_ice_settings_sync() -> Result<RimeIceSettings, RimeError> {
     let user_dir = rime_user_dir()?;
     let custom = read_to_string(&user_dir.join("rime_ice.custom.yaml"));
     Ok(RimeIceSettings {
@@ -684,9 +689,10 @@ pub(crate) fn render_rime_ice_custom(
 
 pub(crate) fn save_rime_ice_settings_sync(
     settings: RimeIceSettings,
-) -> Result<RimeIceSettings, String> {
+) -> Result<RimeIceSettings, RimeError> {
     let user_dir = rime_user_dir()?;
-    fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
+    fs::create_dir_all(&user_dir)
+        .map_err(|err| RimeError::SettingsError(format!("创建 Rime 目录失败: {err}")))?;
     let custom_path = user_dir.join("rime_ice.custom.yaml");
     let custom = read_to_string(&custom_path);
     let keep_lmdg_grammar = has_lmdg_grammar_patch(&custom);
@@ -701,23 +707,25 @@ pub(crate) fn save_rime_ice_settings_sync(
 
 pub(crate) fn save_appearance_config_sync(
     config: AppearanceConfig,
-) -> Result<AppearanceConfig, String> {
+) -> Result<AppearanceConfig, RimeError> {
     let user_dir = rime_user_dir()?;
-    fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
+    fs::create_dir_all(&user_dir)
+        .map_err(|err| RimeError::SettingsError(format!("创建 Rime 目录失败: {err}")))?;
     backup_user_config(&user_dir, BackupKind::BeforeSave)?;
     write_appearance_config(&user_dir, &config, false)?;
 
     Ok(read_appearance_config(&user_dir))
 }
 
-pub(crate) fn list_backups_sync() -> Result<Vec<BackupEntry>, String> {
+pub(crate) fn list_backups_sync() -> Result<Vec<BackupEntry>, RimeError> {
     let user_dir = rime_user_dir()?;
     list_backup_dirs(&user_dir)
 }
 
-pub(crate) fn create_backup_sync() -> Result<BackupEntry, String> {
+pub(crate) fn create_backup_sync() -> Result<BackupEntry, RimeError> {
     let user_dir = rime_user_dir()?;
-    fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
+    fs::create_dir_all(&user_dir)
+        .map_err(|err| RimeError::SettingsError(format!("创建 Rime 目录失败: {err}")))?;
     let backup_dir = backup_user_config(&user_dir, BackupKind::Manual)?;
     let backup_name = backup_dir
         .file_name()
@@ -728,14 +736,14 @@ pub(crate) fn create_backup_sync() -> Result<BackupEntry, String> {
     list_backup_dirs(&user_dir)?
         .into_iter()
         .find(|backup| backup.name == backup_name)
-        .ok_or_else(|| "备份已创建但无法列出".to_string())
+        .ok_or_else(|| RimeError::BackupError("备份已创建但无法列出".to_string()))
 }
 
-pub(crate) fn open_rime_user_dir_sync() -> Result<(), String> {
+pub(crate) fn open_rime_user_dir_sync() -> Result<(), RimeError> {
     open_in_explorer(&rime_user_dir()?)
 }
 
-pub(crate) fn open_config_file_sync(name: String) -> Result<(), String> {
+pub(crate) fn open_config_file_sync(name: String) -> Result<(), RimeError> {
     let allowed = [
         "default.custom.yaml",
         "weasel.custom.yaml",
@@ -747,50 +755,54 @@ pub(crate) fn open_config_file_sync(name: String) -> Result<(), String> {
         "sogou_ext.dict.yaml",
     ];
     if !allowed.contains(&name.as_str()) {
-        return Err("不支持打开这个配置文件".to_string());
+        return Err(RimeError::ConfigNotFound(
+            "不支持打开这个配置文件".to_string(),
+        ));
     }
 
     let path = rime_user_dir()?.join(name);
     if !path.exists() || !path.is_file() {
-        return Err("配置文件不存在".to_string());
+        return Err(RimeError::ConfigNotFound("配置文件不存在".to_string()));
     }
 
     reveal_in_explorer(&path)
 }
 
-pub(crate) fn open_plum_dir_sync() -> Result<(), String> {
+pub(crate) fn open_plum_dir_sync() -> Result<(), RimeError> {
     open_in_explorer(&app_data_dir()?.join("plum"))
 }
 
-pub(crate) fn open_backup_dir_sync(backup_name: String) -> Result<(), String> {
+pub(crate) fn open_backup_dir_sync(backup_name: String) -> Result<(), RimeError> {
     let user_dir = rime_user_dir()?;
     let backup_dir = validated_backup_dir(&user_dir, &backup_name)?;
     open_in_explorer(&backup_dir)
 }
 
-pub(crate) fn restore_backup_sync(backup_name: String) -> Result<RestoreResult, String> {
+pub(crate) fn restore_backup_sync(backup_name: String) -> Result<RestoreResult, RimeError> {
     let user_dir = rime_user_dir()?;
     let backup_dir = validated_backup_dir(&user_dir, &backup_name)?;
     restore_backup_dir(&user_dir, &backup_dir)
 }
 
-pub(crate) fn delete_backup_sync(backup_name: String) -> Result<(), String> {
+pub(crate) fn delete_backup_sync(backup_name: String) -> Result<(), RimeError> {
     let user_dir = rime_user_dir()?;
     let backup_dir = validated_backup_dir(&user_dir, &backup_name)?;
-    fs::remove_dir_all(&backup_dir).map_err(|err| format!("删除备份失败: {err}"))
+    fs::remove_dir_all(&backup_dir)
+        .map_err(|err| RimeError::BackupError(format!("删除备份失败: {err}")))
 }
 
-pub(crate) fn delete_dictionary_sync(dict_name: String) -> Result<(), String> {
+pub(crate) fn delete_dictionary_sync(dict_name: String) -> Result<(), RimeError> {
     let user_dir = rime_user_dir()?;
     let path = validate_dictionary_path(&user_dir, &dict_name)?;
-    fs::remove_file(&path).map_err(|err| format!("删除词库失败: {err}"))
+    fs::remove_file(&path)
+        .map_err(|err| RimeError::FileOperationError(format!("删除词库失败: {err}")))
 }
 
-pub(crate) fn scan_dictionaries_sync_wrapper() -> Result<Vec<DictInfo>, String> {
+pub(crate) fn scan_dictionaries_sync_wrapper() -> Result<Vec<DictInfo>, RimeError> {
     list_dictionaries_sync()
 }
 
-pub(crate) fn get_dict_health_sync_wrapper(dict_name: String) -> Result<DictHealth, String> {
+pub(crate) fn get_dict_health_sync_wrapper(dict_name: String) -> Result<DictHealth, RimeError> {
     get_dict_health_sync(dict_name)
 }
 
@@ -799,7 +811,7 @@ pub(crate) fn download_github_release_installer<F>(
     asset_filter: F,
     missing_asset_message: &str,
     download_message_prefix: &str,
-) -> Result<RimeDownloadResult, String>
+) -> Result<RimeDownloadResult, RimeError>
 where
     F: Fn(&str) -> bool,
 {
@@ -807,13 +819,15 @@ where
         .set("User-Agent", "RimeStudio/0.1")
         .set("Accept", "application/vnd.github+json")
         .call()
-        .map_err(|err| format!("获取发布信息失败: {err}"))?;
+        .map_err(|err| RimeError::NetworkError(format!("获取发布信息失败: {err}")))?;
 
     let json: serde_json::Value = response
         .into_json()
-        .map_err(|err| format!("解析发布信息失败: {err}"))?;
+        .map_err(|err| RimeError::JsonSerializationError(format!("解析发布信息失败: {err}")))?;
 
-    let assets = json["assets"].as_array().ok_or("未找到发布资源")?;
+    let assets = json["assets"]
+        .as_array()
+        .ok_or_else(|| RimeError::NetworkError("未找到发布资源".to_string()))?;
     let installer = assets
         .iter()
         .filter_map(|asset| {
@@ -828,23 +842,26 @@ where
             }
         })
         .max_by_key(|(name, _)| name.contains("install"))
-        .ok_or(missing_asset_message)?;
+        .ok_or_else(|| RimeError::NetworkError(missing_asset_message.to_string()))?;
 
     let download_url = installer.1;
     let filename = installer.0;
 
     let dest_dir = app_data_dir()?;
-    fs::create_dir_all(&dest_dir).map_err(|err| format!("创建下载目录失败: {err}"))?;
+    fs::create_dir_all(&dest_dir)
+        .map_err(|err| RimeError::DownloadError(format!("创建下载目录失败: {err}")))?;
     let dest_path = dest_dir.join(&filename);
 
     let response = ureq::get(&download_url)
         .set("User-Agent", "RimeStudio/0.1")
         .call()
-        .map_err(|err| format!("下载失败: {err}"))?;
+        .map_err(|err| RimeError::DownloadError(format!("下载失败: {err}")))?;
 
     let mut reader = response.into_reader();
-    let mut file = fs::File::create(&dest_path).map_err(|err| format!("创建文件失败: {err}"))?;
-    std::io::copy(&mut reader, &mut file).map_err(|err| format!("保存文件失败: {err}"))?;
+    let mut file = fs::File::create(&dest_path)
+        .map_err(|err| RimeError::DownloadError(format!("创建文件失败: {err}")))?;
+    std::io::copy(&mut reader, &mut file)
+        .map_err(|err| RimeError::DownloadError(format!("保存文件失败: {err}")))?;
 
     Ok(RimeDownloadResult {
         success: true,
@@ -853,7 +870,7 @@ where
     })
 }
 
-pub(crate) fn download_rime_installer_sync() -> Result<RimeDownloadResult, String> {
+pub(crate) fn download_rime_installer_sync() -> Result<RimeDownloadResult, RimeError> {
     download_github_release_installer(
         "https://api.github.com/repos/rime/weasel/releases/latest",
         |name| name.ends_with(".exe"),
@@ -862,7 +879,7 @@ pub(crate) fn download_rime_installer_sync() -> Result<RimeDownloadResult, Strin
     )
 }
 
-pub(crate) fn download_git_installer_sync() -> Result<RimeDownloadResult, String> {
+pub(crate) fn download_git_installer_sync() -> Result<RimeDownloadResult, RimeError> {
     download_github_release_installer(
         "https://api.github.com/repos/git-for-windows/git/releases/latest",
         |name| name.starts_with("Git-") && name.ends_with(".exe") && name.contains("64-bit"),
@@ -871,36 +888,40 @@ pub(crate) fn download_git_installer_sync() -> Result<RimeDownloadResult, String
     )
 }
 
-pub(crate) fn validate_downloaded_installer_path(path: String) -> Result<PathBuf, String> {
+pub(crate) fn validate_downloaded_installer_path(path: String) -> Result<PathBuf, RimeError> {
     let installer_path = PathBuf::from(path);
     if !installer_path.exists() || !installer_path.is_file() {
-        return Err("安装包文件不存在".to_string());
+        return Err(RimeError::DownloadError("安装包文件不存在".to_string()));
     }
     if installer_path.extension().and_then(OsStr::to_str) != Some("exe") {
-        return Err("只能启动 Rime Studio 下载的 .exe 安装包".to_string());
+        return Err(RimeError::DownloadError(
+            "只能启动 Rime Studio 下载的 .exe 安装包".to_string(),
+        ));
     }
 
     let app_dir = app_data_dir()?;
     let canonical_app_dir = app_dir
         .canonicalize()
-        .map_err(|err| format!("读取下载目录失败: {err}"))?;
+        .map_err(|err| RimeError::FileOperationError(format!("读取下载目录失败: {err}")))?;
     let canonical_installer = installer_path
         .canonicalize()
-        .map_err(|err| format!("读取安装包路径失败: {err}"))?;
+        .map_err(|err| RimeError::FileOperationError(format!("读取安装包路径失败: {err}")))?;
 
     if !canonical_installer.starts_with(canonical_app_dir) {
-        return Err("只能启动 Rime Studio 下载目录内的安装包".to_string());
+        return Err(RimeError::DownloadError(
+            "只能启动 Rime Studio 下载目录内的安装包".to_string(),
+        ));
     }
 
     Ok(canonical_installer)
 }
 
-pub(crate) fn launch_installer_sync(path: String) -> Result<(), String> {
+pub(crate) fn launch_installer_sync(path: String) -> Result<(), RimeError> {
     let installer_path = validate_downloaded_installer_path(path)?;
 
     Command::new(&installer_path)
         .spawn()
-        .map_err(|err| format!("启动安装程序失败: {err}"))?;
+        .map_err(|err| RimeError::CommandExecutionFailed(format!("启动安装程序失败: {err}")))?;
 
     Ok(())
 }

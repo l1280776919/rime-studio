@@ -13,6 +13,7 @@ import {
   UploadFilled,
 } from "@element-plus/icons-vue";
 import type { PhraseEntry, RimeEnvironment } from "../types";
+import { useErrorHandler } from "../composables/useErrorHandler";
 
 const props = defineProps<{
   env?: RimeEnvironment;
@@ -36,6 +37,8 @@ const importText = ref("");
 const parsedImport = ref<PhraseEntry[]>([]);
 
 const newPhrase = ref<PhraseEntry>({ text: "", code: "", weight: 1 });
+
+const { withErrorHandling } = useErrorHandler();
 
 const userDir = computed(() => props.env?.user_dir ?? "等待扫描 Rime 目录");
 const filteredEntries = computed(() => {
@@ -82,20 +85,23 @@ function dedupePhrases(phrases: PhraseEntry[]) {
 
 async function loadPhrases() {
   loading.value = true;
-  try {
-    entries.value = await invoke<PhraseEntry[]>("get_custom_phrases");
-  } catch (error) {
-    ElMessage.error(String(error));
-  } finally {
-    loading.value = false;
+  const result = await withErrorHandling(() =>
+    invoke<PhraseEntry[]>("get_custom_phrases"),
+  );
+  if (result !== undefined) {
+    entries.value = result;
   }
+  loading.value = false;
 }
 
 async function savePhrases(shouldDeploy: boolean) {
   saving.value = !shouldDeploy;
   deploying.value = shouldDeploy;
-  try {
+  const saved = await withErrorHandling(async () => {
     await invoke("save_custom_phrases", { phrases: entries.value });
+    return true;
+  });
+  if (saved) {
     emit("saved");
     if (shouldDeploy) {
       ElMessage.success("短语已保存，开始部署");
@@ -103,12 +109,9 @@ async function savePhrases(shouldDeploy: boolean) {
     } else {
       ElMessage.success("短语已保存");
     }
-  } catch (error) {
-    ElMessage.error(String(error));
-  } finally {
-    saving.value = false;
-    deploying.value = false;
   }
+  saving.value = false;
+  deploying.value = false;
 }
 
 function startEdit(entry: PhraseEntry) {

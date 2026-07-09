@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { ElMessage } from "element-plus";
+import { useErrorHandler } from "../composables/useErrorHandler";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Document,
@@ -19,6 +20,8 @@ const emit = defineEmits<{
   refresh: [];
   createBackup: [];
 }>();
+
+const { withErrorHandling } = useErrorHandler();
 
 type ConfigFileMeta = {
   name: string;
@@ -75,19 +78,11 @@ async function openConfigFile(file: FileStatus | undefined) {
     return;
   }
 
-  try {
-    await invoke("open_config_file", { name: file.name });
-  } catch (error) {
-    ElMessage.error(String(error));
-  }
+  await withErrorHandling(() => invoke("open_config_file", { name: file.name }));
 }
 
 async function openRimeDir() {
-  try {
-    await invoke("open_rime_user_dir");
-  } catch (error) {
-    ElMessage.error(String(error));
-  }
+  await withErrorHandling(() => invoke("open_rime_user_dir"));
 }
 </script>
 

@@ -4,6 +4,7 @@ import { ElMessage } from "element-plus";
 import { invoke } from "@tauri-apps/api/core";
 import { Brush, Check, CopyDocument, UploadFilled } from "@element-plus/icons-vue";
 import type { AppearanceConfig, RimeEnvironment } from "../types";
+import { useErrorHandler } from "../composables/useErrorHandler";
 
 const props = defineProps<{
   env?: RimeEnvironment;
@@ -18,6 +19,8 @@ const saving = ref(false);
 const deploying = ref(false);
 const userEdited = ref(false);
 let programmaticChange = false;
+
+const { withErrorHandling } = useErrorHandler();
 
 // Track custom schemes created by copying presets
 type ColorKey = (typeof colorFields)[number]["key"];
@@ -274,13 +277,15 @@ async function saveAppearance(shouldDeploy = false) {
   saving.value = !shouldDeploy;
   deploying.value = shouldDeploy;
   try {
-    const config = await invoke<AppearanceConfig>("save_appearance_config", { config: { ...form } });
-    applyConfig(config);
-    emit("saved");
-    ElMessage.success(shouldDeploy ? "已保存并部署" : "已保存");
-    if (shouldDeploy) emit("deploy");
-  } catch (error) {
-    ElMessage.error(String(error));
+    const config = await withErrorHandling(() =>
+      invoke<AppearanceConfig>("save_appearance_config", { config: { ...form } })
+    );
+    if (config) {
+      applyConfig(config);
+      emit("saved");
+      ElMessage.success(shouldDeploy ? "已保存并部署" : "已保存");
+      if (shouldDeploy) emit("deploy");
+    }
   } finally {
     saving.value = false;
     deploying.value = false;

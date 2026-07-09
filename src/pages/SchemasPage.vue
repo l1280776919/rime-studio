@@ -13,6 +13,7 @@ import {
   UploadFilled,
 } from "@element-plus/icons-vue";
 import type { QuickSettingsConfig, RimeEnvironment, SchemaInfo } from "../types";
+import { useErrorHandler } from "../composables/useErrorHandler";
 
 const props = defineProps<{
   env?: RimeEnvironment;
@@ -32,6 +33,8 @@ const schemas = ref<SchemaInfo[]>([]);
 const currentConfig = ref<QuickSettingsConfig>();
 const selectedId = ref<string>();
 const menuIds = ref<string[]>([]);
+
+const { withErrorHandling } = useErrorHandler();
 
 const currentSchema = computed(() => schemas.value.find((schema) => schema.is_active));
 const selectedSchema = computed(() => {
@@ -62,19 +65,22 @@ function selectSchema(schema: SchemaInfo) {
 async function loadSchemas() {
   loading.value = true;
   try {
-    const [schemaList, config] = await Promise.all([
-      invoke<SchemaInfo[]>("list_schemas"),
-      invoke<QuickSettingsConfig>("get_quick_settings"),
-    ]);
-    schemas.value = schemaList;
-    currentConfig.value = config;
-    menuIds.value = schemaList.filter((schema) => schema.is_enabled).map((schema) => schema.id);
-    if (menuIds.value.length === 0 && config.schema_id) {
-      menuIds.value = [config.schema_id];
+    const result = await withErrorHandling(() =>
+      Promise.all([
+        invoke<SchemaInfo[]>("list_schemas"),
+        invoke<QuickSettingsConfig>("get_quick_settings"),
+      ]),
+    );
+    if (result) {
+      const [schemaList, config] = result;
+      schemas.value = schemaList;
+      currentConfig.value = config;
+      menuIds.value = schemaList.filter((schema) => schema.is_enabled).map((schema) => schema.id);
+      if (menuIds.value.length === 0 && config.schema_id) {
+        menuIds.value = [config.schema_id];
+      }
+      selectedId.value = schemaList.find((schema) => schema.is_active)?.id ?? schemaList[0]?.id;
     }
-    selectedId.value = schemaList.find((schema) => schema.is_active)?.id ?? schemaList[0]?.id;
-  } catch (error) {
-    ElMessage.error(String(error));
   } finally {
     loading.value = false;
   }
@@ -83,16 +89,18 @@ async function loadSchemas() {
 async function activateSchema(schema: SchemaInfo, shouldDeploy = false) {
   activating.value = schema.id;
   try {
-    const config = await invoke<QuickSettingsConfig>("set_active_schema", { schemaId: schema.id });
-    currentConfig.value = config;
-    await loadSchemas();
-    emit("saved");
-    ElMessage.success(shouldDeploy ? "当前方案已切换，开始部署" : "当前方案已切换");
-    if (shouldDeploy) {
-      emit("deploy");
+    const config = await withErrorHandling(() =>
+      invoke<QuickSettingsConfig>("set_active_schema", { schemaId: schema.id }),
+    );
+    if (config) {
+      currentConfig.value = config;
+      await loadSchemas();
+      emit("saved");
+      ElMessage.success(shouldDeploy ? "当前方案已切换，开始部署" : "当前方案已切换");
+      if (shouldDeploy) {
+        emit("deploy");
+      }
     }
-  } catch (error) {
-    ElMessage.error(String(error));
   } finally {
     activating.value = undefined;
   }
@@ -122,18 +130,20 @@ async function saveSchemaMenu(shouldDeploy = false) {
 
   savingMenu.value = true;
   try {
-    const config = await invoke<QuickSettingsConfig>("save_active_schema_list", {
-      schemaIds: menuIds.value,
-    });
-    currentConfig.value = config;
-    await loadSchemas();
-    emit("saved");
-    ElMessage.success(shouldDeploy ? "方案菜单已保存，开始部署" : "方案菜单已保存");
-    if (shouldDeploy) {
-      emit("deploy");
+    const config = await withErrorHandling(() =>
+      invoke<QuickSettingsConfig>("save_active_schema_list", {
+        schemaIds: menuIds.value,
+      }),
+    );
+    if (config) {
+      currentConfig.value = config;
+      await loadSchemas();
+      emit("saved");
+      ElMessage.success(shouldDeploy ? "方案菜单已保存，开始部署" : "方案菜单已保存");
+      if (shouldDeploy) {
+        emit("deploy");
+      }
     }
-  } catch (error) {
-    ElMessage.error(String(error));
   } finally {
     savingMenu.value = false;
   }
@@ -142,11 +152,11 @@ async function saveSchemaMenu(shouldDeploy = false) {
 async function copySchema(schema: SchemaInfo) {
   copying.value = schema.id;
   try {
-    const path = await invoke<string>("copy_schema", { schemaId: schema.id });
-    await loadSchemas();
-    ElMessage.success(`已复制到 ${path}`);
-  } catch (error) {
-    ElMessage.error(String(error));
+    const path = await withErrorHandling(() => invoke<string>("copy_schema", { schemaId: schema.id }));
+    if (path) {
+      await loadSchemas();
+      ElMessage.success(`已复制到 ${path}`);
+    }
   } finally {
     copying.value = undefined;
   }
@@ -175,19 +185,11 @@ async function confirmCopy(schema: SchemaInfo) {
 }
 
 async function openSchemaFile(schema: SchemaInfo) {
-  try {
-    await invoke("open_schema_file", { path: schema.path });
-  } catch (error) {
-    ElMessage.error(String(error));
-  }
+  await withErrorHandling(() => invoke("open_schema_file", { path: schema.path }));
 }
 
 async function openSchemaDir(schema: SchemaInfo) {
-  try {
-    await invoke("open_schema_dir", { path: schema.path });
-  } catch (error) {
-    ElMessage.error(String(error));
-  }
+  await withErrorHandling(() => invoke("open_schema_dir", { path: schema.path }));
 }
 
 onMounted(loadSchemas);

@@ -12,16 +12,18 @@ use tauri::Emitter;
 pub(crate) fn github_release_asset_url(
     api_url: &str,
     asset_name: &str,
-) -> Result<(String, String), String> {
+) -> Result<(String, String), RimeError> {
     let response = ureq::get(api_url)
         .set("User-Agent", "RimeStudio/0.2")
         .set("Accept", "application/vnd.github+json")
         .call()
-        .map_err(|err| format!("获取 GitHub 发布信息失败: {err}"))?;
+        .map_err(|err| RimeError::NetworkError(format!("获取 GitHub 发布信息失败: {err}")))?;
     let releases: serde_json::Value = response
         .into_json()
-        .map_err(|err| format!("解析 GitHub 发布信息失败: {err}"))?;
-    let releases = releases.as_array().ok_or("GitHub 发布信息格式无效")?;
+        .map_err(|err| RimeError::NetworkError(format!("解析 GitHub 发布信息失败: {err}")))?;
+    let releases = releases
+        .as_array()
+        .ok_or_else(|| RimeError::NetworkError("GitHub 发布信息格式无效".to_string()))?;
 
     for release in releases {
         let release_name = release["name"]
@@ -33,27 +35,30 @@ pub(crate) fn github_release_asset_url(
         };
         for asset in assets {
             if asset["name"].as_str() == Some(asset_name) {
-                let url = asset["browser_download_url"]
-                    .as_str()
-                    .ok_or("GitHub 发布资源缺少下载地址")?;
+                let url = asset["browser_download_url"].as_str().ok_or_else(|| {
+                    RimeError::NetworkError("GitHub 发布资源缺少下载地址".to_string())
+                })?;
                 return Ok((url.to_string(), release_name.to_string()));
             }
         }
     }
 
-    Err(format!("未在 RIME-LMDG 发布资源中找到 {asset_name}"))
+    Err(RimeError::NetworkError(format!(
+        "未在 RIME-LMDG 发布资源中找到 {asset_name}"
+    )))
 }
 
-pub(crate) fn unique_temp_dir(prefix: &str) -> Result<PathBuf, String> {
+pub(crate) fn unique_temp_dir(prefix: &str) -> Result<PathBuf, RimeError> {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_err(|err| format!("读取系统时间失败: {err}"))?
+        .map_err(|err| RimeError::CommandExecutionFailed(format!("读取系统时间失败: {err}")))?
         .as_millis();
     Ok(app_data_dir()?.join(format!("{prefix}-{}-{millis}", process::id())))
 }
 
-pub(crate) fn expand_zip_archive(zip_path: &Path, destination: &Path) -> Result<(), String> {
-    fs::create_dir_all(destination).map_err(|err| format!("创建解压目录失败: {err}"))?;
+pub(crate) fn expand_zip_archive(zip_path: &Path, destination: &Path) -> Result<(), RimeError> {
+    fs::create_dir_all(destination)
+        .map_err(|err| RimeError::FileOperationError(format!("创建解压目录失败: {err}")))?;
     let mut command = Command::new("powershell");
     command
         .arg("-NoProfile")
@@ -67,7 +72,9 @@ pub(crate) fn expand_zip_archive(zip_path: &Path, destination: &Path) -> Result<
     if success {
         Ok(())
     } else {
-        Err(format!("解压万象词库失败:\n{log}"))
+        Err(RimeError::CommandExecutionFailed(format!(
+            "解压万象词库失败:\n{log}"
+        )))
     }
 }
 
@@ -83,15 +90,19 @@ pub(crate) fn safe_relative_path(path: &Path) -> bool {
 pub(crate) fn copy_lmdg_dictionaries(
     source_dir: &Path,
     target_dir: &Path,
-) -> Result<usize, String> {
-    fs::create_dir_all(target_dir).map_err(|err| format!("创建万象词库目录失败: {err}"))?;
+) -> Result<usize, RimeError> {
+    fs::create_dir_all(target_dir)
+        .map_err(|err| RimeError::FileOperationError(format!("创建万象词库目录失败: {err}")))?;
     let mut installed = 0usize;
     let mut pending = vec![source_dir.to_path_buf()];
 
     while let Some(dir) = pending.pop() {
-        for entry in fs::read_dir(&dir).map_err(|err| format!("读取万象词库解压目录失败: {err}"))?
-        {
-            let entry = entry.map_err(|err| format!("读取万象词库文件失败: {err}"))?;
+        for entry in fs::read_dir(&dir).map_err(|err| {
+            RimeError::FileOperationError(format!("读取万象词库解压目录失败: {err}"))
+        })? {
+            let entry = entry.map_err(|err| {
+                RimeError::FileOperationError(format!("读取万象词库文件失败: {err}"))
+            })?;
             let path = entry.path();
             if path.is_dir() {
                 pending.push(path);
@@ -105,24 +116,28 @@ pub(crate) fn copy_lmdg_dictionaries(
                 continue;
             }
 
-            let relative = path
-                .strip_prefix(source_dir)
-                .map_err(|err| format!("计算万象词库路径失败: {err}"))?;
+            let relative = path.strip_prefix(source_dir).map_err(|err| {
+                RimeError::FileOperationError(format!("计算万象词库路径失败: {err}"))
+            })?;
             if !safe_relative_path(relative) {
                 continue;
             }
             let target = target_dir.join(relative);
             if let Some(parent) = target.parent() {
-                fs::create_dir_all(parent)
-                    .map_err(|err| format!("创建万象词库子目录失败: {err}"))?;
+                fs::create_dir_all(parent).map_err(|err| {
+                    RimeError::FileOperationError(format!("创建万象词库子目录失败: {err}"))
+                })?;
             }
-            fs::copy(&path, &target).map_err(|err| format!("复制万象词库失败: {err}"))?;
+            fs::copy(&path, &target)
+                .map_err(|err| RimeError::FileOperationError(format!("复制万象词库失败: {err}")))?;
             installed += 1;
         }
     }
 
     if installed == 0 {
-        Err("万象词库包里没有找到 .dict.yaml 文件".to_string())
+        Err(RimeError::DownloadError(
+            "万象词库包里没有找到 .dict.yaml 文件".to_string(),
+        ))
     } else {
         Ok(installed)
     }
@@ -151,7 +166,7 @@ pub(crate) fn emit_download_progress(
 
 pub(crate) fn install_lmdg_dicts_sync_with_progress<F>(
     progress: F,
-) -> Result<LmdgInstallResult, String>
+) -> Result<LmdgInstallResult, RimeError>
 where
     F: FnMut(u64, Option<u64>),
 {
@@ -160,7 +175,8 @@ where
         "dicts.zip",
     )?;
     let app_dir = app_data_dir()?;
-    fs::create_dir_all(&app_dir).map_err(|err| format!("创建下载目录失败: {err}"))?;
+    fs::create_dir_all(&app_dir)
+        .map_err(|err| RimeError::FileOperationError(format!("创建下载目录失败: {err}")))?;
     let zip_path = app_dir.join("RIME-LMDG-dicts.zip");
     download_url_to_file_with_progress(
         &download_url,
@@ -188,7 +204,7 @@ where
 
 pub(crate) fn install_lmdg_grammar_sync_with_progress<F>(
     progress: F,
-) -> Result<LmdgGrammarInstallResult, String>
+) -> Result<LmdgGrammarInstallResult, RimeError>
 where
     F: FnMut(u64, Option<u64>),
 {
@@ -200,7 +216,8 @@ where
     )?;
 
     let user_dir = rime_user_dir()?;
-    fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
+    fs::create_dir_all(&user_dir)
+        .map_err(|err| RimeError::FileOperationError(format!("创建 Rime 目录失败: {err}")))?;
     let model_path = user_dir.join(&asset_name);
     let patch_path = user_dir.join("rime_ice.custom.yaml");
 
@@ -230,17 +247,19 @@ where
     })
 }
 
-pub(crate) fn uninstall_lmdg_grammar_sync() -> Result<LmdgGrammarUninstallResult, String> {
+pub(crate) fn uninstall_lmdg_grammar_sync() -> Result<LmdgGrammarUninstallResult, RimeError> {
     let model_name = "wanxiang-lts-zh-hans";
     let asset_name = format!("{model_name}.gram");
     let user_dir = rime_user_dir()?;
-    fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
+    fs::create_dir_all(&user_dir)
+        .map_err(|err| RimeError::FileOperationError(format!("创建 Rime 目录失败: {err}")))?;
     let model_path = user_dir.join(&asset_name);
     let patch_path = user_dir.join("rime_ice.custom.yaml");
 
     backup_user_config(&user_dir, BackupKind::BeforeSave)?;
     let removed_model = if model_path.exists() {
-        fs::remove_file(&model_path).map_err(|err| format!("删除万象语言模型失败: {err}"))?;
+        fs::remove_file(&model_path)
+            .map_err(|err| RimeError::FileOperationError(format!("删除万象语言模型失败: {err}")))?;
         true
     } else {
         false
@@ -269,7 +288,7 @@ pub(crate) fn uninstall_lmdg_grammar_sync() -> Result<LmdgGrammarUninstallResult
 pub(crate) fn preview_dictionary_import_sync(
     source_name: String,
     data: Vec<u8>,
-) -> Result<DictionaryImportPreview, String> {
+) -> Result<DictionaryImportPreview, RimeError> {
     let user_dir = rime_user_dir()?;
     let (dict_name, reference, entries, skipped_entries, _) =
         parse_dictionary_import_payload(source_name, data)?;
@@ -298,9 +317,10 @@ pub(crate) fn preview_dictionary_import_sync(
 pub(crate) fn import_dictionary_sync(
     source_name: String,
     data: Vec<u8>,
-) -> Result<DictionaryImportResult, String> {
+) -> Result<DictionaryImportResult, RimeError> {
     let user_dir = rime_user_dir()?;
-    fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
+    fs::create_dir_all(&user_dir)
+        .map_err(|err| RimeError::FileOperationError(format!("创建 Rime 目录失败: {err}")))?;
 
     let (dict_name, reference, entries, skipped_entries, rendered_contents) =
         parse_dictionary_import_payload(source_name, data)?;
@@ -316,11 +336,14 @@ pub(crate) fn import_dictionary_sync(
     })
 }
 
-pub(crate) fn export_dictionary_sync(dict_name: String) -> Result<DictionaryExportResult, String> {
+pub(crate) fn export_dictionary_sync(
+    dict_name: String,
+) -> Result<DictionaryExportResult, RimeError> {
     let user_dir = rime_user_dir()?;
     let path = validate_dictionary_path(&user_dir, &dict_name)?;
 
-    let contents = fs::read_to_string(&path).map_err(|err| format!("读取词库失败: {err}"))?;
+    let contents = fs::read_to_string(&path)
+        .map_err(|err| RimeError::FileOperationError(format!("读取词库失败: {err}")))?;
     Ok(DictionaryExportResult {
         name: path
             .file_name()

@@ -110,26 +110,62 @@ npm run tauri build     # 生产构建
 
 ```
 rime-studio/
-├── src/                      # Vue 前端
+├── src/                          # Vue 前端
 │   ├── pages/
 │   │   ├── OverviewPage.vue      # 概览页
+│   │   ├── QuickSettingsPage.vue # 快速设置
+│   │   ├── SchemasPage.vue       # 方案管理
+│   │   ├── ConfigFilesPage.vue   # 配置文件
 │   │   ├── AppearancePage.vue    # 外观配置
 │   │   ├── PhrasesPage.vue       # 短语管理
 │   │   ├── DictionariesPage.vue  # 词库管理
 │   │   ├── BackupsPage.vue       # 备份管理
 │   │   └── AboutPage.vue         # 关于页
+│   ├── composables/
+│   │   ├── useTheme.ts           # 主题管理（亮/暗模式）
+│   │   ├── useBackup.ts          # 备份操作封装
+│   │   ├── useDeploy.ts          # 部署操作封装
+│   │   ├── useErrorHandler.ts    # 统一错误处理
+│   │   └── useDictionaries.ts    # 词库操作封装
+│   ├── components/
+│   │   └── layout/
+│   │       ├── AppSidebar.vue    # 侧边栏导航
+│   │       ├── AppTopbar.vue     # 顶部工具栏
+│   │       └── AppStatusbar.vue  # 底部状态栏
 │   ├── utils.ts                  # 公共工具函数
-│   ├── App.vue                   # 外壳布局 + 路由
+│   ├── App.vue                   # 应用入口 + 布局协调
 │   ├── styles.css                # 全局样式 + 暗色模式
 │   ├── types.ts                  # TypeScript 类型定义
 │   └── main.ts                   # 入口
-├── src-tauri/                # Rust 后端
+├── src-tauri/                    # Rust 后端
 │   ├── src/
-│   │   ├── lib.rs                # 核心逻辑 + Tauri 命令
-│   │   └── main.rs               # 入口
+│   │   ├── lib.rs                # 模块声明 + run()
+│   │   ├── main.rs               # 入口
+│   │   ├── types.rs              # 类型定义（RimeError）
+│   │   ├── commands/             # Tauri 命令模块
+│   │   │   ├── mod.rs            # 命令注册 + run_blocking
+│   │   │   ├── system.rs         # 系统命令
+│   │   │   ├── settings.rs       # 快速设置命令
+│   │   │   ├── appearance.rs     # 外观配置命令
+│   │   │   ├── phrases.rs        # 短语管理命令
+│   │   │   ├── dictionaries.rs   # 词库管理命令
+│   │   │   ├── backup.rs         # 备份管理命令
+│   │   │   ├── schemas.rs        # 方案管理命令
+│   │   │   └── app_update.rs     # 应用更新命令
+│   │   └── backend/              # 业务逻辑层
+│   │       ├── mod.rs
+│   │       ├── system.rs
+│   │       ├── appearance.rs
+│   │       ├── settings.rs
+│   │       ├── phrases.rs
+│   │       ├── dictionaries.rs
+│   │       ├── backup.rs
+│   │       ├── schemas.rs
+│   │       ├── downloads.rs
+│   │       └── app_update.rs
 │   ├── Cargo.toml
 │   └── tauri.conf.json           # Tauri 配置
-├── .github/workflows/ci.yml  # CI 流水线
+├── .github/workflows/ci.yml      # CI 流水线
 └── package.json
 ```
 

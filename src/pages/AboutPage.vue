@@ -6,7 +6,9 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { Check, Collection, Connection, Link, Refresh, UploadFilled, Warning } from "@element-plus/icons-vue";
 import pkg from "../../package.json";
 import type { AppUpdateInfo } from "../types";
+import { useErrorHandler } from "../composables/useErrorHandler";
 
+const { withErrorHandling } = useErrorHandler();
 const checkingUpdate = ref(false);
 const downloadingUpdate = ref(false);
 const downloadStatus = ref("");
@@ -57,14 +59,12 @@ async function checkUpdate() {
   if (checkingUpdate.value) return;
   checkingUpdate.value = true;
   try {
-    updateInfo.value = await invoke<AppUpdateInfo>("check_app_update");
-    if (updateInfo.value.update_available) {
+    updateInfo.value = await withErrorHandling(() => invoke<AppUpdateInfo>("check_app_update"));
+    if (updateInfo.value?.update_available) {
       ElMessage.success(`发现新版本 ${updateInfo.value.latest_version}`);
     } else {
       ElMessage.success("当前已是最新版本");
     }
-  } catch (error) {
-    ElMessage.error(String(error));
   } finally {
     checkingUpdate.value = false;
   }

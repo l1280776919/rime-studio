@@ -2,7 +2,7 @@ use crate::backend::*;
 use crate::*;
 use std::{ffi::OsStr, fs, path::PathBuf};
 
-pub(crate) fn list_schemas_sync() -> Result<Vec<SchemaInfo>, String> {
+pub(crate) fn list_schemas_sync() -> Result<Vec<SchemaInfo>, RimeError> {
     let user_dir = rime_user_dir()?;
     let active_schema = read_to_string(&user_dir.join("default.custom.yaml"));
     let active = parse_schema(&active_schema);
@@ -120,9 +120,10 @@ pub(crate) fn list_schemas_sync() -> Result<Vec<SchemaInfo>, String> {
     Ok(schemas)
 }
 
-pub(crate) fn copy_schema_sync(schema_id: String) -> Result<String, String> {
+pub(crate) fn copy_schema_sync(schema_id: String) -> Result<String, RimeError> {
     let user_dir = rime_user_dir()?;
-    fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
+    fs::create_dir_all(&user_dir)
+        .map_err(|err| RimeError::FileOperationError(format!("创建 Rime 目录失败: {err}")))?;
 
     let safe_id = schema_id.replace(['/', '\\'], "").replace("..", "");
 
@@ -150,17 +151,20 @@ pub(crate) fn copy_schema_sync(schema_id: String) -> Result<String, String> {
         source = Some(user_candidate);
     }
 
-    let source = source.ok_or("未找到源方案文件".to_string())?;
+    let source = source.ok_or_else(|| RimeError::SchemaError("未找到源方案文件".to_string()))?;
 
     // Read source and create a custom copy
-    let contents = fs::read_to_string(&source).map_err(|err| format!("读取方案文件失败: {err}"))?;
+    let contents = fs::read_to_string(&source)
+        .map_err(|err| RimeError::FileOperationError(format!("读取方案文件失败: {err}")))?;
 
     // Write as .custom.yaml in user dir
     let dest_name = format!("{safe_id}.custom.yaml");
     let dest = user_dir.join(&dest_name);
 
     if dest.exists() {
-        return Err(format!("{dest_name} 已存在，未自动覆盖"));
+        return Err(RimeError::SchemaError(format!(
+            "{dest_name} 已存在，未自动覆盖"
+        )));
     }
 
     // Add a header comment
@@ -246,12 +250,15 @@ pub(crate) fn render_default_custom_with_schema_list(
 
 pub(crate) fn save_active_schema_list_sync(
     schema_ids: Vec<String>,
-) -> Result<QuickSettingsConfig, String> {
+) -> Result<QuickSettingsConfig, RimeError> {
     let user_dir = rime_user_dir()?;
-    fs::create_dir_all(&user_dir).map_err(|err| format!("创建 Rime 目录失败: {err}"))?;
+    fs::create_dir_all(&user_dir)
+        .map_err(|err| RimeError::FileOperationError(format!("创建 Rime 目录失败: {err}")))?;
     let safe_schema_ids = sanitize_schema_ids(schema_ids);
     if safe_schema_ids.is_empty() {
-        return Err("至少需要启用一个输入方案".to_string());
+        return Err(RimeError::SchemaError(
+            "至少需要启用一个输入方案".to_string(),
+        ));
     }
     backup_user_config(&user_dir, BackupKind::BeforeSave)?;
 
@@ -266,10 +273,10 @@ pub(crate) fn save_active_schema_list_sync(
     get_quick_settings_sync()
 }
 
-pub(crate) fn set_active_schema_sync(schema_id: String) -> Result<QuickSettingsConfig, String> {
+pub(crate) fn set_active_schema_sync(schema_id: String) -> Result<QuickSettingsConfig, RimeError> {
     let safe_id = sanitize_schema_id(&schema_id);
     if safe_id.is_empty() {
-        return Err("方案 ID 不能为空".to_string());
+        return Err(RimeError::SchemaError("方案 ID 不能为空".to_string()));
     }
 
     let user_dir = rime_user_dir()?;
@@ -279,31 +286,31 @@ pub(crate) fn set_active_schema_sync(schema_id: String) -> Result<QuickSettingsC
     save_active_schema_list_sync(schema_ids)
 }
 
-pub(crate) fn validate_schema_path(path: String) -> Result<PathBuf, String> {
+pub(crate) fn validate_schema_path(path: String) -> Result<PathBuf, RimeError> {
     let path = PathBuf::from(path);
     if !path.exists() || !path.is_file() {
-        return Err("方案文件不存在".to_string());
+        return Err(RimeError::SchemaError("方案文件不存在".to_string()));
     }
 
     let Some(name) = path.file_name().and_then(OsStr::to_str) else {
-        return Err("方案文件名无效".to_string());
+        return Err(RimeError::SchemaError("方案文件名无效".to_string()));
     };
     if !name.ends_with(".schema.yaml") && !name.ends_with(".custom.yaml") {
-        return Err("只能打开 Rime 方案文件".to_string());
+        return Err(RimeError::SchemaError("只能打开 Rime 方案文件".to_string()));
     }
 
     Ok(path)
 }
 
-pub(crate) fn open_schema_file_sync(path: String) -> Result<(), String> {
+pub(crate) fn open_schema_file_sync(path: String) -> Result<(), RimeError> {
     let path = validate_schema_path(path)?;
     reveal_in_explorer(&path)
 }
 
-pub(crate) fn open_schema_dir_sync(path: String) -> Result<(), String> {
+pub(crate) fn open_schema_dir_sync(path: String) -> Result<(), RimeError> {
     let path = validate_schema_path(path)?;
     let parent = path
         .parent()
-        .ok_or_else(|| "方案文件目录无效".to_string())?;
+        .ok_or_else(|| RimeError::SchemaError("方案文件目录无效".to_string()))?;
     open_in_explorer(parent)
 }
