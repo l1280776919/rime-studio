@@ -101,15 +101,13 @@ export type ConfigHealthReport = {
   checks: ConfigHealthCheck[];
 };
 
-export type ConfigPreviewFile = {
-  name: string;
-  path: string;
-  changed: boolean;
-  diff_lines: string[];
-};
-
 export type ConfigPreview = {
-  files: ConfigPreviewFile[];
+  files: {
+    name: string;
+    path: string;
+    changed: boolean;
+    diff_lines: string[];
+  }[];
 };
 
 export type RimeIceSettings = {
@@ -154,19 +152,13 @@ export type DictionaryImportResult = {
   skipped_entries: number;
 };
 
-export type DictionaryPreviewEntry = {
-  text: string;
-  code: string;
-  weight: number;
-};
-
 export type DictionaryImportPreview = {
   name: string;
   reference: string;
   path: string;
   imported_entries: number;
   skipped_entries: number;
-  sample_entries: DictionaryPreviewEntry[];
+  sample_entries: { text: string; code: string; weight: number }[];
   will_overwrite: boolean;
 };
 

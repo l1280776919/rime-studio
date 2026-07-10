@@ -1,4 +1,4 @@
-import { ref, type Ref } from "vue";
+import { ref } from "vue";
 import { ElMessage } from "element-plus";
 
 export function useErrorHandler() {
@@ -43,19 +43,5 @@ export function useErrorHandler() {
     return String(err);
   }
 
-  /**
-   * Clear the current error state.
-   */
-  function clearError() {
-    error.value = null;
-    isError.value = false;
-  }
-
-  return {
-    error: error as Ref<string | null>,
-    isError: isError as Ref<boolean>,
-    withErrorHandling,
-    extractErrorMessage,
-    clearError,
-  };
+  return { withErrorHandling };
 }

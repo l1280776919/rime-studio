@@ -467,8 +467,7 @@ export function useDictionaries(emit: EmitFn) {
     unlistenLmdgProgress = await listen<LmdgDownloadProgress>("lmdg-download-progress", (event) => {
       lmdgDownloadProgress.value = event.payload;
     });
-    await Promise.all([loadAllStats(), loadOnlineDictionaries()]);
-    await loadCategoryDictionaries();
+    await Promise.all([loadAllStats(), loadOnlineDictionaries(), loadCategoryDictionaries()]);
   });
 
   onUnmounted(() => {

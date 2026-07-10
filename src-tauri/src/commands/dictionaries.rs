@@ -5,12 +5,12 @@ use super::run_blocking;
 
 #[tauri::command]
 pub(crate) async fn list_dictionaries() -> Result<Vec<DictInfo>, RimeError> {
-    run_blocking(scan_dictionaries_sync_wrapper).await
+    run_blocking(list_dictionaries_sync).await
 }
 
 #[tauri::command]
 pub(crate) async fn get_dict_health(dict_name: String) -> Result<DictHealth, RimeError> {
-    run_blocking(move || get_dict_health_sync_wrapper(dict_name)).await
+    run_blocking(move || get_dict_health_sync(dict_name)).await
 }
 
 #[tauri::command]

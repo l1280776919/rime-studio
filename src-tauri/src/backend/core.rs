@@ -302,19 +302,10 @@ pub(crate) fn locate_deployer() -> Option<PathBuf> {
         .find_map(|path| resolve_windows_shortcut(&path))
 }
 
-pub(crate) fn command_success(path: &Path, arg: &str) -> bool {
-    let mut command = Command::new(path);
-    command.arg(arg);
-    suppress_console_window(&mut command)
-        .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
-}
-
-pub(crate) fn command_path_success(command: &str, arg: &str) -> bool {
-    let mut command = Command::new(command);
-    command.arg(arg);
-    suppress_console_window(&mut command)
+pub(crate) fn command_success(command: impl AsRef<Path>, arg: &str) -> bool {
+    let mut cmd = Command::new(command.as_ref());
+    cmd.arg(arg);
+    suppress_console_window(&mut cmd)
         .output()
         .map(|output| output.status.success())
         .unwrap_or(false)
@@ -365,7 +356,7 @@ pub(crate) fn locate_git() -> Option<PathBuf> {
         .into_iter()
         .find(|path| path.exists() && command_success(path, "--version"))
         .or_else(|| {
-            if command_path_success("git", "--version") {
+            if command_success(Path::new("git"), "--version") {
                 Some(PathBuf::from("git"))
             } else {
                 None

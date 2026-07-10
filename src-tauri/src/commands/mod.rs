@@ -7,6 +7,7 @@ mod dictionaries;
 mod phrases;
 mod schemas;
 mod settings;
+mod config_editor;
 mod system;
 
 pub(crate) use app_update::*;
@@ -16,6 +17,7 @@ pub(crate) use dictionaries::*;
 pub(crate) use phrases::*;
 pub(crate) use schemas::*;
 pub(crate) use settings::*;
+pub(crate) use config_editor::*;
 pub(crate) use system::*;
 
 pub(crate) async fn run_blocking<T, F>(task: F) -> Result<T, RimeError>

@@ -55,17 +55,6 @@ pub(crate) fn http_get(url: &str) -> ureq::Request {
         .set("Accept", "application/vnd.github+json")
 }
 
-/// Reset the HTTP agent cache.
-///
-/// This will cause a new agent to be created on the next call to `http_agent()`.
-/// Useful if proxy settings change at runtime.
-#[allow(dead_code)]
-pub(crate) fn reset_http_agent() {
-    // OnceLock can only be set once, so we log a warning
-    // In practice, app restart is needed for proxy changes
-    log::warn!("HTTP agent reset requested - restart app for proxy changes to take effect");
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

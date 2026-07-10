@@ -3,6 +3,7 @@ import {
   Brush,
   Collection,
   Document,
+  Edit,
   EditPen,
   Files,
   FolderOpened,
@@ -37,7 +38,11 @@ const { isDark, toggleTheme } = useTheme();
       </div>
     </div>
 
-    <el-menu class="nav-menu" :default-active="activePage" @select="(key: string) => emit('navigate', key)">
+    <el-menu
+      class="nav-menu"
+      :default-active="activePage"
+      @select="(key: string) => emit('navigate', key)"
+    >
       <el-menu-item index="overview">
         <el-icon><Monitor /></el-icon>
         <span>概览</span>
@@ -66,6 +71,10 @@ const { isDark, toggleTheme } = useTheme();
         <el-icon><Collection /></el-icon>
         <span>词库</span>
       </el-menu-item>
+      <el-menu-item index="editor">
+        <el-icon><Edit /></el-icon>
+        <span>编辑器</span>
+      </el-menu-item>
       <el-menu-item index="backups">
         <el-icon><FolderOpened /></el-icon>
         <span>备份</span>
@@ -77,12 +86,7 @@ const { isDark, toggleTheme } = useTheme();
     </el-menu>
 
     <div class="theme-toggle">
-      <el-button
-        :icon="isDark ? Sunny : Moon"
-        circle
-        size="small"
-        @click="toggleTheme"
-      />
+      <el-button :icon="isDark ? Sunny : Moon" circle size="small" @click="toggleTheme" />
       <span>{{ isDark ? "深色模式" : "浅色模式" }}</span>
     </div>
 
@@ -135,7 +139,9 @@ const { isDark, toggleTheme } = useTheme();
   font-size: 19px;
   font-weight: 850;
   letter-spacing: -0.02em;
-  transition: transform var(--transition-spring), box-shadow var(--transition-spring);
+  transition:
+    transform var(--transition-spring),
+    box-shadow var(--transition-spring);
 }
 
 .brand-mark:hover {
@@ -230,7 +236,9 @@ const { isDark, toggleTheme } = useTheme();
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(243, 246, 251, 0.95));
   border: 1px solid var(--color-line-soft);
   border-radius: var(--radius-md);
-  transition: border-color var(--transition-base), box-shadow var(--transition-base);
+  transition:
+    border-color var(--transition-base),
+    box-shadow var(--transition-base);
 }
 
 .sidebar-card:hover {

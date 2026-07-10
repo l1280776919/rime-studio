@@ -1,14 +1,11 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, ref, watch } from "vue";
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useErrorHandler } from "./composables/useErrorHandler";
 import { invoke } from "@tauri-apps/api/core";
 import AppSidebar from "./components/layout/AppSidebar.vue";
 import AppTopbar from "./components/layout/AppTopbar.vue";
 import AppStatusbar from "./components/layout/AppStatusbar.vue";
-import type {
-  BackupEntry,
-  RimeEnvironment,
-} from "./types";
+import type { BackupEntry, RimeEnvironment } from "./types";
 import { useTheme } from "./composables/useTheme";
 import { useBackup } from "./composables/useBackup";
 import { useDeploy } from "./composables/useDeploy";
@@ -17,6 +14,7 @@ import { useDeploy } from "./composables/useDeploy";
 const AboutPage = defineAsyncComponent(() => import("./pages/AboutPage.vue"));
 const AppearancePage = defineAsyncComponent(() => import("./pages/AppearancePage.vue"));
 const BackupsPage = defineAsyncComponent(() => import("./pages/BackupsPage.vue"));
+const ConfigEditorPage = defineAsyncComponent(() => import("./pages/ConfigEditorPage.vue"));
 const ConfigFilesPage = defineAsyncComponent(() => import("./pages/ConfigFilesPage.vue"));
 const DictionariesPage = defineAsyncComponent(() => import("./pages/DictionariesPage.vue"));
 const OverviewPage = defineAsyncComponent(() => import("./pages/OverviewPage.vue"));
@@ -41,11 +39,29 @@ const { deploying, installingRecipe, log, deploy, installRimeIce } = useDeploy()
 const { withErrorHandling } = useErrorHandler();
 
 // ── Navigation ─────────────────────────────────────
-type PageKey = "overview" | "quick" | "schemas" | "configs" | "appearance" | "phrases" | "dictionaries" | "backups" | "about";
+type PageKey =
+  | "overview"
+  | "quick"
+  | "schemas"
+  | "configs"
+  | "appearance"
+  | "phrases"
+  | "dictionaries"
+  | "backups"
+  | "editor"
+  | "about";
 
 const PAGE_KEYS: ReadonlySet<string> = new Set<PageKey>([
-  "overview", "quick", "schemas", "configs",
-  "appearance", "phrases", "dictionaries", "backups", "about",
+  "overview",
+  "quick",
+  "schemas",
+  "configs",
+  "appearance",
+  "phrases",
+  "dictionaries",
+  "backups",
+  "editor",
+  "about",
 ]);
 
 function isPageKey(value: string): value is PageKey {
@@ -77,6 +93,7 @@ const pageTitle = computed(() => {
     phrases: "短语管理",
     dictionaries: "词库管理",
     backups: "备份管理",
+    editor: "配置编辑器",
     about: "关于",
   };
   return titles[activePage.value];
@@ -92,6 +109,7 @@ const pageDescription = computed(() => {
     phrases: "编辑自定义短语，支持添加、搜索、导入和批量管理。",
     dictionaries: "浏览和管理 Rime 词库文件，查看条目统计与健康状态。",
     backups: "查看、打开和恢复 Rime Studio 创建的配置备份。",
+    editor: "直接编辑 Rime YAML 配置文件，支持语法高亮和自动备份。",
     about: "关于 Rime Studio 与相关开源项目。",
   };
   return descriptions[activePage.value];
@@ -112,6 +130,15 @@ async function loadEnvironment() {
   }
 
   scanning.value = false;
+}
+
+let envRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+
+function refreshEnvironment() {
+  if (envRefreshTimer) clearTimeout(envRefreshTimer);
+  envRefreshTimer = setTimeout(() => {
+    loadEnvironment();
+  }, 300);
 }
 
 async function openKnownPath(command: "open_rime_user_dir" | "open_plum_dir") {
@@ -164,7 +191,14 @@ async function handleRestoreBackup(backup: BackupEntry) {
 
 // ── Busy / Elapsed timer ──────────────────────────
 const isBusy = computed<boolean>(
-  () => !!(scanning.value || deploying.value || backingUp.value || restoringBackup.value || installingRecipe.value),
+  () =>
+    !!(
+      scanning.value ||
+      deploying.value ||
+      backingUp.value ||
+      restoringBackup.value ||
+      installingRecipe.value
+    ),
 );
 
 function startElapsedTimer() {
@@ -195,6 +229,10 @@ watch(isBusy, (busy) => {
 onMounted(() => {
   initTheme();
   loadEnvironment();
+});
+
+onBeforeUnmount(() => {
+  if (envRefreshTimer) clearTimeout(envRefreshTimer);
 });
 </script>
 
@@ -240,7 +278,7 @@ onMounted(() => {
               key="quick"
               :env="env"
               :installing-recipe="installingRecipe"
-              @saved="loadEnvironment"
+              @saved="refreshEnvironment"
               @deploy="handleDeploy"
               @install="handleInstallRimeIce"
             />
@@ -249,7 +287,7 @@ onMounted(() => {
               v-else-if="activePage === 'schemas'"
               key="schemas"
               :env="env"
-              @saved="loadEnvironment"
+              @saved="refreshEnvironment"
               @deploy="handleDeploy"
             />
 
@@ -266,7 +304,7 @@ onMounted(() => {
               v-else-if="activePage === 'appearance'"
               key="appearance"
               :env="env"
-              @saved="loadEnvironment"
+              @saved="refreshEnvironment"
               @deploy="handleDeploy"
             />
 
@@ -274,7 +312,7 @@ onMounted(() => {
               v-else-if="activePage === 'phrases'"
               key="phrases"
               :env="env"
-              @saved="loadEnvironment"
+              @saved="refreshEnvironment"
               @deploy="handleDeploy"
             />
 
@@ -299,10 +337,15 @@ onMounted(() => {
               @delete-backup="deleteBackupEntry"
             />
 
-            <AboutPage
-              v-else-if="activePage === 'about'"
-              key="about"
+            <ConfigEditorPage
+              v-else-if="activePage === 'editor'"
+              key="editor"
+              :env="env"
+              @saved="refreshEnvironment"
+              @deploy="handleDeploy"
             />
+
+            <AboutPage v-else-if="activePage === 'about'" key="about" />
           </Transition>
         </div>
 

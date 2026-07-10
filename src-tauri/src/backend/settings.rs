@@ -59,51 +59,6 @@ pub(crate) fn get_quick_settings_sync() -> Result<QuickSettingsConfig, RimeError
     })
 }
 
-pub(crate) fn render_quick_default_custom(config: &QuickSettingsConfig) -> String {
-    let schema_id = config.schema_id.replace(['/', '\\'], "").replace("..", "");
-    let switch_value = if config.switch_key == "shift" {
-        "commit_code"
-    } else {
-        "noop"
-    };
-    let mut default_contents = vec![
-        "# Managed by Rime Studio. Previous versions are kept in RimeStudio backups.".to_string(),
-        "patch:".to_string(),
-        "  \"schema_list\":".to_string(),
-        format!("    - {{schema: {schema_id}}}"),
-        format!("  \"menu/page_size\": {}", config.page_size),
-        format!("  \"ascii_composer/switch_key/Shift_L\": {switch_value}"),
-        format!("  \"ascii_composer/switch_key/Shift_R\": {switch_value}"),
-    ];
-
-    let mut bindings: Vec<String> = Vec::new();
-    let arrow_paging = config.paging_keys == "arrow_keys";
-    let left_right_nav = config.navigation_keys == "left_right";
-
-    if arrow_paging && left_right_nav {
-        bindings.push("    - {when: paging, accept: Up, send: Page_Up}".to_string());
-        bindings.push("    - {when: has_menu, accept: Down, send: Page_Down}".to_string());
-        bindings.push("    - {when: has_menu, accept: Left, send: Up}".to_string());
-        bindings.push("    - {when: has_menu, accept: Right, send: Down}".to_string());
-    } else if arrow_paging {
-        bindings.push("    - {when: paging, accept: Up, send: Page_Up}".to_string());
-        bindings.push("    - {when: has_menu, accept: Down, send: Page_Down}".to_string());
-    } else if left_right_nav {
-        bindings.push("    - {when: has_menu, accept: Left, send: Page_Up}".to_string());
-        bindings.push("    - {when: has_menu, accept: Right, send: Page_Down}".to_string());
-    } else if config.paging_keys == "minus_equal" {
-        bindings.push("    - {when: paging, accept: minus, send: Page_Up}".to_string());
-        bindings.push("    - {when: has_menu, accept: equal, send: Page_Down}".to_string());
-    }
-
-    if !bindings.is_empty() {
-        default_contents.push("  \"key_binder/bindings\":".to_string());
-        default_contents.extend(bindings);
-    }
-    default_contents.push(String::new());
-    default_contents.join("\n")
-}
-
 pub(crate) fn build_text_diff(old_contents: &str, new_contents: &str) -> Vec<String> {
     if old_contents == new_contents {
         return Vec::new();
@@ -158,7 +113,7 @@ pub(crate) fn preview_quick_settings_sync(
             preview_file(
                 &user_dir,
                 "default.custom.yaml",
-                render_quick_default_custom(&config),
+                render_default_custom_with_schema_list(&config, &[sanitize_schema_id(&config.schema_id)]),
             ),
             preview_file(
                 &user_dir,
@@ -180,7 +135,7 @@ pub(crate) fn save_quick_settings_sync(
     let default_custom_path = user_dir.join("default.custom.yaml");
     write_text_file(
         &default_custom_path,
-        &render_quick_default_custom(&config),
+        &render_default_custom_with_schema_list(&config, &[sanitize_schema_id(&config.schema_id)]),
         "写入 default.custom.yaml 失败",
     )?;
 
@@ -189,7 +144,7 @@ pub(crate) fn save_quick_settings_sync(
     appearance.switch_key = config.switch_key;
     appearance.horizontal = config.horizontal;
     appearance.inline_preedit = config.inline_preedit;
-    write_appearance_config(&user_dir, &appearance, true)?;
+    write_appearance_config(&user_dir, &appearance)?;
 
     get_quick_settings_sync()
 }
@@ -712,7 +667,7 @@ pub(crate) fn save_appearance_config_sync(
     fs::create_dir_all(&user_dir)
         .map_err(|err| RimeError::SettingsError(format!("创建 Rime 目录失败: {err}")))?;
     backup_user_config(&user_dir, BackupKind::BeforeSave)?;
-    write_appearance_config(&user_dir, &config, false)?;
+    write_appearance_config(&user_dir, &config)?;
 
     Ok(read_appearance_config(&user_dir))
 }
@@ -796,14 +751,6 @@ pub(crate) fn delete_dictionary_sync(dict_name: String) -> Result<(), RimeError>
     let path = validate_dictionary_path(&user_dir, &dict_name)?;
     fs::remove_file(&path)
         .map_err(|err| RimeError::FileOperationError(format!("删除词库失败: {err}")))
-}
-
-pub(crate) fn scan_dictionaries_sync_wrapper() -> Result<Vec<DictInfo>, RimeError> {
-    list_dictionaries_sync()
-}
-
-pub(crate) fn get_dict_health_sync_wrapper(dict_name: String) -> Result<DictHealth, RimeError> {
-    get_dict_health_sync(dict_name)
 }
 
 pub(crate) fn download_github_release_installer<F>(

@@ -591,13 +591,8 @@ button:active {
   scroll-behavior: smooth;
 }
 
-.appearance-grid,
-.placeholder-grid {
+.appearance-grid {
   grid-template-columns: minmax(0, 1fr) 320px;
-}
-
-.placeholder-grid {
-  align-items: stretch;
 }
 
 .backups-grid {
@@ -1766,12 +1761,6 @@ button:active {
   margin-bottom: 14px;
 }
 
-.compact-appearance .preset-button {
-  border-radius: var(--radius-xs);
-  min-height: 34px;
-  font-size: 12px;
-}
-
 /* ---- Responsive ---- */
 @media (max-width: 1160px) {
   .content-grid,
@@ -1870,8 +1859,7 @@ button:active {
 /* ---- Focus ring ---- */
 .el-button:focus-visible,
 .el-input__wrapper:focus-within,
-.recipe-card:focus-visible,
-.preset-button:focus-visible {
+.recipe-card:focus-visible {
   outline: 2px solid var(--brand-400);
   outline-offset: 2px;
   transition: outline-color var(--transition-fast);
@@ -2437,140 +2425,11 @@ button:active {
   padding: 12px;
 }
 
-.schema-table-panel {
-  min-height: 520px;
-}
-
-.schema-table-panel .el-card__body {
-  height: calc(100% - 52px);
-  padding: 0;
-}
-
-.schema-list-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.schema-list-actions .el-button {
-  margin-left: 0;
-}
-
 .schema-count {
   color: var(--ink-500);
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 650;
-}
-
-.schema-name-cell {
-  display: grid;
-  grid-template-columns: 22px minmax(0, 1fr);
-  gap: 8px;
-  align-items: center;
-}
-
-.schema-name-cell .el-icon {
-  color: var(--brand-500);
-  font-size: 17px;
-}
-
-.schema-name-cell strong,
-.schema-name-cell small {
-  display: block;
-}
-
-.schema-name-cell strong {
-  color: var(--ink-800);
-  font-size: 13px;
-  font-weight: 720;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.schema-name-cell small {
-  color: var(--ink-500);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  margin-top: 1px;
-}
-
-.schema-description {
-  color: var(--ink-500);
-  font-size: 12px;
-}
-
-.muted-cell {
-  color: var(--ink-400);
-  font-size: 12px;
-}
-
-.table-actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  white-space: nowrap;
-}
-
-.table-actions .el-button {
-  margin-left: 0;
-}
-
-.schema-active-card {
-  display: grid;
-  gap: 5px;
-  justify-items: start;
-  padding: 14px;
-  background: linear-gradient(135deg, var(--brand-50), var(--color-surface));
-  border: 1px solid var(--brand-100);
-  border-radius: var(--radius-sm);
-}
-
-.schema-active-card .el-icon {
-  color: var(--brand-600);
-  font-size: 24px;
-}
-
-.schema-active-card strong {
-  color: var(--ink-900);
-  font-size: 16px;
-  font-weight: 780;
-}
-
-.schema-active-card span {
-  color: var(--ink-500);
-  font-family: var(--font-mono);
-  font-size: 12px;
-}
-
-.enabled-schema-list {
-  display: grid;
-  gap: 3px;
-  margin-top: 10px;
-  padding: 10px 12px;
-  background: var(--color-surface-soft);
-  border: 1px solid var(--color-line-soft);
-  border-radius: var(--radius-sm);
-}
-
-.enabled-schema-list span {
-  color: var(--ink-500);
-  font-size: 11px;
-  font-weight: 650;
-}
-
-.enabled-schema-list strong {
-  color: var(--ink-800);
-  font-size: 13px;
-}
-
-.enabled-schema-list small {
-  color: var(--ink-500);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
 }
 
 .schema-menu-note {
@@ -3719,19 +3578,6 @@ button:active {
   white-space: nowrap;
 }
 
-.online-dict-controls {
-  align-items: start;
-  display: grid;
-  gap: 12px;
-  grid-template-columns: minmax(0, 1fr) auto;
-  margin-bottom: 12px;
-}
-
-.online-dict-controls .el-segmented {
-  max-width: 100%;
-  overflow-x: auto;
-}
-
 .online-dict-actions {
   align-items: center;
   display: flex;
@@ -3742,10 +3588,6 @@ button:active {
 
 .online-dict-actions .el-button {
   margin-left: 0;
-}
-
-.online-dict-tabs {
-  min-width: 0;
 }
 
 .online-dictionary-dialog .el-dialog__body {
@@ -3953,81 +3795,6 @@ button:active {
   line-height: 1.45;
 }
 
-.online-dict-list {
-  display: grid;
-  gap: 14px;
-}
-
-.online-dict-group {
-  display: grid;
-  gap: 8px;
-}
-
-.online-category-picker {
-  align-items: center;
-  display: grid;
-  gap: 8px;
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-
-.online-category-picker .el-select {
-  width: 100%;
-}
-
-.online-dict-category {
-  color: var(--ink-500);
-  font-size: 11px;
-  font-weight: 760;
-  letter-spacing: 0;
-}
-
-.online-dict-item {
-  align-items: center;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-xs);
-  color: var(--ink-800);
-  cursor: pointer;
-  display: flex;
-  gap: 10px;
-  justify-content: space-between;
-  padding: 10px;
-  text-align: left;
-  width: 100%;
-}
-
-.online-dict-item:hover:not(:disabled) {
-  background: var(--brand-50);
-  border-color: var(--brand-200);
-}
-
-.online-dict-item:disabled {
-  cursor: progress;
-  opacity: 0.7;
-}
-
-.online-dict-item span {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-
-.online-dict-item strong {
-  font-size: 13px;
-  font-weight: 760;
-}
-
-.online-dict-item small {
-  color: var(--ink-500);
-  font-size: 11px;
-  line-height: 1.45;
-}
-
-.online-dict-item .el-icon {
-  color: var(--brand-500);
-  flex: 0 0 auto;
-}
-
 .dictionaries-grid .el-table__row {
   cursor: pointer;
   transition: padding-left var(--transition-fast);
@@ -4059,19 +3826,6 @@ button:active {
 @keyframes busyPulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.4; transform: scale(0.7); }
-}
-
-.statusbar.flash-success {
-  background: var(--emerald-50);
-  border-color: #a7f3d0;
-  transition:
-    background 0.2s ease,
-    border-color 0.2s ease;
-}
-
-.statusbar.flash-success::before {
-  background: var(--emerald-500);
-  box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
 }
 
 /* ---- Page scroll-to-top ---- */
@@ -4200,10 +3954,6 @@ button:active {
 
   .config-files-actions {
     flex-wrap: wrap;
-  }
-
-  .online-dict-controls {
-    grid-template-columns: 1fr;
   }
 
   .lmdg-resource-panel {
@@ -4384,7 +4134,6 @@ button:active {
 [data-theme="dark"] .health-list > div,
 [data-theme="dark"] .color-field,
 [data-theme="dark"] .schema-choice,
-[data-theme="dark"] .preset-button,
 [data-theme="dark"] .backup-item,
 [data-theme="dark"] .recipe-card {
   background: rgba(30, 41, 59, 0.5);
@@ -4405,12 +4154,6 @@ button:active {
   border-color: #1d4ed8;
 }
 
-[data-theme="dark"] .preset-button.active {
-  background: linear-gradient(135deg, #1e3a8a, #1e293b);
-  border-color: var(--brand-400);
-  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.15);
-}
-
 [data-theme="dark"] .schema-choice.active {
   background: linear-gradient(135deg, #1e3a8a, #1e293b);
   border-color: var(--brand-400);
@@ -4428,11 +4171,6 @@ button:active {
 [data-theme="dark"] .ice-toggle:hover {
   background: rgba(51, 65, 85, 0.6);
   border-color: var(--brand-400);
-}
-
-[data-theme="dark"] .schema-active-card {
-  background: linear-gradient(135deg, #1e3a8a, #1e293b);
-  border-color: var(--brand-200);
 }
 
 [data-theme="dark"] .schema-current-strip,
@@ -4461,11 +4199,6 @@ button:active {
 [data-theme="dark"] .weasel-preview {
   background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), transparent 45%), rgba(30, 41, 59, 0.5);
   border-color: var(--color-line);
-}
-
-[data-theme="dark"] .preview-composition {
-  background: rgba(30, 41, 59, 0.8);
-  border-color: rgba(59, 130, 246, 0.15);
 }
 
 [data-theme="dark"] .log-panel pre {

@@ -2,6 +2,7 @@
 import { computed } from "vue";
 import { ElMessage } from "element-plus";
 import { useErrorHandler } from "../composables/useErrorHandler";
+import { formatBytes } from "../utils";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Document,
@@ -59,13 +60,6 @@ const groups = computed(() => [
   { key: "ui", title: "外观与组件", rows: rows.value.filter((row) => row.group === "ui") },
   { key: "data", title: "短语与词库", rows: rows.value.filter((row) => row.group === "data") },
 ]);
-
-function formatBytes(size?: number) {
-  if (size === undefined) return "无文件";
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / 1024 / 1024).toFixed(1)} MB`;
-}
 
 function formatModified(modified?: number) {
   if (!modified) return "从未生成";

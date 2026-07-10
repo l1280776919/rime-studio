@@ -27,6 +27,8 @@ export default [
         URL: "readonly",
         Blob: "readonly",
         HTMLInputElement: "readonly",
+        HTMLDivElement: "readonly",
+        KeyboardEvent: "readonly",
         Event: "readonly",
         XMLHttpRequest: "readonly",
         fetch: "readonly",

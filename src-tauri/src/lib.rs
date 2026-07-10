@@ -66,7 +66,10 @@ pub fn run() {
             set_active_schema,
             save_active_schema_list,
             open_schema_file,
-            open_schema_dir
+            open_schema_dir,
+            list_yaml_config_files,
+            read_config_file_content,
+            write_config_file_content
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -6,7 +6,7 @@ import {
   Open,
   RefreshLeft,
 } from "@element-plus/icons-vue";
-import { formatTime } from "../utils";
+import { backupLabel, backupKindLabel, backupKindType, formatTime } from "../utils";
 import type { BackupEntry } from "../types";
 
 const props = defineProps<{
@@ -38,29 +38,6 @@ const visibleBackups = computed(() => {
   return props.backups;
 });
 
-function backupLabel(backup: BackupEntry) {
-  const raw = backup.name
-    .replace("backup-rime-studio-before-save-", "")
-    .replace("backup-rime-studio-before-restore-", "")
-    .replace("backup-rime-studio-before-install-", "")
-    .replace("backup-rime-studio-manual-", "")
-    .replace("backup-rime-studio-", "");
-  return raw.replace(/[-_]/g, " ");
-}
-
-function backupKindLabel(kind: string) {
-  if (kind === "before-save") return "保存前";
-  if (kind === "before-restore") return "恢复前";
-  if (kind === "before-install") return "安装前";
-  return "手动";
-}
-
-function backupKindType(kind: string) {
-  if (kind === "before-save") return "info";
-  if (kind === "before-restore") return "warning";
-  if (kind === "before-install") return "warning";
-  return "success";
-}
 </script>
 
 <template>

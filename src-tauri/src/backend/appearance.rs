@@ -8,21 +8,18 @@ pub(crate) fn read_appearance_config(user_dir: &Path) -> AppearanceConfig {
         .or_else(|| parse_quoted_value(&weasel_custom, "name:"))
         .unwrap_or_else(|| "rime_studio_blue".to_string());
     let scheme_key = format!("preset_color_schemes/{theme_name}/");
+    let default_custom = read_to_string(&user_dir.join("default.custom.yaml"));
 
     AppearanceConfig {
         theme_name,
         font_point: parse_u32_after_key(&weasel_custom, "style/font_point").unwrap_or(11),
         label_font_point: parse_u32_after_key(&weasel_custom, "style/label_font_point")
             .unwrap_or(10),
-        page_size: {
-            let default_custom = read_to_string(&user_dir.join("default.custom.yaml"));
-            parse_u32_after_key(&weasel_custom, "style/page_size")
-                .or_else(|| parse_u32_after_key(&default_custom, "menu/page_size"))
-                .unwrap_or(7)
-        },
+        page_size: parse_u32_after_key(&weasel_custom, "style/page_size")
+            .or_else(|| parse_u32_after_key(&default_custom, "menu/page_size"))
+            .unwrap_or(7),
         switch_key: {
-            let dc = read_to_string(&user_dir.join("default.custom.yaml"));
-            let val = parse_string_after_key(&dc, "ascii_composer/switch_key/Shift_L");
+            let val = parse_string_after_key(&default_custom, "ascii_composer/switch_key/Shift_L");
             val.unwrap_or_else(|| "shift".to_string())
         },
         horizontal: parse_bool_after_key(&weasel_custom, "style/horizontal").unwrap_or(true),
@@ -146,11 +143,9 @@ pub(crate) fn render_weasel_custom(config: &AppearanceConfig) -> String {
 pub(crate) fn write_appearance_config(
     user_dir: &Path,
     config: &AppearanceConfig,
-    include_behavior: bool,
 ) -> Result<(), RimeError> {
     fs::create_dir_all(user_dir)
         .map_err(|err| RimeError::FileOperationError(format!("创建 Rime 目录失败: {err}")))?;
     let path = user_dir.join("weasel.custom.yaml");
-    let _ = include_behavior;
     write_text_file(&path, &render_weasel_custom(config), "写入外观配置文件失败")
 }

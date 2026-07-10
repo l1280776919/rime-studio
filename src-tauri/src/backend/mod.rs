@@ -9,6 +9,7 @@ pub(crate) mod phrases;
 pub(crate) mod proxy;
 pub(crate) mod schemas;
 pub(crate) mod settings;
+pub(crate) mod config_editor;
 pub(crate) mod system;
 
 // Re-export for convenience across sibling modules
@@ -23,4 +24,5 @@ pub(crate) use self::phrases::*;
 pub(crate) use self::proxy::*;
 pub(crate) use self::schemas::*;
 pub(crate) use self::settings::*;
+pub(crate) use self::config_editor::*;
 pub(crate) use self::system::*;

@@ -37,20 +37,6 @@ pub(crate) fn get_proxy_env_vars() -> Vec<(String, String)> {
     }
 }
 
-/// Force refresh the cached proxy configuration.
-///
-/// Call this if the user changes proxy settings at runtime.
-#[allow(dead_code)]
-pub(crate) fn refresh_proxy_cache() {
-    // OnceLock can only be set once, so we use a workaround:
-    // Create a new static for the refresh case
-    if let Some(proxy) = detect_system_proxy_from_env().or_else(detect_system_proxy_from_registry) {
-        log::info!("Proxy refreshed: {}", proxy);
-    } else {
-        log::info!("Proxy refreshed: no proxy detected");
-    }
-}
-
 /// Detect proxy from environment variables (cross-platform).
 fn detect_system_proxy_from_env() -> Option<String> {
     for var in &[
