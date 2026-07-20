@@ -1,11 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import {
-  Delete,
-  FolderOpened,
-  Open,
-  RefreshLeft,
-} from "@element-plus/icons-vue";
+import { Delete, FolderOpened, Open, RefreshLeft } from "@element-plus/icons-vue";
 import { backupLabel, backupKindLabel, backupKindType, formatTime } from "../utils";
 import type { BackupEntry } from "../types";
 
@@ -26,7 +21,9 @@ const emit = defineEmits<{
 const activeFilter = ref<"all" | "manual" | "auto">("all");
 const latestBackup = computed(() => props.backups[0]);
 const totalFiles = computed(() => props.backups.reduce((total, backup) => total + backup.files, 0));
-const manualCount = computed(() => props.backups.filter((backup) => backup.kind === "manual").length);
+const manualCount = computed(
+  () => props.backups.filter((backup) => backup.kind === "manual").length,
+);
 const autoCount = computed(() => props.backups.length - manualCount.value);
 const visibleBackups = computed(() => {
   if (activeFilter.value === "manual") {
@@ -37,7 +34,6 @@ const visibleBackups = computed(() => {
   }
   return props.backups;
 });
-
 </script>
 
 <template>
@@ -106,7 +102,12 @@ const visibleBackups = computed(() => {
           <el-icon><FolderOpened /></el-icon>
           <strong>还没有备份</strong>
           <span>创建一个备份后，当前 Rime 配置文件会被保存到应用数据目录。</span>
-          <el-button type="primary" :icon="FolderOpened" :loading="backingUp" @click="emit('createBackup')">
+          <el-button
+            type="primary"
+            :icon="FolderOpened"
+            :loading="backingUp"
+            @click="emit('createBackup')"
+          >
             创建第一个备份
           </el-button>
         </div>
@@ -132,13 +133,25 @@ const visibleBackups = computed(() => {
               <span>恢复前会先创建安全备份</span>
             </div>
             <div class="backup-manual-actions">
-              <el-button link type="warning" :icon="RefreshLeft" :loading="restoringBackup === backup.name" @click="emit('restoreBackup', backup)">
+              <el-button
+                link
+                type="warning"
+                :icon="RefreshLeft"
+                :loading="restoringBackup === backup.name"
+                @click="emit('restoreBackup', backup)"
+              >
                 恢复
               </el-button>
               <el-button link type="primary" :icon="Open" @click="emit('openBackup', backup)">
                 打开
               </el-button>
-              <el-button link type="info" :icon="Delete" :loading="deletingBackup === backup.name" @click="emit('deleteBackup', backup)">
+              <el-button
+                link
+                type="info"
+                :icon="Delete"
+                :loading="deletingBackup === backup.name"
+                @click="emit('deleteBackup', backup)"
+              >
                 删除
               </el-button>
             </div>

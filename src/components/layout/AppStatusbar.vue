@@ -15,7 +15,12 @@ function formatElapsed(seconds: number): string {
 
 <template>
   <footer class="statusbar" :class="{ busy: isBusy }">
-    <span>{{ status }}<template v-if="isBusy && elapsedSeconds"> (已用时 {{ formatElapsed(elapsedSeconds) }})</template></span>
+    <span
+      >{{ status
+      }}<template v-if="isBusy && elapsedSeconds">
+        (已用时 {{ formatElapsed(elapsedSeconds) }})</template
+      ></span
+    >
   </footer>
 </template>
 
@@ -48,8 +53,13 @@ function formatElapsed(seconds: number): string {
 }
 
 @keyframes statusPulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 .statusbar span {

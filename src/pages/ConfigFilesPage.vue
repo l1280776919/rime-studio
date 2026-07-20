@@ -4,12 +4,7 @@ import { ElMessage } from "element-plus";
 import { useErrorHandler } from "../composables/useErrorHandler";
 import { formatBytes } from "../utils";
 import { invoke } from "@tauri-apps/api/core";
-import {
-  Document,
-  FolderOpened,
-  Refresh,
-  UploadFilled,
-} from "@element-plus/icons-vue";
+import { Document, FolderOpened, Refresh, UploadFilled } from "@element-plus/icons-vue";
 import type { FileStatus, RimeEnvironment } from "../types";
 
 const props = defineProps<{
@@ -32,9 +27,24 @@ type ConfigFileMeta = {
 };
 
 const CONFIG_FILES: ConfigFileMeta[] = [
-  { name: "default.custom.yaml", label: "默认方案配置", group: "core", role: "当前方案、候选数、按键绑定" },
-  { name: "weasel.custom.yaml", label: "小狼毫外观配置", group: "ui", role: "主题、字号、候选窗方向" },
-  { name: "rime_ice.custom.yaml", label: "雾凇组件配置", group: "ui", role: "Emoji、繁简、标点、全角开关" },
+  {
+    name: "default.custom.yaml",
+    label: "默认方案配置",
+    group: "core",
+    role: "当前方案、候选数、按键绑定",
+  },
+  {
+    name: "weasel.custom.yaml",
+    label: "小狼毫外观配置",
+    group: "ui",
+    role: "主题、字号、候选窗方向",
+  },
+  {
+    name: "rime_ice.custom.yaml",
+    label: "雾凇组件配置",
+    group: "ui",
+    role: "Emoji、繁简、标点、全角开关",
+  },
   { name: "custom_phrase.txt", label: "自定义短语", group: "data", role: "短语、编码、权重" },
   { name: "rime_ice.schema.yaml", label: "雾凇方案", group: "core", role: "雾凇输入方案入口" },
   { name: "rime_ice.dict.yaml", label: "雾凇主词库", group: "data", role: "雾凇基础词条" },
@@ -92,7 +102,13 @@ async function openRimeDir() {
         <div class="config-files-actions">
           <el-button :icon="Refresh" @click="emit('refresh')">刷新</el-button>
           <el-button :icon="FolderOpened" @click="openRimeDir">打开目录</el-button>
-          <el-button type="primary" plain :icon="UploadFilled" :loading="backingUp" @click="emit('createBackup')">
+          <el-button
+            type="primary"
+            plain
+            :icon="UploadFilled"
+            :loading="backingUp"
+            @click="emit('createBackup')"
+          >
             手动备份
           </el-button>
         </div>
@@ -101,7 +117,10 @@ async function openRimeDir() {
       <section v-for="group in groups" :key="group.key" class="config-file-section">
         <header>
           <h3>{{ group.title }}</h3>
-          <span>{{ group.rows.filter((row) => row.file?.exists).length }} / {{ group.rows.length }}</span>
+          <span
+            >{{ group.rows.filter((row) => row.file?.exists).length }} /
+            {{ group.rows.length }}</span
+          >
         </header>
 
         <div class="config-file-list">
@@ -121,7 +140,9 @@ async function openRimeDir() {
             </div>
 
             <div class="config-file-meta">
-              <span :class="{ ok: row.file?.exists }">{{ row.file?.exists ? "存在" : "未生成" }}</span>
+              <span :class="{ ok: row.file?.exists }">{{
+                row.file?.exists ? "存在" : "未生成"
+              }}</span>
               <small>{{ formatBytes(row.file?.size) }}</small>
               <small>{{ formatModified(row.file?.modified) }}</small>
             </div>

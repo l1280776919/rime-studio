@@ -3,7 +3,15 @@ import { computed, onMounted, ref } from "vue";
 import { ElMessage } from "element-plus";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Check, Collection, Connection, Link, Refresh, UploadFilled, Warning } from "@element-plus/icons-vue";
+import {
+  Check,
+  Collection,
+  Connection,
+  Link,
+  Refresh,
+  UploadFilled,
+  Warning,
+} from "@element-plus/icons-vue";
 import pkg from "../../package.json";
 import type { AppUpdateInfo } from "../types";
 import { useErrorHandler } from "../composables/useErrorHandler";
@@ -13,6 +21,7 @@ const checkingUpdate = ref(false);
 const downloadingUpdate = ref(false);
 const downloadStatus = ref("");
 const updateInfo = ref<AppUpdateInfo>();
+const updateCheckFailed = ref(false);
 
 const releaseNotesPreview = computed(() => {
   const notes = updateInfo.value?.release_notes?.trim();
@@ -20,6 +29,16 @@ const releaseNotesPreview = computed(() => {
   return notes.length > 600 ? `${notes.slice(0, 600)}...` : notes;
 });
 const updateState = computed(() => {
+  if (updateCheckFailed.value) {
+    return {
+      tone: "error",
+      title: "检查更新失败",
+      detail: "暂时无法连接 GitHub Releases，请检查网络后重试。",
+      tagType: "danger" as const,
+      tagText: "检查失败",
+      actionText: "重试",
+    };
+  }
   if (!updateInfo.value) {
     return {
       tone: "idle",
@@ -58,10 +77,18 @@ function formatPublishedAt(value?: string) {
 async function checkUpdate() {
   if (checkingUpdate.value) return;
   checkingUpdate.value = true;
+  updateCheckFailed.value = false;
   try {
-    updateInfo.value = await withErrorHandling(() => invoke<AppUpdateInfo>("check_app_update"));
-    if (updateInfo.value?.update_available) {
-      ElMessage.success(`发现新版本 ${updateInfo.value.latest_version}`);
+    const result = await withErrorHandling(() => invoke<AppUpdateInfo>("check_app_update"));
+    if (!result) {
+      updateInfo.value = undefined;
+      updateCheckFailed.value = true;
+      return;
+    }
+
+    updateInfo.value = result;
+    if (result.update_available) {
+      ElMessage.success(`发现新版本 ${result.latest_version}`);
     } else {
       ElMessage.success("当前已是最新版本");
     }
@@ -71,7 +98,8 @@ async function checkUpdate() {
 }
 
 async function openReleasePage() {
-  const url = updateInfo.value?.release_url ?? "https://github.com/l1280776919/rime-studio/releases";
+  const url =
+    updateInfo.value?.release_url ?? "https://github.com/l1280776919/rime-studio/releases";
   await openUrl(url);
 }
 
@@ -127,7 +155,8 @@ onMounted(() => {
           <h3>Rime Studio</h3>
           <p>小狼毫输入法配置工作台 v{{ pkg.version }}</p>
           <p class="helper-text">
-            基于 Tauri 2 + Vue 3 + Rust 构建的桌面应用，提供图形化界面来管理 Rime 输入法的外观主题、自定义短语、词库和配置备份。
+            基于 Tauri 2 + Vue 3 + Rust 构建的桌面应用，提供图形化界面来管理 Rime
+            输入法的外观主题、自定义短语、词库和配置备份。
           </p>
         </div>
       </el-card>
@@ -160,7 +189,13 @@ onMounted(() => {
             <div class="update-action-col">
               <el-button
                 type="primary"
-                :icon="downloadingUpdate ? Refresh : (updateInfo?.update_available ? UploadFilled : Refresh)"
+                :icon="
+                  downloadingUpdate
+                    ? Refresh
+                    : updateInfo?.update_available
+                      ? UploadFilled
+                      : Refresh
+                "
                 :loading="checkingUpdate || downloadingUpdate"
                 :disabled="downloadingUpdate"
                 @click="handleUpdateAction"
@@ -179,7 +214,11 @@ onMounted(() => {
             <div class="update-version-tile latest">
               <span>GitHub 最新版本</span>
               <strong>{{ updateInfo?.latest_version ?? "尚未检查" }}</strong>
-              <small>{{ updateInfo ? `发布于 ${formatPublishedAt(updateInfo.published_at)}` : "点击检查后显示" }}</small>
+              <small>{{
+                updateInfo
+                  ? `发布于 ${formatPublishedAt(updateInfo.published_at)}`
+                  : "点击检查后显示"
+              }}</small>
             </div>
           </div>
 
@@ -215,11 +254,7 @@ onMounted(() => {
             <el-icon class="link-arrow"><Link /></el-icon>
           </a>
 
-          <a
-            href="https://github.com/rime/home"
-            target="_blank"
-            class="about-link-card"
-          >
+          <a href="https://github.com/rime/home" target="_blank" class="about-link-card">
             <el-icon><Connection /></el-icon>
             <span>
               <strong>Rime 中州韻</strong>
@@ -228,11 +263,7 @@ onMounted(() => {
             <el-icon class="link-arrow"><Link /></el-icon>
           </a>
 
-          <a
-            href="https://github.com/iDvel/rime-ice"
-            target="_blank"
-            class="about-link-card"
-          >
+          <a href="https://github.com/iDvel/rime-ice" target="_blank" class="about-link-card">
             <el-icon><Connection /></el-icon>
             <span>
               <strong>雾凇拼音</strong>

@@ -77,7 +77,9 @@ const selectedCategoryInfo = computed(() =>
   props.onlineCategories.find((category) => category.id === props.selectedCategory),
 );
 const activeOnlineTitle = computed(() =>
-  activeOnlineTab.value === "featured" ? "精选推荐" : (selectedCategoryInfo.value?.title ?? "分类词库"),
+  activeOnlineTab.value === "featured"
+    ? "精选推荐"
+    : (selectedCategoryInfo.value?.title ?? "分类词库"),
 );
 const activeOnlineDescription = computed(() =>
   activeOnlineTab.value === "featured"
@@ -159,7 +161,12 @@ function showFeatured() {
             >
               重新加载
             </el-button>
-            <el-button type="primary" :icon="Download" :loading="importing" @click="emit('showUrlImport')">
+            <el-button
+              type="primary"
+              :icon="Download"
+              :loading="importing"
+              @click="emit('showUrlImport')"
+            >
               URL 导入
             </el-button>
           </div>

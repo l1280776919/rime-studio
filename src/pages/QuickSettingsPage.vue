@@ -74,10 +74,14 @@ const activeSchema = computed(() => {
   return schemas.value.find((schema) => schema.id === form.schema_id);
 });
 const hasRimeIce = computed(() => {
-  return schemas.value.some((schema) => schema.id.includes("rime_ice")) ||
-    props.env?.custom_files.some((file) =>
-      file.exists && ["rime_ice.schema.yaml", "rime_ice.dict.yaml", "rime_ice.custom.yaml"].includes(file.name),
-    );
+  return (
+    schemas.value.some((schema) => schema.id.includes("rime_ice")) ||
+    props.env?.custom_files.some(
+      (file) =>
+        file.exists &&
+        ["rime_ice.schema.yaml", "rime_ice.dict.yaml", "rime_ice.custom.yaml"].includes(file.name),
+    )
+  );
 });
 
 const schemaPresets = [
@@ -97,7 +101,9 @@ function schedulePostDeployCheck() {
   }
   postDeployChecking.value = true;
   postDeployTimer = setTimeout(async () => {
-    const report = await withErrorHandling(() => invoke<ConfigHealthReport>("inspect_config_health"));
+    const report = await withErrorHandling(() =>
+      invoke<ConfigHealthReport>("inspect_config_health"),
+    );
     if (report) {
       healthReport.value = report;
       const hasError = report.checks.some((check) => check.status === "error");
@@ -117,12 +123,14 @@ function schedulePostDeployCheck() {
 
 async function loadQuickSettings() {
   loading.value = true;
-  const result = await withErrorHandling(() => Promise.all([
-    invoke<QuickSettingsConfig>("get_quick_settings"),
-    invoke<SchemaInfo[]>("list_schemas"),
-    invoke<ConfigHealthReport>("inspect_config_health"),
-    invoke<RimeIceSettings>("get_rime_ice_settings"),
-  ]));
+  const result = await withErrorHandling(() =>
+    Promise.all([
+      invoke<QuickSettingsConfig>("get_quick_settings"),
+      invoke<SchemaInfo[]>("list_schemas"),
+      invoke<ConfigHealthReport>("inspect_config_health"),
+      invoke<RimeIceSettings>("get_rime_ice_settings"),
+    ]),
+  );
   if (result) {
     const [config, schemaList, report, rimeIceSettings] = result;
     applyConfig(config);
@@ -136,9 +144,11 @@ async function loadQuickSettings() {
 async function saveQuickSettings(shouldDeploy = false) {
   saving.value = !shouldDeploy;
   deploying.value = shouldDeploy;
-  const config = await withErrorHandling(() => invoke<QuickSettingsConfig>("save_quick_settings", {
-    config: { ...form },
-  }));
+  const config = await withErrorHandling(() =>
+    invoke<QuickSettingsConfig>("save_quick_settings", {
+      config: { ...form },
+    }),
+  );
   if (config) {
     applyConfig(config);
     emit("saved");
@@ -154,9 +164,11 @@ async function saveQuickSettings(shouldDeploy = false) {
 
 async function previewQuickSettings() {
   previewing.value = true;
-  const preview = await withErrorHandling(() => invoke<ConfigPreview>("preview_quick_settings", {
-    config: { ...form },
-  }));
+  const preview = await withErrorHandling(() =>
+    invoke<ConfigPreview>("preview_quick_settings", {
+      config: { ...form },
+    }),
+  );
   if (preview) {
     configPreview.value = preview;
     showPreviewDialog.value = true;
@@ -193,9 +205,11 @@ async function repairHealth() {
 
 async function repairHealthItem(check: ConfigHealthCheck) {
   repairingHealthItem.value = check.name;
-  const report = await withErrorHandling(() => invoke<ConfigHealthReport>("repair_config_health_item", {
-    name: check.name,
-  }));
+  const report = await withErrorHandling(() =>
+    invoke<ConfigHealthReport>("repair_config_health_item", {
+      name: check.name,
+    }),
+  );
   if (report) {
     healthReport.value = report;
     emit("saved");
@@ -209,9 +223,11 @@ async function repairHealthItem(check: ConfigHealthCheck) {
 
 async function saveIceSettings() {
   savingIceSettings.value = true;
-  const settings = await withErrorHandling(() => invoke<RimeIceSettings>("save_rime_ice_settings", {
-    settings: { ...iceSettings },
-  }));
+  const settings = await withErrorHandling(() =>
+    invoke<RimeIceSettings>("save_rime_ice_settings", {
+      settings: { ...iceSettings },
+    }),
+  );
   if (settings) {
     Object.assign(iceSettings, settings);
     emit("saved");
@@ -257,10 +273,21 @@ onBeforeUnmount(() => {
           <el-button :icon="Warning" :loading="previewing" @click="previewQuickSettings">
             预览变更
           </el-button>
-          <el-button type="primary" :icon="Check" :loading="saving" @click="saveQuickSettings(false)">
+          <el-button
+            type="primary"
+            :icon="Check"
+            :loading="saving"
+            @click="saveQuickSettings(false)"
+          >
             保存
           </el-button>
-          <el-button type="primary" plain :icon="UploadFilled" :loading="deploying" @click="saveQuickSettings(true)">
+          <el-button
+            type="primary"
+            plain
+            :icon="UploadFilled"
+            :loading="deploying"
+            @click="saveQuickSettings(true)"
+          >
             保存并部署
           </el-button>
         </div>
@@ -425,7 +452,11 @@ onBeforeUnmount(() => {
               <strong>繁体地区</strong>
               <small>选择简繁转换 OpenCC 预设</small>
             </span>
-            <el-select v-model="iceSettings.traditional_preset" size="small" :disabled="!hasRimeIce">
+            <el-select
+              v-model="iceSettings.traditional_preset"
+              size="small"
+              :disabled="!hasRimeIce"
+            >
               <el-option label="通用繁体" value="s2t.json" />
               <el-option label="台湾繁体" value="s2tw.json" />
               <el-option label="台湾繁体含词汇" value="s2twp.json" />
@@ -485,9 +516,7 @@ onBeforeUnmount(() => {
             仅更新词库
           </el-button>
         </div>
-        <p class="helper-text">
-          安装会写入当前 Rime 用户目录；执行前会自动创建安装前备份。
-        </p>
+        <p class="helper-text">安装会写入当前 Rime 用户目录；执行前会自动创建安装前备份。</p>
       </el-card>
 
       <el-card class="panel" shadow="never">
@@ -496,7 +525,9 @@ onBeforeUnmount(() => {
         </template>
         <div class="path-chip">
           <el-icon><Setting /></el-icon>
-          <span>{{ env?.user_dir ? `${env.user_dir}\\default.custom.yaml` : "等待扫描 Rime 目录" }}</span>
+          <span>{{
+            env?.user_dir ? `${env.user_dir}\\default.custom.yaml` : "等待扫描 Rime 目录"
+          }}</span>
         </div>
         <p class="helper-text">
           方案、候选数量和按键写入 default.custom.yaml；候选窗方向写入 weasel.custom.yaml。
@@ -511,7 +542,13 @@ onBeforeUnmount(() => {
               复检中
             </el-tag>
             <span class="health-actions">
-              <el-button link type="primary" :icon="Refresh" :loading="checkingHealth" @click="inspectHealth">
+              <el-button
+                link
+                type="primary"
+                :icon="Refresh"
+                :loading="checkingHealth"
+                @click="inspectHealth"
+              >
                 检查
               </el-button>
               <el-button
@@ -560,7 +597,13 @@ onBeforeUnmount(() => {
             <el-button :icon="Refresh" :loading="checkingHealth" @click="inspectHealth">
               开始体检
             </el-button>
-            <el-button type="warning" plain :icon="UploadFilled" :loading="repairingHealth" @click="repairHealth">
+            <el-button
+              type="warning"
+              plain
+              :icon="UploadFilled"
+              :loading="repairingHealth"
+              @click="repairHealth"
+            >
               修复并部署
             </el-button>
           </div>
@@ -583,7 +626,7 @@ onBeforeUnmount(() => {
             <header>
               <strong>{{ file.name }}</strong>
               <el-tag :type="file.changed ? 'warning' : 'success'" effect="light" size="small">
-                {{ file.changed ? '将更新' : '无变化' }}
+                {{ file.changed ? "将更新" : "无变化" }}
               </el-tag>
             </header>
             <code>{{ file.path }}</code>
@@ -599,10 +642,23 @@ onBeforeUnmount(() => {
       </div>
       <template #footer>
         <el-button @click="showPreviewDialog = false">关闭</el-button>
-        <el-button type="primary" @click="showPreviewDialog = false; saveQuickSettings(false)">
+        <el-button
+          type="primary"
+          @click="
+            showPreviewDialog = false;
+            saveQuickSettings(false);
+          "
+        >
           保存
         </el-button>
-        <el-button type="primary" plain @click="showPreviewDialog = false; saveQuickSettings(true)">
+        <el-button
+          type="primary"
+          plain
+          @click="
+            showPreviewDialog = false;
+            saveQuickSettings(true);
+          "
+        >
           保存并部署
         </el-button>
       </template>

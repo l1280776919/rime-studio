@@ -169,9 +169,12 @@ export function useDictionaries(emit: EmitFn) {
     if (!selectedOnlineCategory.value) return;
     categoryLoading.value = true;
     try {
-      categoryDictionaries.value = await invoke<OnlineDictionary[]>("list_online_dictionaries_by_category", {
-        categoryId: selectedOnlineCategory.value,
-      });
+      categoryDictionaries.value = await invoke<OnlineDictionary[]>(
+        "list_online_dictionaries_by_category",
+        {
+          categoryId: selectedOnlineCategory.value,
+        },
+      );
     } catch (error) {
       ElMessage.error(String(error));
     } finally {
@@ -304,8 +307,8 @@ export function useDictionaries(emit: EmitFn) {
       }
       await loadAllStats();
       ElMessage.success(
-        `已导入 ${result.imported_entries.toLocaleString()} 条到 ${result.name}`
-        + (result.skipped_entries ? `，跳过 ${result.skipped_entries.toLocaleString()} 条` : ""),
+        `已导入 ${result.imported_entries.toLocaleString()} 条到 ${result.name}` +
+          (result.skipped_entries ? `，跳过 ${result.skipped_entries.toLocaleString()} 条` : ""),
       );
       if (enableAfterImport) {
         await addDictionaryReference(result.reference);
@@ -348,7 +351,9 @@ export function useDictionaries(emit: EmitFn) {
   async function addDictionaryReference(reference: string) {
     updatingReference.value = reference;
     try {
-      dictConfig.value = await invoke<DictionaryConfig>("add_dictionary_to_current_schema", { reference });
+      dictConfig.value = await invoke<DictionaryConfig>("add_dictionary_to_current_schema", {
+        reference,
+      });
       await loadAllStats();
       ElMessage.success("已加入当前方案，重新部署后生效");
     } catch (error) {
@@ -361,7 +366,9 @@ export function useDictionaries(emit: EmitFn) {
   async function removeDictionaryReference(reference: string) {
     updatingReference.value = reference;
     try {
-      dictConfig.value = await invoke<DictionaryConfig>("remove_dictionary_from_current_schema", { reference });
+      dictConfig.value = await invoke<DictionaryConfig>("remove_dictionary_from_current_schema", {
+        reference,
+      });
       await loadAllStats();
       ElMessage.success("已从当前方案移除引用");
     } catch (error) {
@@ -395,11 +402,11 @@ export function useDictionaries(emit: EmitFn) {
 
   async function deleteDictionary(dict: DictInfo) {
     try {
-      await ElMessageBox.confirm(
-        `确定删除「${dict.name}」？此操作不可恢复。`,
-        "删除词库",
-        { confirmButtonText: "删除", cancelButtonText: "取消", type: "warning" },
-      );
+      await ElMessageBox.confirm(`确定删除「${dict.name}」？此操作不可恢复。`, "删除词库", {
+        confirmButtonText: "删除",
+        cancelButtonText: "取消",
+        type: "warning",
+      });
     } catch {
       return;
     }
@@ -452,7 +459,9 @@ export function useDictionaries(emit: EmitFn) {
 
   const totalEntries = computed(() => dictionaries.value.reduce((s, d) => s + d.entry_count, 0));
   const totalSize = computed(() => dictionaries.value.reduce((s, d) => s + d.size_bytes, 0));
-  const enabledCount = computed(() => (dictConfig.value?.enabled.length ?? 0) + (dictConfig.value?.missing.length ?? 0));
+  const enabledCount = computed(
+    () => (dictConfig.value?.enabled.length ?? 0) + (dictConfig.value?.missing.length ?? 0),
+  );
 
   async function selectOnlineCategory(categoryId: string) {
     selectedOnlineCategory.value = categoryId;

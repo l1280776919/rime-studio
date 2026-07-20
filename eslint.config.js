@@ -1,4 +1,5 @@
 import js from "@eslint/js";
+import eslintConfigPrettier from "eslint-config-prettier";
 import tseslint from "typescript-eslint";
 import pluginVue from "eslint-plugin-vue";
 
@@ -52,6 +53,16 @@ export default [
       ],
     },
   },
+  {
+    files: ["scripts/**/*.mjs"],
+    languageOptions: {
+      globals: {
+        console: "readonly",
+        process: "readonly",
+      },
+    },
+  },
+  eslintConfigPrettier,
   {
     ignores: ["**/dist/**", "**/target/**", "**/node_modules/**"],
   },

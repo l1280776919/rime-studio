@@ -42,8 +42,10 @@ const hasDeployer = computed(() => Boolean(props.env?.deployer_path));
 const health = computed(() => props.env?.sogou_health);
 const customFiles = computed(() => props.env?.custom_files ?? []);
 const hasRimeIce = computed(() => {
-  return customFiles.value.some((file) =>
-    file.exists && ["rime_ice.schema.yaml", "rime_ice.dict.yaml", "rime_ice.custom.yaml"].includes(file.name),
+  return customFiles.value.some(
+    (file) =>
+      file.exists &&
+      ["rime_ice.schema.yaml", "rime_ice.dict.yaml", "rime_ice.custom.yaml"].includes(file.name),
   );
 });
 const foundFiles = computed(() => customFiles.value.filter((file) => file.exists).length);
@@ -150,7 +152,6 @@ async function autoDownloadGitAndInstall() {
     downloadingGit.value = false;
   }
 }
-
 </script>
 
 <template>
@@ -187,17 +188,11 @@ async function autoDownloadGitAndInstall() {
           >
             {{ downloadingRime ? downloadStatus : "自动下载安装" }}
           </el-button>
-          <el-button
-            size="large"
-            :disabled="downloadingRime"
-            @click="openRimeDownload"
-          >
+          <el-button size="large" :disabled="downloadingRime" @click="openRimeDownload">
             手动去官网下载
           </el-button>
         </div>
-        <p class="onboarding-hint">
-          自动下载从 GitHub 获取最新版本。手动下载可自行选择版本。
-        </p>
+        <p class="onboarding-hint">自动下载从 GitHub 获取最新版本。手动下载可自行选择版本。</p>
       </div>
     </div>
 
@@ -321,7 +316,10 @@ async function autoDownloadGitAndInstall() {
           <template #header>
             <div class="panel-title">
               <span>{{ hasRimeIce ? "雾凇维护" : "安装 rime-ice" }}</span>
-              <el-tag :type="!toolsReady ? 'warning' : hasRimeIce ? 'success' : 'info'" effect="light">
+              <el-tag
+                :type="!toolsReady ? 'warning' : hasRimeIce ? 'success' : 'info'"
+                effect="light"
+              >
                 {{ !toolsReady ? "工具缺失" : hasRimeIce ? "已安装" : "可安装" }}
               </el-tag>
             </div>
@@ -341,9 +339,7 @@ async function autoDownloadGitAndInstall() {
               >
                 {{ downloadingGit ? gitDownloadStatus : "自动下载安装 Git" }}
               </el-button>
-              <el-button :disabled="downloadingGit" @click="openGitDownload">
-                手动下载
-              </el-button>
+              <el-button :disabled="downloadingGit" @click="openGitDownload"> 手动下载 </el-button>
             </div>
           </div>
 
@@ -432,11 +428,15 @@ async function autoDownloadGitAndInstall() {
             </div>
             <div>
               <span>重复行</span>
-              <strong :class="health.duplicate_exact_lines ? 'warn-text' : ''">{{ health.duplicate_exact_lines.toLocaleString() }}</strong>
+              <strong :class="health.duplicate_exact_lines ? 'warn-text' : ''">{{
+                health.duplicate_exact_lines.toLocaleString()
+              }}</strong>
             </div>
             <div>
               <span>长低权重项</span>
-              <strong :class="health.long_low_weight_entries ? 'warn-text' : ''">{{ health.long_low_weight_entries.toLocaleString() }}</strong>
+              <strong :class="health.long_low_weight_entries ? 'warn-text' : ''">{{
+                health.long_low_weight_entries.toLocaleString()
+              }}</strong>
             </div>
           </div>
           <p v-else class="helper-text">暂无词库健康数据，安装雾凇后可查看。</p>
@@ -446,7 +446,12 @@ async function autoDownloadGitAndInstall() {
           <template #header>
             <div class="panel-title">
               <span>Plum 目录</span>
-              <el-button link type="primary" :icon="Open" @click="emit('openPath', 'open_plum_dir')">
+              <el-button
+                link
+                type="primary"
+                :icon="Open"
+                @click="emit('openPath', 'open_plum_dir')"
+              >
                 打开
               </el-button>
             </div>

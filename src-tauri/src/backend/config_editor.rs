@@ -13,8 +13,8 @@ pub(crate) fn list_yaml_config_files_sync() -> Result<Vec<FileStatus>, RimeError
         .map_err(|err| RimeError::FileOperationError(format!("读取 Rime 目录失败: {err}")))?;
 
     for entry in dir_entries {
-        let entry = entry
-            .map_err(|err| RimeError::FileOperationError(format!("读取目录项失败: {err}")))?;
+        let entry =
+            entry.map_err(|err| RimeError::FileOperationError(format!("读取目录项失败: {err}")))?;
         let path = entry.path();
 
         // Skip directories and non-yaml files
@@ -45,9 +45,7 @@ pub(crate) fn list_yaml_config_files_sync() -> Result<Vec<FileStatus>, RimeError
 pub(crate) fn read_config_file_content_sync(filename: String) -> Result<String, RimeError> {
     // Prevent path traversal
     if filename.contains('/') || filename.contains('\\') || filename.contains("..") {
-        return Err(RimeError::ConfigNotFound(
-            "文件名包含非法字符".to_string(),
-        ));
+        return Err(RimeError::ConfigNotFound("文件名包含非法字符".to_string()));
     }
 
     let path = rime_user_dir()?.join(&filename);
@@ -69,9 +67,7 @@ pub(crate) fn write_config_file_content_sync(
 ) -> Result<(), RimeError> {
     // Prevent path traversal
     if filename.contains('/') || filename.contains('\\') || filename.contains("..") {
-        return Err(RimeError::ConfigNotFound(
-            "文件名包含非法字符".to_string(),
-        ));
+        return Err(RimeError::ConfigNotFound("文件名包含非法字符".to_string()));
     }
 
     let user_dir = rime_user_dir()?;

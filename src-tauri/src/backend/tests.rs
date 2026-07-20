@@ -1,8 +1,12 @@
 #[cfg(test)]
 mod tests {
     use crate::backend::*;
-    use crate::*;
-    use std::{env, ffi::OsStr, fs, path::Path, process::{self}};
+    use std::{
+        env,
+        ffi::OsStr,
+        fs,
+        process::{self},
+    };
 
     #[test]
     fn parses_schema_list_from_yaml_patch() {
@@ -279,4 +283,3 @@ patch:
         assert!(!rules.contains(&"derive/^k/g/"));
     }
 }
-

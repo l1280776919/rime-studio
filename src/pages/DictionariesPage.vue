@@ -126,8 +126,13 @@ const {
           accept=".bin,.scel,.txt,.dict.yaml,.yaml"
           style="display: none"
           @change="importDictionary"
+        />
+        <el-button
+          type="primary"
+          :icon="UploadFilled"
+          :loading="importing"
+          @click="chooseImportFile"
         >
-        <el-button type="primary" :icon="UploadFilled" :loading="importing" @click="chooseImportFile">
           导入词库
         </el-button>
         <el-button type="success" :icon="Download" @click="showOnlineDictionaryDialog = true">
@@ -147,7 +152,11 @@ const {
         <template #header>
           <div class="panel-title">
             <span>当前方案词库</span>
-            <small>{{ dictConfig?.main_dictionary ? `${dictConfig.main_dictionary}.dict.yaml` : "未找到主词库" }}</small>
+            <small>{{
+              dictConfig?.main_dictionary
+                ? `${dictConfig.main_dictionary}.dict.yaml`
+                : "未找到主词库"
+            }}</small>
           </div>
         </template>
         <el-empty
@@ -185,18 +194,33 @@ const {
           </el-table-column>
           <el-table-column label="操作" width="260" align="center">
             <template #default="{ row, $index }: { row: DictionaryReference; $index: number }">
-              <el-button link type="primary" :disabled="$index === 0" @click.stop="moveReference(row.reference, -1)">上移</el-button>
-              <el-button link type="primary" :disabled="$index >= enabledCount - 1" @click.stop="moveReference(row.reference, 1)">下移</el-button>
+              <el-button
+                link
+                type="primary"
+                :disabled="$index === 0"
+                @click.stop="moveReference(row.reference, -1)"
+                >上移</el-button
+              >
+              <el-button
+                link
+                type="primary"
+                :disabled="$index >= enabledCount - 1"
+                @click.stop="moveReference(row.reference, 1)"
+                >下移</el-button
+              >
               <el-button
                 v-if="row.exists"
-                link type="primary" :icon="Download"
+                link
+                type="primary"
+                :icon="Download"
                 :loading="exportingDict === `${row.reference}.dict.yaml`"
                 @click.stop="exportDictionary(referenceToDictInfo(row))"
               >
                 导出
               </el-button>
               <el-button
-                link type="danger"
+                link
+                type="danger"
                 :loading="updatingReference === row.reference"
                 @click.stop="removeDictionaryReference(row.reference)"
               >
@@ -220,7 +244,8 @@ const {
           :image-size="80"
         >
           <p class="helper-text">
-            还没有 .dict.yaml 词库文件。你可以安装 rime-ice 获取预置词库，或手动放置词库文件到用户目录。
+            还没有 .dict.yaml 词库文件。你可以安装 rime-ice
+            获取预置词库，或手动放置词库文件到用户目录。
           </p>
         </el-empty>
 
@@ -256,11 +281,17 @@ const {
                 {{ formatTime(row.modified) }}
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="240" align="center" class-name="dict-actions-column">
+            <el-table-column
+              label="操作"
+              width="240"
+              align="center"
+              class-name="dict-actions-column"
+            >
               <template #default="{ row }: { row: DictInfo }">
                 <div class="dict-row-actions">
                   <el-button
-                    link type="success"
+                    link
+                    type="success"
                     :loading="updatingReference === row.name"
                     @click.stop="addDictionaryReference(dictNameToReference(row.name))"
                   >
@@ -270,14 +301,18 @@ const {
                     定位
                   </el-button>
                   <el-button
-                    link type="primary" :icon="Download"
+                    link
+                    type="primary"
+                    :icon="Download"
                     :loading="exportingDict === row.name"
                     @click.stop="exportDictionary(row)"
                   >
                     导出
                   </el-button>
                   <el-button
-                    link type="danger" :icon="Delete"
+                    link
+                    type="danger"
+                    :icon="Delete"
                     :loading="deletingDict === row.name"
                     @click.stop="deleteDictionary(row)"
                   >
@@ -341,8 +376,9 @@ const {
           <span>格式说明</span>
         </template>
         <p class="helper-text">
-          Rime 词库文件以 <code>.dict.yaml</code> 结尾。包含 YAML 头部和 Tab 分隔的数据行（词汇→编码→权重）。
-          支持导入搜狗用户备份 <code>.bin</code>、搜狗细胞词库 <code>.scel</code>、Tab 分隔 <code>.txt</code> 和 Rime <code>.dict.yaml</code>。
+          Rime 词库文件以 <code>.dict.yaml</code> 结尾。包含 YAML 头部和 Tab
+          分隔的数据行（词汇→编码→权重）。 支持导入搜狗用户备份 <code>.bin</code>、搜狗细胞词库
+          <code>.scel</code>、Tab 分隔 <code>.txt</code> 和 Rime <code>.dict.yaml</code>。
           导入后点击重新部署生效。
         </p>
       </el-card>

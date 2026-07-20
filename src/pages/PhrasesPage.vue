@@ -49,7 +49,9 @@ const filteredEntries = computed(() => {
   );
 });
 const duplicateCount = computed(() => countDuplicatePhrases(entries.value));
-const parsedDuplicateCount = computed(() => countDuplicatePhrases([...entries.value, ...parsedImport.value]));
+const parsedDuplicateCount = computed(() =>
+  countDuplicatePhrases([...entries.value, ...parsedImport.value]),
+);
 
 function phraseKey(entry: PhraseEntry) {
   return `${entry.text.trim()}\t${entry.code.trim()}`.toLowerCase();
@@ -85,9 +87,7 @@ function dedupePhrases(phrases: PhraseEntry[]) {
 
 async function loadPhrases() {
   loading.value = true;
-  const result = await withErrorHandling(() =>
-    invoke<PhraseEntry[]>("get_custom_phrases"),
-  );
+  const result = await withErrorHandling(() => invoke<PhraseEntry[]>("get_custom_phrases"));
   if (result !== undefined) {
     entries.value = result;
   }
@@ -175,7 +175,10 @@ function parseImportText() {
     parsedImport.value.push({
       text: parts[0].trim(),
       code: (parts[1] ?? "").trim(),
-      weight: (() => { const p = parseInt(parts[2] ?? "1", 10); return Number.isNaN(p) ? 1 : p; })(),
+      weight: (() => {
+        const p = parseInt(parts[2] ?? "1", 10);
+        return Number.isNaN(p) ? 1 : p;
+      })(),
     });
   }
   if (!parsedImport.value.length) {
@@ -280,7 +283,32 @@ onMounted(loadPhrases);
           </el-button>
         </el-empty>
 
-        <el-table v-else v-loading="loading" :data="filteredEntries" stripe max-height="calc(100dvh - 280px)" highlight-current-row @sort-change="(sort:any) => { if(sort.prop === 'text') entries.sort((a,b) => (sort.order==='ascending'?1:-1) * a.text.localeCompare(b.text)); if(sort.prop==='code') entries.sort((a,b) => (sort.order==='ascending'?1:-1) * (a.code||'').localeCompare(b.code||'')); if(sort.prop==='weight') entries.sort((a,b) => (sort.order==='ascending'?1:-1) * (a.weight-b.weight)); }">
+        <el-table
+          v-else
+          v-loading="loading"
+          :data="filteredEntries"
+          stripe
+          max-height="calc(100dvh - 280px)"
+          highlight-current-row
+          @sort-change="
+            (sort: any) => {
+              if (sort.prop === 'text')
+                entries.sort(
+                  (a, b) => (sort.order === 'ascending' ? 1 : -1) * a.text.localeCompare(b.text),
+                );
+              if (sort.prop === 'code')
+                entries.sort(
+                  (a, b) =>
+                    (sort.order === 'ascending' ? 1 : -1) *
+                    (a.code || '').localeCompare(b.code || ''),
+                );
+              if (sort.prop === 'weight')
+                entries.sort(
+                  (a, b) => (sort.order === 'ascending' ? 1 : -1) * (a.weight - b.weight),
+                );
+            }
+          "
+        >
           <el-table-column label="#" type="index" width="56" />
           <el-table-column label="短语" min-width="200" prop="text" sortable="custom">
             <template #default="{ row }: { row: PhraseEntry }">
@@ -349,9 +377,7 @@ onMounted(loadPhrases);
           <el-icon><FolderOpened /></el-icon>
           <span>{{ userDir }}\custom_phrase.txt</span>
         </div>
-        <p class="helper-text">
-          每行一条：短语、编码、权重以 Tab 分隔。权重越高排序越靠前。
-        </p>
+        <p class="helper-text">每行一条：短语、编码、权重以 Tab 分隔。权重越高排序越靠前。</p>
       </el-card>
 
       <!-- Actions -->
@@ -399,7 +425,11 @@ onMounted(loadPhrases);
           <div>
             <span>平均权重</span>
             <strong>
-              {{ entries.length ? (entries.reduce((s, e) => s + e.weight, 0) / entries.length).toFixed(1) : 0 }}
+              {{
+                entries.length
+                  ? (entries.reduce((s, e) => s + e.weight, 0) / entries.length).toFixed(1)
+                  : 0
+              }}
             </strong>
           </div>
           <div>
@@ -414,7 +444,11 @@ onMounted(loadPhrases);
     <el-dialog v-model="showAddDialog" title="添加短语" width="420px">
       <el-form label-position="top">
         <el-form-item label="短语">
-          <el-input v-model="newPhrase.text" placeholder="输入短语内容" @keyup.enter="addNewPhrase" />
+          <el-input
+            v-model="newPhrase.text"
+            placeholder="输入短语内容"
+            @keyup.enter="addNewPhrase"
+          />
         </el-form-item>
         <el-form-item label="编码（可选）">
           <el-input v-model="newPhrase.code" placeholder="输入编码，如：gx" />
@@ -434,12 +468,7 @@ onMounted(loadPhrases);
       <p class="helper-text" style="margin-top: 0">
         粘贴制表符分隔的数据（短语→编码→权重）。可以直接追加，也可以按“短语 + 编码”合并重复项。
       </p>
-      <el-input
-        v-model="importText"
-        type="textarea"
-        :rows="10"
-        placeholder="粘贴短语数据..."
-      />
+      <el-input v-model="importText" type="textarea" :rows="10" placeholder="粘贴短语数据..." />
       <div v-if="parsedImport.length" class="import-preview">
         <el-tag type="success">解析到 {{ parsedImport.length }} 条短语</el-tag>
         <el-tag v-if="parsedDuplicateCount" type="warning">
@@ -447,13 +476,17 @@ onMounted(loadPhrases);
         </el-tag>
       </div>
       <template #footer>
-        <el-button @click="showImportDialog = false; parsedImport = []; importText = ''">
+        <el-button
+          @click="
+            showImportDialog = false;
+            parsedImport = [];
+            importText = '';
+          "
+        >
           取消
         </el-button>
         <el-button @click="parseImportText">预览</el-button>
-        <el-button :disabled="!parsedImport.length" @click="confirmImport">
-          追加导入
-        </el-button>
+        <el-button :disabled="!parsedImport.length" @click="confirmImport"> 追加导入 </el-button>
         <el-button type="primary" :disabled="!parsedImport.length" @click="confirmImportAndDedupe">
           合并去重
         </el-button>

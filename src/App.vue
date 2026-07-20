@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import zhCn from "element-plus/es/locale/lang/zh-cn";
 import { useErrorHandler } from "./composables/useErrorHandler";
 import { invoke } from "@tauri-apps/api/core";
 import AppSidebar from "./components/layout/AppSidebar.vue";
@@ -123,6 +124,7 @@ async function loadEnvironment() {
   const result = await withErrorHandling(async () => {
     env.value = await invoke<RimeEnvironment>("scan_rime_environment");
     await loadBackups();
+    return true;
   });
 
   if (result !== undefined) {
@@ -237,7 +239,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <el-config-provider>
+  <el-config-provider :locale="zhCn">
     <main class="studio-shell">
       <AppSidebar :env="env" :active-page="activePage" @navigate="navigateTo" />
 

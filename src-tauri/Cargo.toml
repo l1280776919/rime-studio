@@ -1,6 +1,6 @@
 [package]
 name = "rime-studio"
-version = "0.5.2"
+version = "0.5.3"
 description = "A desktop configuration manager for Rime and rime-ice"
 authors = ["Rime Studio"]
 edition = "2021"

@@ -40,11 +40,7 @@ const sourceNameModel = computed({
         show-icon
         :closable="false"
       />
-      <el-input
-        v-model="urlModel"
-        clearable
-        placeholder="https://example.com/dictionary.scel"
-      />
+      <el-input v-model="urlModel" clearable placeholder="https://example.com/dictionary.scel" />
       <el-input
         v-model="sourceNameModel"
         clearable

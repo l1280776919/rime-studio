@@ -23,9 +23,7 @@ defineEmits<{
       <p>{{ pageDescription }}</p>
     </div>
     <div class="toolbar-actions">
-      <el-button :loading="scanning" :icon="Refresh" @click="$emit('refresh')">
-        刷新
-      </el-button>
+      <el-button :loading="scanning" :icon="Refresh" @click="$emit('refresh')"> 刷新 </el-button>
       <el-button
         type="primary"
         :disabled="!hasDeployer"

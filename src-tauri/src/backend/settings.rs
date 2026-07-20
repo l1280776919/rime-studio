@@ -113,7 +113,10 @@ pub(crate) fn preview_quick_settings_sync(
             preview_file(
                 &user_dir,
                 "default.custom.yaml",
-                render_default_custom_with_schema_list(&config, &[sanitize_schema_id(&config.schema_id)]),
+                render_default_custom_with_schema_list(
+                    &config,
+                    &[sanitize_schema_id(&config.schema_id)],
+                ),
             ),
             preview_file(
                 &user_dir,

@@ -1,7 +1,9 @@
 name: CI
 
 on:
+  pull_request:
   push:
+    branches: [main]
     tags: ["v*"]
   workflow_dispatch:
 
@@ -23,7 +25,10 @@ jobs:
           cache: npm
 
       - run: npm ci
+      - run: npm run version:check
       - run: npm run typecheck
+      - run: npm run lint -- --max-warnings=0
+      - run: npm run format
       - run: npm run build
 
   # ── Backend check ──
@@ -51,6 +56,10 @@ jobs:
 
       - name: Cargo check
         run: cargo check
+        working-directory: src-tauri
+
+      - name: Cargo test
+        run: cargo test
         working-directory: src-tauri
 
   # ── Release (tag push only) ──
@@ -84,26 +93,9 @@ jobs:
           # Extract version from tag (v0.3.0 -> 0.3.0)
           VERSION="${GITHUB_REF#refs/tags/v}"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          
-          # Update Cargo.toml
-          sed -i "s/^version = .*/version = \"$VERSION\"/" src-tauri/Cargo.toml
-          
-          # Update tauri.conf.json
-          node -e "
-          const fs = require('fs');
-          const config = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
-          config.version = '$VERSION';
-          fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(config, null, 2) + '\n');
-          "
-          
-          # Update package.json
-          node -e "
-          const fs = require('fs');
-          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-          pkg.version = '$VERSION';
-          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-          "
-          
+
+          node scripts/sync-version.mjs "$VERSION"
+
           echo "Synced version to $VERSION"
           grep "^version" src-tauri/Cargo.toml
           node -e "console.log('package.json version:', require('./package.json').version)"

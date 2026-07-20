@@ -48,8 +48,8 @@ const progressText = computed(() => {
   return `${progress.stage} · 已下载 ${downloaded}`;
 });
 
-const showProgress = computed(() =>
-  (props.grammarInstalling || props.dictInstalling) && Boolean(props.progress),
+const showProgress = computed(
+  () => (props.grammarInstalling || props.dictInstalling) && Boolean(props.progress),
 );
 </script>
 
@@ -60,7 +60,8 @@ const showProgress = computed(() =>
       <div>
         <strong>万象语言模型 RIME-LMDG</strong>
         <small>
-          下载 wanxiang-lts-zh-hans.gram，并为雾凇拼音写入 octagram 语法模型补丁。保留雾凇方案，只增强长句排序。
+          下载 wanxiang-lts-zh-hans.gram，并为雾凇拼音写入 octagram
+          语法模型补丁。保留雾凇方案，只增强长句排序。
         </small>
       </div>
     </div>
@@ -82,11 +83,7 @@ const showProgress = computed(() =>
       >
         卸载模型
       </el-button>
-      <el-button
-        :icon="Collection"
-        :loading="dictInstalling"
-        @click="emit('installDicts')"
-      >
+      <el-button :icon="Collection" :loading="dictInstalling" @click="emit('installDicts')">
         安装词库包
       </el-button>
       <el-button :icon="Refresh" :loading="loading" @click="emit('refresh')">
@@ -96,9 +93,7 @@ const showProgress = computed(() =>
     <div v-if="showProgress" class="lmdg-download-progress">
       <div>
         <span>{{ progressText }}</span>
-        <strong v-if="progress?.percent !== undefined">
-          {{ progressPercentage }}%
-        </strong>
+        <strong v-if="progress?.percent !== undefined"> {{ progressPercentage }}% </strong>
       </div>
       <el-progress
         :percentage="progressPercentage"

@@ -12,7 +12,7 @@ export function useErrorHandler() {
    */
   async function withErrorHandling<T>(
     operation: () => Promise<T>,
-    options?: { silent?: boolean; toast?: boolean }
+    options?: { silent?: boolean; toast?: boolean },
   ): Promise<T | undefined> {
     const { silent = false, toast = true } = options ?? {};
     try {

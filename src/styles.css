@@ -184,8 +184,7 @@ button:active {
   background:
     radial-gradient(ellipse 80% 60% at 85% 8%, rgba(59, 130, 246, 0.07), transparent 50%),
     radial-gradient(ellipse 50% 40% at 30% 94%, rgba(214, 139, 12, 0.04), transparent 45%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.5) 0%, transparent 30%),
-    var(--color-bg);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.5) 0%, transparent 30%), var(--color-bg);
 }
 
 /* ---- Sidebar ---- */
@@ -229,7 +228,9 @@ button:active {
   font-size: 19px;
   font-weight: 850;
   letter-spacing: -0.02em;
-  transition: transform var(--transition-spring), box-shadow var(--transition-spring);
+  transition:
+    transform var(--transition-spring),
+    box-shadow var(--transition-spring);
 }
 
 .brand-mark:hover {
@@ -312,7 +313,9 @@ button:active {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(243, 246, 251, 0.95));
   border: 1px solid var(--color-line-soft);
   border-radius: var(--radius-md);
-  transition: border-color var(--transition-base), box-shadow var(--transition-base);
+  transition:
+    border-color var(--transition-base),
+    box-shadow var(--transition-base);
 }
 
 .sidebar-card:hover {
@@ -438,8 +441,13 @@ button:active {
 }
 
 @keyframes statusPulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 .statusbar span {
@@ -456,8 +464,7 @@ button:active {
   flex: 0 0 auto;
   margin-bottom: 16px;
   padding: 24px;
-  background:
-    linear-gradient(135deg, #ffffff 0%, #f7f9fc 40%, #eff6ff 100%);
+  background: linear-gradient(135deg, #ffffff 0%, #f7f9fc 40%, #eff6ff 100%);
   border: 1px solid rgba(205, 215, 230, 0.7);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
@@ -1018,8 +1025,7 @@ button:active {
 .weasel-preview {
   padding: 16px;
   background:
-    linear-gradient(135deg, rgba(59, 130, 246, 0.04), transparent 45%),
-    var(--color-surface-soft);
+    linear-gradient(135deg, rgba(59, 130, 246, 0.04), transparent 45%), var(--color-surface-soft);
   border: 1px solid var(--color-line-soft);
   border-radius: var(--radius-md);
   display: flex;
@@ -1047,14 +1053,18 @@ button:active {
   color: var(--ink-800);
   animation: blink 1s step-end infinite;
 }
-@keyframes blink { 50% { opacity: 0; } }
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
 
 /* Candidate popup window */
 .preview-window {
-  border: 1px solid rgba(0,0,0,0.1);
+  border: 1px solid rgba(0, 0, 0, 0.1);
   border-radius: 6px;
   padding: 6px 8px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
   min-width: 180px;
   max-width: 500px;
   transition: all var(--transition-base);
@@ -1066,7 +1076,7 @@ button:active {
   gap: 8px;
   padding: 2px 4px 6px;
   margin-bottom: 4px;
-  border-bottom: 1px solid rgba(0,0,0,0.06);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
   font-size: 13px;
 }
 
@@ -1108,11 +1118,13 @@ button:active {
 /* Dark mode preview */
 [data-theme="dark"] .preview-window {
   background: rgba(30, 41, 59, 0.95);
-  border-color: rgba(255,255,255,0.06);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.3), 0 1px 4px rgba(0,0,0,0.2);
+  border-color: rgba(255, 255, 255, 0.06);
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.3),
+    0 1px 4px rgba(0, 0, 0, 0.2);
 }
 [data-theme="dark"] .preview-preedit {
-  border-bottom-color: rgba(255,255,255,0.06);
+  border-bottom-color: rgba(255, 255, 255, 0.06);
 }
 [data-theme="dark"] .preview-inline-caret {
   color: var(--ink-400);
@@ -1194,8 +1206,7 @@ button:active {
 /* ---- Element Plus overrides ---- */
 .el-button {
   font-weight: 650;
-  transition:
-    all var(--transition-fast);
+  transition: all var(--transition-fast);
 }
 
 .el-button--primary {
@@ -1328,7 +1339,7 @@ button:active {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  border: 1px solid rgba(0,0,0,0.08);
+  border: 1px solid rgba(0, 0, 0, 0.08);
   flex-shrink: 0;
 }
 
@@ -1360,7 +1371,6 @@ button:active {
 .preset-delete:hover {
   color: var(--red-500) !important;
 }
-
 
 /* ---- Dirty indicator ---- */
 .dirty-dot {
@@ -3824,8 +3834,15 @@ button:active {
 }
 
 @keyframes busyPulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.4; transform: scale(0.7); }
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.7);
+  }
 }
 
 /* ---- Page scroll-to-top ---- */
@@ -4176,8 +4193,7 @@ button:active {
 [data-theme="dark"] .schema-current-strip,
 [data-theme="dark"] .schema-library-item.active {
   background:
-    linear-gradient(90deg, rgba(59, 130, 246, 0.12), transparent 42%),
-    var(--color-surface);
+    linear-gradient(90deg, rgba(59, 130, 246, 0.12), transparent 42%), var(--color-surface);
 }
 
 [data-theme="dark"] .schema-library-item:hover,
@@ -4197,7 +4213,8 @@ button:active {
 }
 
 [data-theme="dark"] .weasel-preview {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), transparent 45%), rgba(30, 41, 59, 0.5);
+  background:
+    linear-gradient(135deg, rgba(59, 130, 246, 0.08), transparent 45%), rgba(30, 41, 59, 0.5);
   border-color: var(--color-line);
 }
 

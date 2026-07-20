@@ -15,7 +15,7 @@ import {
 import type { QuickSettingsConfig, RimeEnvironment, SchemaInfo } from "../types";
 import { useErrorHandler } from "../composables/useErrorHandler";
 
-const props = defineProps<{
+defineProps<{
   env?: RimeEnvironment;
 }>();
 
@@ -38,7 +38,11 @@ const { withErrorHandling } = useErrorHandler();
 
 const currentSchema = computed(() => schemas.value.find((schema) => schema.is_active));
 const selectedSchema = computed(() => {
-  return schemas.value.find((schema) => schema.id === selectedId.value) ?? currentSchema.value ?? schemas.value[0];
+  return (
+    schemas.value.find((schema) => schema.id === selectedId.value) ??
+    currentSchema.value ??
+    schemas.value[0]
+  );
 });
 const menuSchemas = computed(() => {
   return menuIds.value
@@ -152,7 +156,9 @@ async function saveSchemaMenu(shouldDeploy = false) {
 async function copySchema(schema: SchemaInfo) {
   copying.value = schema.id;
   try {
-    const path = await withErrorHandling(() => invoke<string>("copy_schema", { schemaId: schema.id }));
+    const path = await withErrorHandling(() =>
+      invoke<string>("copy_schema", { schemaId: schema.id }),
+    );
     if (path) {
       await loadSchemas();
       ElMessage.success(`已复制到 ${path}`);
@@ -201,8 +207,12 @@ onMounted(loadSchemas);
       <div class="schema-current-strip panel">
         <div class="schema-current-main">
           <span class="schema-kicker">当前输入方案</span>
-          <strong>{{ currentSchema?.name ?? currentConfig?.schema_id ?? env?.active_schema ?? "未设置" }}</strong>
-          <small>{{ currentSchema?.id ?? currentConfig?.schema_id ?? env?.active_schema ?? "等待扫描" }}</small>
+          <strong>{{
+            currentSchema?.name ?? currentConfig?.schema_id ?? env?.active_schema ?? "未设置"
+          }}</strong>
+          <small>{{
+            currentSchema?.id ?? currentConfig?.schema_id ?? env?.active_schema ?? "等待扫描"
+          }}</small>
         </div>
         <div class="schema-current-meta">
           <span>当前方案是现在会生效的方案。</span>
@@ -273,7 +283,10 @@ onMounted(loadSchemas);
                 <el-switch
                   :model-value="menuIds.includes(schema.id)"
                   :disabled="schema.is_active"
-                  @change="(checked: string | number | boolean) => setMenuMembership(schema, Boolean(checked))"
+                  @change="
+                    (checked: string | number | boolean) =>
+                      setMenuMembership(schema, Boolean(checked))
+                  "
                 />
               </div>
               <div class="schema-row-actions">
@@ -345,9 +358,7 @@ onMounted(loadSchemas);
         </div>
 
         <div class="schema-side-actions">
-          <el-button :loading="savingMenu" @click="saveSchemaMenu(false)">
-            保存菜单
-          </el-button>
+          <el-button :loading="savingMenu" @click="saveSchemaMenu(false)"> 保存菜单 </el-button>
           <el-button type="primary" plain :loading="savingMenu" @click="saveSchemaMenu(true)">
             保存并部署
           </el-button>
@@ -362,7 +373,9 @@ onMounted(loadSchemas);
           <strong>{{ selectedSchema.name || selectedSchema.id }}</strong>
           <div class="schema-detail-tags">
             <span v-if="selectedSchema.is_active" class="schema-state current">当前</span>
-            <span class="schema-state">{{ selectedSchema.is_system ? "系统方案" : "用户方案" }}</span>
+            <span class="schema-state">{{
+              selectedSchema.is_system ? "系统方案" : "用户方案"
+            }}</span>
           </div>
           <p>{{ selectedSchema.description || "这个方案没有写描述。" }}</p>
         </div>

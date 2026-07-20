@@ -56,14 +56,13 @@ const visible = computed({
         <el-table-column label="权重" prop="weight" width="80" align="right" />
       </el-table>
       <p class="helper-text">
-        这里只展示前 {{ importPreview.sample_entries.length }} 条样例。确认导入后再决定是否加入当前方案词库。
+        这里只展示前
+        {{ importPreview.sample_entries.length }} 条样例。确认导入后再决定是否加入当前方案词库。
       </p>
     </div>
     <template #footer>
       <el-button @click="visible = false">取消</el-button>
-      <el-button :loading="importing" @click="emit('confirm', false)">
-        只导入文件
-      </el-button>
+      <el-button :loading="importing" @click="emit('confirm', false)"> 只导入文件 </el-button>
       <el-button type="primary" :loading="importing" @click="emit('confirm', true)">
         导入并加入当前方案
       </el-button>
