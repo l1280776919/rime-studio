@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import zhCn from "element-plus/es/locale/lang/zh-cn";
+import { ElMessageBox } from "element-plus";
 import { useErrorHandler } from "./composables/useErrorHandler";
 import { invoke } from "@tauri-apps/api/core";
 import AppSidebar from "./components/layout/AppSidebar.vue";
@@ -69,13 +70,27 @@ function isPageKey(value: string): value is PageKey {
   return PAGE_KEYS.has(value);
 }
 
-function navigateTo(key: string) {
-  if (isPageKey(key)) {
-    activePage.value = key;
+async function navigateTo(key: string) {
+  if (!isPageKey(key) || key === activePage.value) return;
+
+  if (activePage.value === "editor" && editorDirty.value) {
+    try {
+      await ElMessageBox.confirm("配置编辑器中有未保存的修改，确定要离开吗？", "未保存的修改", {
+        confirmButtonText: "放弃修改并离开",
+        cancelButtonText: "继续编辑",
+        type: "warning",
+      });
+    } catch {
+      return;
+    }
+    editorDirty.value = false;
   }
+
+  activePage.value = key;
 }
 
 const activePage = ref<PageKey>("overview");
+const editorDirty = ref(false);
 const env = ref<RimeEnvironment>();
 const scanning = ref(false);
 const status = ref("启动中...");
@@ -345,6 +360,7 @@ onBeforeUnmount(() => {
               :env="env"
               @saved="refreshEnvironment"
               @deploy="handleDeploy"
+              @dirty-change="editorDirty = $event"
             />
 
             <AboutPage v-else-if="activePage === 'about'" key="about" />

@@ -1,0 +1,40 @@
+name: 功能建议
+description: 建议新的配置流程、兼容能力或交互改进
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 要解决的问题
+      description: 请描述现在为什么不方便，而不只是功能名称。
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议方案
+      description: 描述理想的操作流程和结果。
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 当前替代方式
+      description: 目前是否通过手动编辑 YAML、其他工具或脚本解决？
+  - type: dropdown
+    id: scope
+    attributes:
+      label: 相关模块
+      options:
+        - 快速设置
+        - 方案管理
+        - 外观主题
+        - 短语与词库
+        - 配置编辑器
+        - 备份与恢复
+        - 安装、部署与更新
+        - 其他
+    validations:
+      required: true

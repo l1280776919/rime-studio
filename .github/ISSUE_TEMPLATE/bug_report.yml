@@ -1,0 +1,61 @@
+name: 问题报告
+description: 报告可复现的错误、配置损坏或部署异常
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。提交前请先创建一份手动备份，并确认问题能在最新版本复现。
+  - type: input
+    id: version
+    attributes:
+      label: Rime Studio 版本
+      description: 可在“关于”页面查看。
+      placeholder: 例如 0.5.4
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Windows 与小狼毫版本
+      placeholder: 例如 Windows 11 24H2 / 小狼毫 0.17.4
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 请从启动应用开始，按顺序描述操作。
+      placeholder: |
+        1. 打开……
+        2. 修改……
+        3. 点击……
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期结果
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果与错误信息
+      description: 可粘贴错误文本；请先移除用户名、目录和私人词库内容。
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: 补充信息
+      description: 可附截图、相关 YAML 片段或是否能通过备份恢复解决。
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: 隐私确认
+      options:
+        - label: 我已移除私人短语、词库内容和本机敏感路径。
+          required: true

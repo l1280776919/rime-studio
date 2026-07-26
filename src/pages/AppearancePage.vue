@@ -30,6 +30,7 @@ interface CustomScheme {
   label: string;
   colors: SchemeColors;
 }
+const CUSTOM_SCHEMES_STORAGE_KEY = "rime-studio:custom-schemes:v1";
 const customSchemes = ref<CustomScheme[]>([]);
 
 // Merge presets + custom schemes for display
@@ -45,7 +46,14 @@ const allSchemes = computed(() => [
 ]);
 
 function markEdited() {
-  if (!programmaticChange) userEdited.value = true;
+  if (programmaticChange) return;
+
+  userEdited.value = true;
+  const currentScheme = customSchemes.value.find((scheme) => scheme.name === form.theme_name);
+  if (currentScheme) {
+    currentScheme.colors = colorsFromConfig(form);
+    persistCustomSchemes();
+  }
 }
 
 const form = reactive<AppearanceConfig>({
@@ -84,6 +92,56 @@ const colorFields = [
   { key: "hilited_candidate_back_color", label: "候选高亮背景" },
   { key: "hilited_candidate_text_color", label: "候选高亮文字" },
 ] as const;
+
+function colorsFromConfig(config: AppearanceConfig): SchemeColors {
+  return Object.fromEntries(colorFields.map(({ key }) => [key, config[key]])) as SchemeColors;
+}
+
+function isStoredCustomScheme(value: unknown): value is CustomScheme {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<CustomScheme>;
+  return (
+    typeof candidate.name === "string" &&
+    candidate.name.length > 0 &&
+    typeof candidate.label === "string" &&
+    Boolean(candidate.colors) &&
+    colorFields.every(({ key }) => typeof candidate.colors?.[key] === "string")
+  );
+}
+
+function loadCustomSchemes() {
+  try {
+    const stored = window.localStorage.getItem(CUSTOM_SCHEMES_STORAGE_KEY);
+    if (!stored) return;
+
+    const parsed: unknown = JSON.parse(stored);
+    if (Array.isArray(parsed)) {
+      customSchemes.value = parsed.filter(isStoredCustomScheme);
+    }
+  } catch {
+    window.localStorage.removeItem(CUSTOM_SCHEMES_STORAGE_KEY);
+  }
+}
+
+function persistCustomSchemes() {
+  window.localStorage.setItem(CUSTOM_SCHEMES_STORAGE_KEY, JSON.stringify(customSchemes.value));
+}
+
+function upsertCustomScheme(config: AppearanceConfig) {
+  if (presets.some((preset) => preset.name === config.theme_name)) return;
+
+  const existing = customSchemes.value.find((scheme) => scheme.name === config.theme_name);
+  if (existing) {
+    existing.colors = colorsFromConfig(config);
+  } else {
+    customSchemes.value.push({
+      name: config.theme_name,
+      label: config.theme_name,
+      colors: colorsFromConfig(config),
+    });
+  }
+  persistCustomSchemes();
+}
 
 const presets = [
   {
@@ -251,6 +309,7 @@ function copyPreset(preset: (typeof presets)[number]) {
 
   const label = `${preset.label} · 副本`;
   customSchemes.value.push({ name: newId, label, colors: { ...preset.colors } });
+  persistCustomSchemes();
 
   programmaticChange = true;
   form.theme_name = newId;
@@ -281,6 +340,7 @@ function selectScheme(scheme: { name: string; colors: SchemeColors; isSystem?: b
 
 function deleteCustomScheme(scheme: CustomScheme) {
   customSchemes.value = customSchemes.value.filter((c) => c.name !== scheme.name);
+  persistCustomSchemes();
   if (form.theme_name === scheme.name) {
     // Switch back to first preset
     applyPreset(presets[0]);
@@ -292,35 +352,34 @@ const isPreset = computed(() => presets.some((p) => p.name === form.theme_name))
 const isLocked = computed(() => isPreset.value);
 
 async function loadAppearance() {
-  try {
-    const config = await invoke<AppearanceConfig>("get_appearance_config");
-    // If the saved theme is a preset, reset to code defaults so dev changes take effect
-    const matchPreset = presets.find((p) => p.name === config.theme_name);
-    if (matchPreset) {
-      // Preset: use code defaults for all values, ignore saved config
-      Object.assign(form, {
-        theme_name: matchPreset.name,
-        font_point: 11,
-        label_font_point: 10,
-        page_size: 7,
-        switch_key: "shift",
-        horizontal: true,
-        inline_preedit: true,
-        candidate_format: "%c. %@",
-        corner_radius: 8,
-        border_height: 4,
-        border_width: 4,
-        line_spacing: 6,
-        spacing: 8,
-        ...matchPreset.colors,
-      });
-    } else {
-      applyConfig(config);
-    }
-    userEdited.value = false;
-  } catch {
-    /* 首次使用无配置文件 */
+  const config = await withErrorHandling(() => invoke<AppearanceConfig>("get_appearance_config"));
+  if (!config) return;
+
+  // If the saved theme is a preset, reset to code defaults so dev changes take effect
+  const matchPreset = presets.find((p) => p.name === config.theme_name);
+  if (matchPreset) {
+    // Preset: use code defaults for all values, ignore saved config
+    applyConfig({
+      theme_name: matchPreset.name,
+      font_point: 11,
+      label_font_point: 10,
+      page_size: 7,
+      switch_key: "shift",
+      horizontal: true,
+      inline_preedit: true,
+      candidate_format: "%c. %@",
+      corner_radius: 8,
+      border_height: 4,
+      border_width: 4,
+      line_spacing: 6,
+      spacing: 8,
+      ...matchPreset.colors,
+    });
+  } else {
+    upsertCustomScheme(config);
+    applyConfig(config);
   }
+  userEdited.value = false;
 }
 
 async function saveAppearance(shouldDeploy = false) {
@@ -331,6 +390,7 @@ async function saveAppearance(shouldDeploy = false) {
       invoke<AppearanceConfig>("save_appearance_config", { config: { ...form } }),
     );
     if (config) {
+      upsertCustomScheme(config);
       applyConfig(config);
       emit("saved");
       ElMessage.success(shouldDeploy ? "已保存并部署" : "已保存");
@@ -363,7 +423,10 @@ watch(
   { deep: true },
 );
 
-onMounted(loadAppearance);
+onMounted(() => {
+  loadCustomSchemes();
+  void loadAppearance();
+});
 </script>
 
 <template>

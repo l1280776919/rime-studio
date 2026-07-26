@@ -254,6 +254,19 @@ onMounted(() => {
             <el-icon class="link-arrow"><Link /></el-icon>
           </a>
 
+          <a
+            href="https://github.com/l1280776919/rime-studio/issues/new/choose"
+            target="_blank"
+            class="about-link-card"
+          >
+            <el-icon><Warning /></el-icon>
+            <span>
+              <strong>问题反馈</strong>
+              <small>提交可复现的问题或功能建议</small>
+            </span>
+            <el-icon class="link-arrow"><Link /></el-icon>
+          </a>
+
           <a href="https://github.com/rime/home" target="_blank" class="about-link-card">
             <el-icon><Connection /></el-icon>
             <span>

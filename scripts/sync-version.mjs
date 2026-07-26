@@ -13,13 +13,18 @@ if (!expectedVersion || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(expectedVers
 const packageLock = JSON.parse(await readFile("package-lock.json", "utf8"));
 const tauriConfig = JSON.parse(await readFile("src-tauri/tauri.conf.json", "utf8"));
 const cargoToml = await readFile("src-tauri/Cargo.toml", "utf8");
+const cargoLock = await readFile("src-tauri/Cargo.lock", "utf8");
 const cargoVersion = cargoToml.match(/^version = "([^"]+)"/m)?.[1];
+const cargoLockVersion = cargoLock.match(
+  /\[\[package\]\]\r?\nname = "rime-studio"\r?\nversion = "([^"]+)"/,
+)?.[1];
 
 const versions = {
   "package.json": packageJson.version,
   "package-lock.json": packageLock.version,
   "package-lock.json root package": packageLock.packages?.[""]?.version,
   "src-tauri/Cargo.toml": cargoVersion,
+  "src-tauri/Cargo.lock": cargoLockVersion,
   "src-tauri/tauri.conf.json": tauriConfig.version,
 };
 
@@ -40,12 +45,17 @@ packageLock.version = expectedVersion;
 if (packageLock.packages?.[""]) packageLock.packages[""].version = expectedVersion;
 tauriConfig.version = expectedVersion;
 const updatedCargoToml = cargoToml.replace(/^version = "[^"]+"/m, `version = "${expectedVersion}"`);
+const updatedCargoLock = cargoLock.replace(
+  /(\[\[package\]\]\r?\nname = "rime-studio"\r?\nversion = ")[^"]+(")/,
+  `$1${expectedVersion}$2`,
+);
 
 await Promise.all([
   writeFile("package.json", `${JSON.stringify(packageJson, null, 2)}\n`),
   writeFile("package-lock.json", `${JSON.stringify(packageLock, null, 2)}\n`),
   writeFile("src-tauri/tauri.conf.json", `${JSON.stringify(tauriConfig, null, 2)}\n`),
   writeFile("src-tauri/Cargo.toml", updatedCargoToml),
+  writeFile("src-tauri/Cargo.lock", updatedCargoLock),
 ]);
 
 console.log(`Synced all manifests to version ${expectedVersion}`);

@@ -17,6 +17,10 @@ pub(crate) async fn read_config_file_content(filename: String) -> Result<String,
 pub(crate) async fn write_config_file_content(
     filename: String,
     content: String,
-) -> Result<(), RimeError> {
-    run_blocking(move || write_config_file_content_sync(filename, content)).await
+) -> Result<bool, RimeError> {
+    run_blocking(move || {
+        write_config_file_content_sync(filename, content)?;
+        Ok(true)
+    })
+    .await
 }

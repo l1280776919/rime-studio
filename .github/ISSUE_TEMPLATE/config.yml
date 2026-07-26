@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Rime 使用问题
+    url: https://github.com/rime/home
+    about: 与 Rime 引擎或输入方案本身相关的问题，请优先前往 Rime 社区。
