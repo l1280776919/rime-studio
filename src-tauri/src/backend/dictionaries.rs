@@ -523,8 +523,14 @@ pub(crate) fn read_u16_le(data: &[u8], offset: usize) -> Option<u16> {
 
 pub(crate) fn decode_utf16_le(data: &[u8]) -> String {
     let units = data
-        .chunks_exact(2)
-        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+        .chunks(2)
+        .filter_map(|chunk| {
+            if chunk.len() == 2 {
+                Some(u16::from_le_bytes([chunk[0], chunk[1]]))
+            } else {
+                None
+            }
+        })
         .collect::<Vec<_>>();
     String::from_utf16_lossy(&units)
         .trim_matches(char::from(0))
@@ -585,10 +591,14 @@ pub(crate) fn parse_scel_entries(data: &[u8]) -> Result<(Vec<DictionaryEntry>, u
         }
 
         let pinyin_indexes = data[offset..offset + pinyin_byte_len]
-            .chunks_exact(2)
+            .chunks(2)
             .filter_map(|chunk| {
-                let index = u16::from_le_bytes([chunk[0], chunk[1]]);
-                pinyin_table.get(&index).cloned()
+                if chunk.len() == 2 {
+                    let index = u16::from_le_bytes([chunk[0], chunk[1]]);
+                    pinyin_table.get(&index).cloned()
+                } else {
+                    None
+                }
             })
             .collect::<Vec<_>>();
         let code = pinyin_indexes.join(" ");
@@ -647,7 +657,10 @@ pub(crate) fn is_sogou_bin_word(value: &str) -> bool {
 
 pub(crate) fn sogou_bin_code_from_indexes(index_bytes: &[u8]) -> Option<String> {
     let mut syllables = Vec::new();
-    for chunk in index_bytes.chunks_exact(2) {
+    for chunk in index_bytes.chunks(2) {
+        if chunk.len() < 2 {
+            continue;
+        }
         let index = u16::from_le_bytes([chunk[0], chunk[1]]) as usize;
         let syllable = SOGOU_BIN_PINYIN.get(index).copied().unwrap_or_default();
         if syllable.is_empty() {
