@@ -83,7 +83,6 @@ pub(crate) fn build_text_diff(old_contents: &str, new_contents: &str) -> Vec<Str
     result
 }
 
-
 pub(crate) fn preview_file(user_dir: &Path, name: &str, new_contents: String) -> ConfigPreviewFile {
     let path = user_dir.join(name);
     let old_contents = read_to_string(&path);

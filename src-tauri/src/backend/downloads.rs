@@ -96,7 +96,6 @@ pub(crate) fn expand_zip_archive(zip_path: &Path, destination: &Path) -> Result<
     Ok(())
 }
 
-
 pub(crate) fn safe_relative_path(path: &Path) -> bool {
     path.components().all(|component| {
         matches!(

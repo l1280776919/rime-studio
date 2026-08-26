@@ -18,8 +18,11 @@ fn get_dict_entry_cache() -> &'static RwLock<DictCacheMap> {
     DICT_ENTRY_CACHE.get_or_init(|| RwLock::new(HashMap::new()))
 }
 
-
-pub(crate) fn count_dict_entries_stream(path: &Path, size_bytes: u64, modified: Option<u64>) -> usize {
+pub(crate) fn count_dict_entries_stream(
+    path: &Path,
+    size_bytes: u64,
+    modified: Option<u64>,
+) -> usize {
     let mod_val = modified.unwrap_or(0);
     // Check cache
     if let Ok(cache) = get_dict_entry_cache().read() {
@@ -125,7 +128,6 @@ pub(crate) fn list_dictionaries_sync() -> Result<Vec<DictInfo>, RimeError> {
     dicts.sort_by(|a, b| b.name.cmp(&a.name));
     Ok(dicts)
 }
-
 
 pub(crate) fn validate_dictionary_path(
     user_dir: &Path,

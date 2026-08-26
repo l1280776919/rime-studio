@@ -50,7 +50,6 @@ fn create_http_agent() -> ureq::Agent {
     }
 }
 
-
 /// Convenience wrapper for GET requests with default headers.
 ///
 /// Returns a `ureq::Request` that can be further configured and called.

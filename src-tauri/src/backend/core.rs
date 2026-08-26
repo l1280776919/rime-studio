@@ -342,7 +342,8 @@ pub(crate) fn locate_deployer() -> Option<PathBuf> {
 
     // 1. Check registry-discovered paths
     for root in weasel_root_from_registry() {
-        if root.is_file() && root.file_name().and_then(OsStr::to_str) == Some("WeaselDeployer.exe") {
+        if root.is_file() && root.file_name().and_then(OsStr::to_str) == Some("WeaselDeployer.exe")
+        {
             candidates.push(root);
         } else {
             candidates.extend(weasel_deployers_under(&root));
@@ -430,7 +431,13 @@ pub(crate) fn locate_git() -> Option<PathBuf> {
     ];
 
     if let Ok(local_appdata) = env::var("LOCALAPPDATA") {
-        candidates.push(PathBuf::from(local_appdata).join("Programs").join("Git").join("cmd").join("git.exe"));
+        candidates.push(
+            PathBuf::from(local_appdata)
+                .join("Programs")
+                .join("Git")
+                .join("cmd")
+                .join("git.exe"),
+        );
     }
     if let Ok(pf) = env::var("ProgramFiles") {
         candidates.push(PathBuf::from(pf).join("Git").join("cmd").join("git.exe"));
@@ -474,4 +481,3 @@ pub(crate) fn locate_git_bash() -> Option<PathBuf> {
         .into_iter()
         .find(|path| path.exists() && command_success(path, "--version"))
 }
-
