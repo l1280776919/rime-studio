@@ -47,9 +47,7 @@ const filteredEntries = computed(() => {
   let list = entries.value;
   const q = searchQuery.value.trim().toLowerCase();
   if (q) {
-    list = list.filter(
-      (e) => e.text.toLowerCase().includes(q) || e.code.toLowerCase().includes(q),
-    );
+    list = list.filter((e) => e.text.toLowerCase().includes(q) || e.code.toLowerCase().includes(q));
   }
   const { prop, order } = sortState.value;
   if (!prop || !order) return list;
