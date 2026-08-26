@@ -36,7 +36,7 @@ export function useDictionaries(emit: EmitFn) {
   const fileInput = ref<HTMLInputElement>();
   const importPreview = ref<DictionaryImportPreview>();
   const importSourceName = ref("");
-  const importData = ref<number[]>([]);
+  const importData = ref<Uint8Array>(new Uint8Array(0));
   const importKind = ref<"file" | "online" | "url">("file");
   const importOnlineId = ref("");
   const importUrl = ref("");
@@ -130,7 +130,7 @@ export function useDictionaries(emit: EmitFn) {
       const buffer = await file.arrayBuffer();
       importKind.value = "file";
       importSourceName.value = file.name;
-      importData.value = Array.from(new Uint8Array(buffer));
+      importData.value = new Uint8Array(buffer);
       importOnlineId.value = "";
       importUrl.value = "";
       importUrlSourceName.value = "";
@@ -141,7 +141,7 @@ export function useDictionaries(emit: EmitFn) {
       showImportPreviewDialog.value = true;
     } catch (error) {
       importSourceName.value = "";
-      importData.value = [];
+      importData.value = new Uint8Array(0);
       importPreview.value = undefined;
       ElMessage.error(String(error));
     } finally {
@@ -240,7 +240,7 @@ export function useDictionaries(emit: EmitFn) {
       importKind.value = "url";
       importOnlineId.value = "";
       importSourceName.value = dict.source_name;
-      importData.value = [];
+      importData.value = new Uint8Array(0);
       importUrl.value = dict.detail_url;
       importUrlSourceName.value = dict.source_name;
       importPreview.value = await invoke<DictionaryImportPreview>("preview_dictionary_url_import", {
@@ -268,7 +268,7 @@ export function useDictionaries(emit: EmitFn) {
       importKind.value = "url";
       importSourceName.value = "";
       importOnlineId.value = "";
-      importData.value = [];
+      importData.value = new Uint8Array(0);
       importPreview.value = await invoke<DictionaryImportPreview>("preview_dictionary_url_import", {
         url,
         sourceName: importUrlSourceName.value.trim() || undefined,
@@ -315,7 +315,7 @@ export function useDictionaries(emit: EmitFn) {
       }
       showImportPreviewDialog.value = false;
       importSourceName.value = "";
-      importData.value = [];
+      importData.value = new Uint8Array(0);
       importOnlineId.value = "";
       importUrl.value = "";
       importUrlSourceName.value = "";

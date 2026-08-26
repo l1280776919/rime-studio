@@ -5,7 +5,7 @@ use std::{
     ffi::OsStr,
     fs,
     path::{Path, PathBuf},
-    process::{self, Command},
+    process,
 };
 use tauri::Emitter;
 
@@ -57,24 +57,45 @@ pub(crate) fn unique_temp_dir(prefix: &str) -> Result<PathBuf, RimeError> {
 pub(crate) fn expand_zip_archive(zip_path: &Path, destination: &Path) -> Result<(), RimeError> {
     fs::create_dir_all(destination)
         .map_err(|err| RimeError::FileOperationError(format!("创建解压目录失败: {err}")))?;
-    let mut command = Command::new("powershell");
-    command
-        .arg("-NoProfile")
-        .arg("-ExecutionPolicy")
-        .arg("Bypass")
-        .arg("-Command")
-        .arg("& { param($zip, $dest) Expand-Archive -LiteralPath $zip -DestinationPath $dest -Force }")
-        .arg(zip_path)
-        .arg(destination);
-    let (success, log) = run_command(command)?;
-    if success {
-        Ok(())
-    } else {
-        Err(RimeError::CommandExecutionFailed(format!(
-            "解压万象词库失败:\n{log}"
-        )))
+
+    let file = fs::File::open(zip_path)
+        .map_err(|err| RimeError::FileOperationError(format!("打开压缩包失败: {err}")))?;
+    let mut archive = zip::ZipArchive::new(file)
+        .map_err(|err| RimeError::FileOperationError(format!("解析压缩包失败: {err}")))?;
+
+    for i in 0..archive.len() {
+        let mut zip_file = archive
+            .by_index(i)
+            .map_err(|err| RimeError::FileOperationError(format!("读取压缩包文件失败: {err}")))?;
+
+        let enclosed_name = match zip_file.enclosed_name() {
+            Some(path) => path.to_owned(),
+            None => continue, // Skip insecure paths (Zip Slip protection)
+        };
+
+        let out_path = destination.join(enclosed_name);
+
+        if zip_file.is_dir() {
+            fs::create_dir_all(&out_path)
+                .map_err(|err| RimeError::FileOperationError(format!("创建解压目录失败: {err}")))?;
+        } else {
+            if let Some(parent) = out_path.parent() {
+                if !parent.exists() {
+                    fs::create_dir_all(parent).map_err(|err| {
+                        RimeError::FileOperationError(format!("创建解压目录失败: {err}"))
+                    })?;
+                }
+            }
+            let mut outfile = fs::File::create(&out_path)
+                .map_err(|err| RimeError::FileOperationError(format!("创建解压文件失败: {err}")))?;
+            std::io::copy(&mut zip_file, &mut outfile)
+                .map_err(|err| RimeError::FileOperationError(format!("解压文件写入失败: {err}")))?;
+        }
     }
+
+    Ok(())
 }
+
 
 pub(crate) fn safe_relative_path(path: &Path) -> bool {
     path.components().all(|component| {

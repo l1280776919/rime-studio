@@ -4,11 +4,12 @@
 //! and convenience functions for making HTTP requests.
 
 use std::sync::OnceLock;
+use std::time::Duration;
 
 use super::proxy::get_system_proxy;
 
-/// Default User-Agent header
-const DEFAULT_USER_AGENT: &str = "RimeStudio/0.4";
+/// Default User-Agent header using current package version
+const DEFAULT_USER_AGENT: &str = concat!("RimeStudio/", env!("CARGO_PKG_VERSION"));
 
 /// Cached HTTP agent with proxy configuration
 static HTTP_AGENT: OnceLock<ureq::Agent> = OnceLock::new();
@@ -21,14 +22,18 @@ pub(crate) fn http_agent() -> &'static ureq::Agent {
     HTTP_AGENT.get_or_init(create_http_agent)
 }
 
-/// Create a new HTTP agent with system proxy configuration.
+/// Create a new HTTP agent with system proxy and timeout configuration.
 fn create_http_agent() -> ureq::Agent {
+    let builder = ureq::AgentBuilder::new()
+        .timeout_connect(Duration::from_secs(10))
+        .timeout_read(Duration::from_secs(30));
+
     // Configure proxy from system settings
     if let Some(proxy_url) = get_system_proxy() {
         match ureq::Proxy::new(&proxy_url) {
             Ok(proxy) => {
                 log::info!("HTTP agent configured with proxy: {}", proxy_url);
-                ureq::AgentBuilder::new().proxy(proxy).build()
+                builder.proxy(proxy).build()
             }
             Err(e) => {
                 log::warn!(
@@ -36,14 +41,15 @@ fn create_http_agent() -> ureq::Agent {
                     proxy_url,
                     e
                 );
-                ureq::Agent::new()
+                builder.build()
             }
         }
     } else {
         log::info!("No system proxy detected, using direct connection");
-        ureq::Agent::new()
+        builder.build()
     }
 }
+
 
 /// Convenience wrapper for GET requests with default headers.
 ///

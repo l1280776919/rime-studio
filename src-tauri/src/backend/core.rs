@@ -229,8 +229,61 @@ pub(crate) fn normalize_color(value: Option<String>, fallback: &str) -> String {
         .unwrap_or_else(|| fallback.to_string())
 }
 
+#[cfg(target_os = "windows")]
+pub(crate) fn weasel_root_from_registry() -> Vec<PathBuf> {
+    use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
+    use winreg::RegKey;
+
+    let mut roots = Vec::new();
+    let subkeys = [
+        "Software\\Rime\\Weasel",
+        "Software\\WOW6432Node\\Rime\\Weasel",
+    ];
+
+    for key_path in subkeys {
+        for hive in [HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE] {
+            if let Ok(key) = RegKey::predef(hive).open_subkey(key_path) {
+                if let Ok(val) = key.get_value::<String, _>("WeaselRootPath") {
+                    let p = PathBuf::from(val.trim());
+                    if !p.as_os_str().is_empty() {
+                        roots.push(p);
+                    }
+                }
+                if let Ok(val) = key.get_value::<String, _>("WeaselDeployer") {
+                    let p = PathBuf::from(val.trim());
+                    if p.exists() {
+                        roots.push(p);
+                    }
+                }
+                if let Ok(val) = key.get_value::<String, _>("Execute") {
+                    let p = PathBuf::from(val.trim());
+                    if let Some(parent) = p.parent() {
+                        roots.push(parent.to_path_buf());
+                    }
+                }
+            }
+        }
+    }
+    roots
+}
+
+#[cfg(not(target_os = "windows"))]
+pub(crate) fn weasel_root_from_registry() -> Vec<PathBuf> {
+    Vec::new()
+}
+
 pub(crate) fn weasel_deployers_under(root: &Path) -> Vec<PathBuf> {
-    fs::read_dir(root)
+    if !root.exists() {
+        return Vec::new();
+    }
+
+    let mut deployers = Vec::new();
+    let direct_deployer = root.join("WeaselDeployer.exe");
+    if direct_deployer.exists() {
+        deployers.push(direct_deployer);
+    }
+
+    let mut subdirs: Vec<PathBuf> = fs::read_dir(root)
         .ok()
         .into_iter()
         .flat_map(|entries| entries.filter_map(Result::ok))
@@ -240,12 +293,22 @@ pub(crate) fn weasel_deployers_under(root: &Path) -> Vec<PathBuf> {
                 && path
                     .file_name()
                     .and_then(OsStr::to_str)
-                    .map(|name| name.starts_with("weasel-"))
+                    .map(|name| name.starts_with("weasel"))
                     .unwrap_or(false)
         })
-        .map(|path| path.join("WeaselDeployer.exe"))
-        .filter(|path| path.exists())
-        .collect()
+        .collect();
+
+    // Sort subdirectories descending so newer version (e.g. weasel-0.18 > weasel-0.17) is preferred
+    subdirs.sort_by(|a, b| b.cmp(a));
+
+    for dir in subdirs {
+        let deployer = dir.join("WeaselDeployer.exe");
+        if deployer.exists() {
+            deployers.push(deployer);
+        }
+    }
+
+    deployers
 }
 
 pub(crate) fn resolve_windows_shortcut(path: &Path) -> Option<PathBuf> {
@@ -275,23 +338,40 @@ pub(crate) fn resolve_windows_shortcut(path: &Path) -> Option<PathBuf> {
 }
 
 pub(crate) fn locate_deployer() -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+
+    // 1. Check registry-discovered paths
+    for root in weasel_root_from_registry() {
+        if root.is_file() && root.file_name().and_then(OsStr::to_str) == Some("WeaselDeployer.exe") {
+            candidates.push(root);
+        } else {
+            candidates.extend(weasel_deployers_under(&root));
+        }
+    }
+
+    // 2. Check standard Program Files installation paths
+    let mut rime_parents = vec![
+        PathBuf::from(r"C:\Program Files\Rime"),
+        PathBuf::from(r"C:\Program Files (x86)\Rime"),
+    ];
+    if let Ok(pf) = env::var("ProgramFiles") {
+        rime_parents.push(PathBuf::from(pf).join("Rime"));
+    }
+    if let Ok(pf86) = env::var("ProgramFiles(x86)") {
+        rime_parents.push(PathBuf::from(pf86).join("Rime"));
+    }
+    if let Ok(pf_w64) = env::var("ProgramW6432") {
+        rime_parents.push(PathBuf::from(pf_w64).join("Rime"));
+    }
+
+    for parent in rime_parents {
+        candidates.extend(weasel_deployers_under(&parent));
+    }
+
+    // 3. Start menu shortcut
     let start_menu_shortcut = PathBuf::from(
         r"C:\ProgramData\Microsoft\Windows\Start Menu\Programs\小狼毫输入法\【小狼毫】重新部署.lnk",
     );
-
-    let mut candidates = vec![
-        PathBuf::from(r"D:\xlh\weasel-0.17.4\WeaselDeployer.exe"),
-        PathBuf::from(r"D:\soft\rime\weasel-0.17.4\WeaselDeployer.exe"),
-        PathBuf::from(r"C:\Program Files\Rime\weasel-0.17.4\WeaselDeployer.exe"),
-        PathBuf::from(r"C:\Program Files (x86)\Rime\weasel-0.17.4\WeaselDeployer.exe"),
-    ];
-    candidates.extend(weasel_deployers_under(&PathBuf::from(r"D:\soft\rime")));
-    candidates.extend(weasel_deployers_under(&PathBuf::from(
-        r"C:\Program Files\Rime",
-    )));
-    candidates.extend(weasel_deployers_under(&PathBuf::from(
-        r"C:\Program Files (x86)\Rime",
-    )));
     if start_menu_shortcut.exists() {
         candidates.push(start_menu_shortcut);
     }
@@ -347,8 +427,15 @@ pub(crate) fn locate_git() -> Option<PathBuf> {
     let mut candidates = vec![
         PathBuf::from(r"C:\Program Files\Git\cmd\git.exe"),
         PathBuf::from(r"C:\Program Files (x86)\Git\cmd\git.exe"),
-        PathBuf::from(r"D:\codesoft\Git\cmd\git.exe"),
     ];
+
+    if let Ok(local_appdata) = env::var("LOCALAPPDATA") {
+        candidates.push(PathBuf::from(local_appdata).join("Programs").join("Git").join("cmd").join("git.exe"));
+    }
+    if let Ok(pf) = env::var("ProgramFiles") {
+        candidates.push(PathBuf::from(pf).join("Git").join("cmd").join("git.exe"));
+    }
+
     candidates.extend(locate_from_where("git.exe"));
     candidates.extend(locate_from_where("git"));
 
@@ -368,8 +455,13 @@ pub(crate) fn locate_git_bash() -> Option<PathBuf> {
     let mut candidates = vec![
         PathBuf::from(r"C:\Program Files\Git\bin\bash.exe"),
         PathBuf::from(r"C:\Program Files (x86)\Git\bin\bash.exe"),
-        PathBuf::from(r"D:\codesoft\Git\bin\bash.exe"),
     ];
+
+    if let Ok(local_appdata) = env::var("LOCALAPPDATA") {
+        let git_dir = PathBuf::from(&local_appdata).join("Programs").join("Git");
+        candidates.push(git_dir.join("bin").join("bash.exe"));
+        candidates.push(git_dir.join("usr").join("bin").join("bash.exe"));
+    }
 
     for git_path in locate_git().into_iter() {
         for root in git_roots_from_path(&git_path) {
@@ -382,3 +474,4 @@ pub(crate) fn locate_git_bash() -> Option<PathBuf> {
         .into_iter()
         .find(|path| path.exists() && command_success(path, "--version"))
 }
+

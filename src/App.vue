@@ -271,99 +271,101 @@ onBeforeUnmount(() => {
 
         <div class="page-container">
           <Transition name="page" mode="out-in">
-            <OverviewPage
-              v-if="activePage === 'overview'"
-              key="overview"
-              :env="env"
-              :backups="backups"
-              :log="log"
-              :scanning="scanning"
-              :backing-up="backingUp"
-              :restoring-backup="restoringBackup"
-              :installing-recipe="installingRecipe"
-              :deleting-backup="deletingBackup"
-              @create-backup="handleCreateBackup"
-              @open-path="openKnownPath"
-              @install="handleInstallRimeIce"
-              @open-backup="openBackupDir"
-              @restore-backup="handleRestoreBackup"
-              @delete-backup="deleteBackupEntry"
-            />
+            <KeepAlive>
+              <OverviewPage
+                v-if="activePage === 'overview'"
+                key="overview"
+                :env="env"
+                :backups="backups"
+                :log="log"
+                :scanning="scanning"
+                :backing-up="backingUp"
+                :restoring-backup="restoringBackup"
+                :installing-recipe="installingRecipe"
+                :deleting-backup="deletingBackup"
+                @create-backup="handleCreateBackup"
+                @open-path="openKnownPath"
+                @install="handleInstallRimeIce"
+                @open-backup="openBackupDir"
+                @restore-backup="handleRestoreBackup"
+                @delete-backup="deleteBackupEntry"
+              />
 
-            <QuickSettingsPage
-              v-else-if="activePage === 'quick'"
-              key="quick"
-              :env="env"
-              :installing-recipe="installingRecipe"
-              @saved="refreshEnvironment"
-              @deploy="handleDeploy"
-              @install="handleInstallRimeIce"
-            />
+              <QuickSettingsPage
+                v-else-if="activePage === 'quick'"
+                key="quick"
+                :env="env"
+                :installing-recipe="installingRecipe"
+                @saved="refreshEnvironment"
+                @deploy="handleDeploy"
+                @install="handleInstallRimeIce"
+              />
 
-            <SchemasPage
-              v-else-if="activePage === 'schemas'"
-              key="schemas"
-              :env="env"
-              @saved="refreshEnvironment"
-              @deploy="handleDeploy"
-            />
+              <SchemasPage
+                v-else-if="activePage === 'schemas'"
+                key="schemas"
+                :env="env"
+                @saved="refreshEnvironment"
+                @deploy="handleDeploy"
+              />
 
-            <ConfigFilesPage
-              v-else-if="activePage === 'configs'"
-              key="configs"
-              :env="env"
-              :backing-up="backingUp"
-              @refresh="loadEnvironment"
-              @create-backup="handleCreateBackup"
-            />
+              <ConfigFilesPage
+                v-else-if="activePage === 'configs'"
+                key="configs"
+                :env="env"
+                :backing-up="backingUp"
+                @refresh="loadEnvironment"
+                @create-backup="handleCreateBackup"
+              />
 
-            <AppearancePage
-              v-else-if="activePage === 'appearance'"
-              key="appearance"
-              :env="env"
-              @saved="refreshEnvironment"
-              @deploy="handleDeploy"
-            />
+              <AppearancePage
+                v-else-if="activePage === 'appearance'"
+                key="appearance"
+                :env="env"
+                @saved="refreshEnvironment"
+                @deploy="handleDeploy"
+              />
 
-            <PhrasesPage
-              v-else-if="activePage === 'phrases'"
-              key="phrases"
-              :env="env"
-              @saved="refreshEnvironment"
-              @deploy="handleDeploy"
-            />
+              <PhrasesPage
+                v-else-if="activePage === 'phrases'"
+                key="phrases"
+                :env="env"
+                @saved="refreshEnvironment"
+                @deploy="handleDeploy"
+              />
 
-            <DictionariesPage
-              v-else-if="activePage === 'dictionaries'"
-              key="dictionaries"
-              :env="env"
-              @open-path="openKnownPath"
-              @deploy="handleDeploy"
-            />
+              <DictionariesPage
+                v-else-if="activePage === 'dictionaries'"
+                key="dictionaries"
+                :env="env"
+                @open-path="openKnownPath"
+                @deploy="handleDeploy"
+              />
 
-            <BackupsPage
-              v-else-if="activePage === 'backups'"
-              key="backups"
-              :backups="backups"
-              :backing-up="backingUp"
-              :restoring-backup="restoringBackup"
-              :deleting-backup="deletingBackup"
-              @create-backup="handleCreateBackup"
-              @open-backup="openBackupDir"
-              @restore-backup="handleRestoreBackup"
-              @delete-backup="deleteBackupEntry"
-            />
+              <BackupsPage
+                v-else-if="activePage === 'backups'"
+                key="backups"
+                :backups="backups"
+                :backing-up="backingUp"
+                :restoring-backup="restoringBackup"
+                :deleting-backup="deletingBackup"
+                @create-backup="handleCreateBackup"
+                @open-backup="openBackupDir"
+                @restore-backup="handleRestoreBackup"
+                @delete-backup="deleteBackupEntry"
+              />
 
-            <ConfigEditorPage
-              v-else-if="activePage === 'editor'"
-              key="editor"
-              :env="env"
-              @saved="refreshEnvironment"
-              @deploy="handleDeploy"
-              @dirty-change="editorDirty = $event"
-            />
+              <ConfigEditorPage
+                v-else-if="activePage === 'editor'"
+                key="editor"
+                :env="env"
+                @saved="refreshEnvironment"
+                @deploy="handleDeploy"
+                @dirty-change="editorDirty = $event"
+              />
 
-            <AboutPage v-else-if="activePage === 'about'" key="about" />
+              <AboutPage v-else-if="activePage === 'about'" key="about" />
+            </KeepAlive>
           </Transition>
         </div>
 

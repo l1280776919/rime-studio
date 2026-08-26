@@ -10,16 +10,26 @@ pub(crate) fn list_schemas_sync() -> Result<Vec<SchemaInfo>, RimeError> {
     let mut schemas = Vec::new();
 
     // Find system schemas from Weasel data directory
-    let system_dirs: Vec<PathBuf> = locate_deployer()
-        .and_then(|d| d.parent().map(|p| p.join("data")))
-        .into_iter()
-        .chain(std::iter::once(PathBuf::from(
-            r"C:\Program Files\Rime\weasel-0.17.4\data",
-        )))
-        .chain(std::iter::once(PathBuf::from(
-            r"C:\Program Files (x86)\Rime\weasel-0.17.4\data",
-        )))
-        .collect();
+    let mut system_dirs: Vec<PathBuf> = Vec::new();
+    if let Some(deployer) = locate_deployer() {
+        if let Some(parent) = deployer.parent() {
+            system_dirs.push(parent.join("data"));
+        }
+    }
+    for root in weasel_root_from_registry() {
+        system_dirs.push(root.join("data"));
+    }
+    for parent in [
+        PathBuf::from(r"C:\Program Files\Rime"),
+        PathBuf::from(r"C:\Program Files (x86)\Rime"),
+    ] {
+        for deployer in weasel_deployers_under(&parent) {
+            if let Some(p) = deployer.parent() {
+                system_dirs.push(p.join("data"));
+            }
+        }
+        system_dirs.push(parent.join("data"));
+    }
 
     let mut seen = std::collections::HashSet::new();
 

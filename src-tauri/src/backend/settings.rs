@@ -64,26 +64,25 @@ pub(crate) fn build_text_diff(old_contents: &str, new_contents: &str) -> Vec<Str
         return Vec::new();
     }
 
-    let old_lines = old_contents.lines().collect::<Vec<_>>();
-    let new_lines = new_contents.lines().collect::<Vec<_>>();
-    let max_len = old_lines.len().max(new_lines.len());
-    let mut diff = Vec::new();
+    let diff = similar::TextDiff::from_lines(old_contents, new_contents);
+    let mut result = Vec::new();
 
-    for index in 0..max_len {
-        match (old_lines.get(index), new_lines.get(index)) {
-            (Some(old), Some(new)) if old == new => {}
-            (Some(old), Some(new)) => {
-                diff.push(format!("- {}", old));
-                diff.push(format!("+ {}", new));
+    for change in diff.iter_all_changes() {
+        let line = change.value().trim_end_matches(['\r', '\n']);
+        match change.tag() {
+            similar::ChangeTag::Delete => {
+                result.push(format!("- {line}"));
             }
-            (Some(old), None) => diff.push(format!("- {}", old)),
-            (None, Some(new)) => diff.push(format!("+ {}", new)),
-            (None, None) => {}
+            similar::ChangeTag::Insert => {
+                result.push(format!("+ {line}"));
+            }
+            similar::ChangeTag::Equal => {}
         }
     }
 
-    diff
+    result
 }
+
 
 pub(crate) fn preview_file(user_dir: &Path, name: &str, new_contents: String) -> ConfigPreviewFile {
     let path = user_dir.join(name);

@@ -1,13 +1,67 @@
 use crate::backend::*;
 use crate::*;
 use serde_yaml::Value;
-use std::io::{Read, Write};
+use std::collections::HashMap;
+use std::io::{BufRead, BufReader, Read, Write};
+use std::sync::{OnceLock, RwLock};
 use std::time::Instant;
 use std::{
     ffi::OsStr,
     fs,
     path::{Path, PathBuf},
 };
+
+type DictCacheMap = HashMap<PathBuf, (u64, u64, usize)>;
+static DICT_ENTRY_CACHE: OnceLock<RwLock<DictCacheMap>> = OnceLock::new();
+
+fn get_dict_entry_cache() -> &'static RwLock<DictCacheMap> {
+    DICT_ENTRY_CACHE.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
+
+pub(crate) fn count_dict_entries_stream(path: &Path, size_bytes: u64, modified: Option<u64>) -> usize {
+    let mod_val = modified.unwrap_or(0);
+    // Check cache
+    if let Ok(cache) = get_dict_entry_cache().read() {
+        if let Some(&(cached_size, cached_mod, cached_count)) = cache.get(path) {
+            if cached_size == size_bytes && cached_mod == mod_val {
+                return cached_count;
+            }
+        }
+    }
+
+    // Stream lines with BufReader
+    let Ok(file) = fs::File::open(path) else {
+        return 0;
+    };
+    let reader = BufReader::new(file);
+    let mut entry_count = 0usize;
+    let mut past_header = false;
+
+    for line in reader.lines().map_while(Result::ok) {
+        let trimmed = line.trim();
+        if trimmed == "..." {
+            past_header = true;
+            continue;
+        }
+        if !past_header {
+            continue;
+        }
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if trimmed.contains('\t') {
+            entry_count += 1;
+        }
+    }
+
+    // Update cache
+    if let Ok(mut cache) = get_dict_entry_cache().write() {
+        cache.insert(path.to_path_buf(), (size_bytes, mod_val, entry_count));
+    }
+
+    entry_count
+}
 
 pub(crate) fn list_dictionaries_sync() -> Result<Vec<DictInfo>, RimeError> {
     let user_dir = rime_user_dir()?;
@@ -50,26 +104,7 @@ pub(crate) fn list_dictionaries_sync() -> Result<Vec<DictInfo>, RimeError> {
                 .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
                 .map(|duration| duration.as_secs());
 
-            let contents = fs::read_to_string(&path).unwrap_or_default();
-            let mut entry_count = 0usize;
-            let mut past_header = false;
-
-            for line in contents.lines() {
-                let trimmed = line.trim();
-                if trimmed == "..." {
-                    past_header = true;
-                    continue;
-                }
-                if !past_header {
-                    continue;
-                }
-                if trimmed.is_empty() || trimmed.starts_with('#') {
-                    continue;
-                }
-                if trimmed.contains('\t') {
-                    entry_count += 1;
-                }
-            }
+            let entry_count = count_dict_entries_stream(&path, size_bytes, modified);
 
             let display_name = path
                 .strip_prefix(&user_dir)
@@ -90,6 +125,7 @@ pub(crate) fn list_dictionaries_sync() -> Result<Vec<DictInfo>, RimeError> {
     dicts.sort_by(|a, b| b.name.cmp(&a.name));
     Ok(dicts)
 }
+
 
 pub(crate) fn validate_dictionary_path(
     user_dir: &Path,

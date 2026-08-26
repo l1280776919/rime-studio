@@ -40,14 +40,32 @@ const newPhrase = ref<PhraseEntry>({ text: "", code: "", weight: 1 });
 
 const { withErrorHandling } = useErrorHandler();
 
+const sortState = ref<{ prop?: string; order?: "ascending" | "descending" | null }>({});
+
 const userDir = computed(() => props.env?.user_dir ?? "等待扫描 Rime 目录");
 const filteredEntries = computed(() => {
-  if (!searchQuery.value.trim()) return entries.value;
-  const q = searchQuery.value.toLowerCase();
-  return entries.value.filter(
-    (e) => e.text.toLowerCase().includes(q) || e.code.toLowerCase().includes(q),
-  );
+  let list = entries.value;
+  const q = searchQuery.value.trim().toLowerCase();
+  if (q) {
+    list = list.filter(
+      (e) => e.text.toLowerCase().includes(q) || e.code.toLowerCase().includes(q),
+    );
+  }
+  const { prop, order } = sortState.value;
+  if (!prop || !order) return list;
+
+  const multiplier = order === "ascending" ? 1 : -1;
+  return [...list].sort((a, b) => {
+    if (prop === "text") return multiplier * a.text.localeCompare(b.text);
+    if (prop === "code") return multiplier * (a.code || "").localeCompare(b.code || "");
+    if (prop === "weight") return multiplier * (a.weight - b.weight);
+    return 0;
+  });
 });
+
+function handleSortChange(sort: { prop?: string; order?: "ascending" | "descending" | null }) {
+  sortState.value = { prop: sort.prop, order: sort.order };
+}
 const duplicateCount = computed(() => countDuplicatePhrases(entries.value));
 const parsedDuplicateCount = computed(() =>
   countDuplicatePhrases([...entries.value, ...parsedImport.value]),
@@ -290,24 +308,7 @@ onMounted(loadPhrases);
           stripe
           max-height="calc(100dvh - 280px)"
           highlight-current-row
-          @sort-change="
-            (sort: any) => {
-              if (sort.prop === 'text')
-                entries.sort(
-                  (a, b) => (sort.order === 'ascending' ? 1 : -1) * a.text.localeCompare(b.text),
-                );
-              if (sort.prop === 'code')
-                entries.sort(
-                  (a, b) =>
-                    (sort.order === 'ascending' ? 1 : -1) *
-                    (a.code || '').localeCompare(b.code || ''),
-                );
-              if (sort.prop === 'weight')
-                entries.sort(
-                  (a, b) => (sort.order === 'ascending' ? 1 : -1) * (a.weight - b.weight),
-                );
-            }
-          "
+          @sort-change="handleSortChange"
         >
           <el-table-column label="#" type="index" width="56" />
           <el-table-column label="短语" min-width="200" prop="text" sortable="custom">
