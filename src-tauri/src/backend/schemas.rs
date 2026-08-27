@@ -324,3 +324,106 @@ pub(crate) fn open_schema_dir_sync(path: String) -> Result<(), RimeError> {
         .ok_or_else(|| RimeError::SchemaError("方案文件目录无效".to_string()))?;
     open_in_explorer(parent)
 }
+
+pub(crate) fn list_community_schemas_sync() -> Result<Vec<CommunitySchema>, RimeError> {
+    let installed_schemas = list_schemas_sync()
+        .map(|list| {
+            list.into_iter()
+                .map(|s| s.id)
+                .collect::<std::collections::HashSet<_>>()
+        })
+        .unwrap_or_default();
+
+    let presets = vec![
+        CommunitySchema {
+            id: "rime_ice".to_string(),
+            name: "雾凇拼音 (rime-ice)".to_string(),
+            description: "当前最受欢迎的 Rime 全拼/双拼输入方案，拥有高频现代词库与丰富规则配置。"
+                .to_string(),
+            recipe: "iDvel/rime-ice:others/recipes/full".to_string(),
+            author: "iDvel".to_string(),
+            tags: vec![
+                "全拼".to_string(),
+                "双拼".to_string(),
+                "热门推荐".to_string(),
+                "大词库".to_string(),
+            ],
+            installed: installed_schemas.contains("rime_ice"),
+        },
+        CommunitySchema {
+            id: "mint_pinyin".to_string(),
+            name: "薄荷拼音 (Oh-my-rime)".to_string(),
+            description: "开箱即用、轻量易定制的现代化 Rime 拼音输入方案。".to_string(),
+            recipe: "Mintimate/oh-my-rime".to_string(),
+            author: "Mintimate".to_string(),
+            tags: vec![
+                "全拼".to_string(),
+                "双拼".to_string(),
+                "现代化".to_string(),
+                "开箱即用".to_string(),
+            ],
+            installed: installed_schemas.contains("mint_pinyin")
+                || installed_schemas.contains("mint"),
+        },
+        CommunitySchema {
+            id: "clover".to_string(),
+            name: "四叶草拼音 (Clover)".to_string(),
+            description: "基于搜狗、百度词库整理的极简全拼/双拼方案，适合日常打字。".to_string(),
+            recipe: "fkxxyz/rime-cloverpinyin".to_string(),
+            author: "fkxxyz".to_string(),
+            tags: vec![
+                "全拼".to_string(),
+                "双拼".to_string(),
+                "词库丰富".to_string(),
+            ],
+            installed: installed_schemas.contains("clover"),
+        },
+        CommunitySchema {
+            id: "double_pinyin_flypy".to_string(),
+            name: "小鹤双拼 (Flypy)".to_string(),
+            description: "高效的双拼输入方案，规则严谨，韵母键位分布科学。".to_string(),
+            recipe: "rime/rime-double-pinyin".to_string(),
+            author: "Rime Official".to_string(),
+            tags: vec!["双拼".to_string(), "小鹤".to_string(), "高效".to_string()],
+            installed: installed_schemas.contains("double_pinyin_flypy"),
+        },
+        CommunitySchema {
+            id: "double_pinyin".to_string(),
+            name: "自然码双拼 (Ziranma)".to_string(),
+            description: "经典自然码双拼方案，双拼爱好者常用基础方案。".to_string(),
+            recipe: "rime/rime-double-pinyin".to_string(),
+            author: "Rime Official".to_string(),
+            tags: vec!["双拼".to_string(), "自然码".to_string(), "经典".to_string()],
+            installed: installed_schemas.contains("double_pinyin"),
+        },
+        CommunitySchema {
+            id: "wubi86".to_string(),
+            name: "五笔字型 (86版)".to_string(),
+            description: "经典五笔字型形码方案，支持 86 版编码体系。".to_string(),
+            recipe: "rime/rime-wubi".to_string(),
+            author: "Rime Official".to_string(),
+            tags: vec!["形码".to_string(), "五笔".to_string()],
+            installed: installed_schemas.contains("wubi86"),
+        },
+        CommunitySchema {
+            id: "cangjie5".to_string(),
+            name: "仓颉输入法 (五代)".to_string(),
+            description: "官方仓颉五代中文形码输入方案，适合繁简中文高精度录入。".to_string(),
+            recipe: "rime/rime-cangjie".to_string(),
+            author: "Rime Official".to_string(),
+            tags: vec!["形码".to_string(), "仓颉".to_string(), "精准".to_string()],
+            installed: installed_schemas.contains("cangjie5"),
+        },
+        CommunitySchema {
+            id: "luna_pinyin".to_string(),
+            name: "朙月拼音 (Luna Pinyin)".to_string(),
+            description: "Rime 经典官方拼音方案，支持简繁体转换与正统拼音映射。".to_string(),
+            recipe: "rime/rime-luna-pinyin".to_string(),
+            author: "Rime Official".to_string(),
+            tags: vec!["官方".to_string(), "经典".to_string(), "简繁体".to_string()],
+            installed: installed_schemas.contains("luna_pinyin"),
+        },
+    ];
+
+    Ok(presets)
+}

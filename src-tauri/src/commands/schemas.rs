@@ -34,3 +34,8 @@ pub(crate) async fn open_schema_file(path: String) -> Result<(), RimeError> {
 pub(crate) async fn open_schema_dir(path: String) -> Result<(), RimeError> {
     run_blocking(move || open_schema_dir_sync(path)).await
 }
+
+#[tauri::command]
+pub(crate) async fn list_community_schemas() -> Result<Vec<CommunitySchema>, RimeError> {
+    run_blocking(list_community_schemas_sync).await
+}

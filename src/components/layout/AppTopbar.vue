@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Refresh, UploadFilled } from "@element-plus/icons-vue";
+import TypingSandbox from "../common/TypingSandbox.vue";
 
 defineProps<{
   pageTitle: string;
@@ -23,6 +24,7 @@ defineEmits<{
       <p>{{ pageDescription }}</p>
     </div>
     <div class="toolbar-actions">
+      <TypingSandbox />
       <el-button :loading="scanning" :icon="Refresh" @click="$emit('refresh')"> 刷新 </el-button>
       <el-button
         type="primary"

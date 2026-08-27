@@ -186,15 +186,37 @@ function parseImportText() {
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
-    const parts = trimmed.split("\t");
+
+    const parts = trimmed.includes("\t")
+      ? trimmed.split("\t")
+      : trimmed.includes(",")
+        ? trimmed.split(",")
+        : trimmed.split(/\s+/);
+
     if (parts.length < 1 || !parts[0]) continue;
+
+    const first = parts[0].trim();
+    const second = (parts[1] ?? "").trim();
+    const third = (parts[2] ?? "").trim();
+
+    // Check if format is (code, text) e.g., 'rq 2026-08-27'
+    const firstIsCode = /^[a-zA-Z0-9=_\-';/.]+$/.test(first) && first.length <= 15;
+    const secondIsText = second.length > 0;
+
+    let text = first;
+    let code = second;
+    let weightStr = third;
+
+    if (firstIsCode && secondIsText && !second.match(/^[0-9]+$/)) {
+      code = first;
+      text = second;
+    }
+
+    const weight = parseInt(weightStr || "1", 10);
     parsedImport.value.push({
-      text: parts[0].trim(),
-      code: (parts[1] ?? "").trim(),
-      weight: (() => {
-        const p = parseInt(parts[2] ?? "1", 10);
-        return Number.isNaN(p) ? 1 : p;
-      })(),
+      text,
+      code,
+      weight: Number.isNaN(weight) ? 1 : weight,
     });
   }
   if (!parsedImport.value.length) {

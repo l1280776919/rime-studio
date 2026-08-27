@@ -776,18 +776,47 @@ pub(crate) fn parse_text_dictionary_entries(contents: &str) -> (Vec<DictionaryEn
             continue;
         }
 
-        let parts = trimmed.split('\t').map(str::trim).collect::<Vec<_>>();
-        if parts.is_empty() || parts[0].is_empty() {
+        // Split by Tab, or fallback to space/comma if no Tab is found
+        let parts: Vec<&str> = if trimmed.contains('\t') {
+            trimmed.split('\t').map(str::trim).collect()
+        } else if trimmed.contains(',') {
+            trimmed.split(',').map(str::trim).collect()
+        } else {
+            trimmed.split_whitespace().collect()
+        };
+
+        if parts.is_empty() {
             skipped += 1;
             continue;
         }
 
-        let text = parts[0].to_string();
-        let code = parts.get(1).copied().unwrap_or_default().to_string();
-        let weight = parts
-            .get(2)
-            .and_then(|value| value.parse::<i32>().ok())
-            .unwrap_or(1);
+        let first = parts[0];
+        let second = parts.get(1).copied().unwrap_or("");
+        let third = parts.get(2).copied().unwrap_or("");
+
+        // Detect if format is (pinyin, word) e.g., Sogou TXT / QQ pinyin export: 'pinyin' 'word'
+        let first_is_ascii = first
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '\'' || c == '_' || c == '-');
+        let second_is_hanzi = second
+            .chars()
+            .any(|c| ('\u{4e00}'..='\u{9fa5}').contains(&c));
+
+        let (text, code, weight_str) = if first_is_ascii && second_is_hanzi && !first.is_empty() {
+            // Format: (pinyin, word, weight) -> normalize to (word, pinyin, weight)
+            let pinyin = first.replace('\'', " ");
+            (second.to_string(), pinyin.trim().to_string(), third)
+        } else {
+            // Standard format: (word, pinyin, weight)
+            (first.to_string(), second.to_string(), third)
+        };
+
+        if text.is_empty() {
+            skipped += 1;
+            continue;
+        }
+
+        let weight = weight_str.parse::<i32>().unwrap_or(1);
         entries.push((text, code, weight));
     }
 

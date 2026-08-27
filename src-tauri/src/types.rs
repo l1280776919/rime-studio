@@ -431,3 +431,14 @@ pub(crate) struct AppUpdateInfo {
     pub(crate) asset_url: Option<String>,
     pub(crate) update_available: bool,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct CommunitySchema {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) description: String,
+    pub(crate) recipe: String,
+    pub(crate) author: String,
+    pub(crate) tags: Vec<String>,
+    pub(crate) installed: bool,
+}

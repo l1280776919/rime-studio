@@ -17,7 +17,6 @@ const AboutPage = defineAsyncComponent(() => import("./pages/AboutPage.vue"));
 const AppearancePage = defineAsyncComponent(() => import("./pages/AppearancePage.vue"));
 const BackupsPage = defineAsyncComponent(() => import("./pages/BackupsPage.vue"));
 const ConfigEditorPage = defineAsyncComponent(() => import("./pages/ConfigEditorPage.vue"));
-const ConfigFilesPage = defineAsyncComponent(() => import("./pages/ConfigFilesPage.vue"));
 const DictionariesPage = defineAsyncComponent(() => import("./pages/DictionariesPage.vue"));
 const OverviewPage = defineAsyncComponent(() => import("./pages/OverviewPage.vue"));
 const PhrasesPage = defineAsyncComponent(() => import("./pages/PhrasesPage.vue"));
@@ -71,6 +70,7 @@ function isPageKey(value: string): value is PageKey {
 }
 
 async function navigateTo(key: string) {
+  if (key === "configs") key = "editor";
   if (!isPageKey(key) || key === activePage.value) return;
 
   if (activePage.value === "editor" && editorDirty.value) {
@@ -104,12 +104,12 @@ const pageTitle = computed(() => {
     overview: "Rime 配置控制台",
     quick: "快速设置",
     schemas: "方案管理",
-    configs: "配置文件",
+    configs: "配置中心",
     appearance: "主题配置",
     phrases: "短语管理",
     dictionaries: "词库管理",
     backups: "备份管理",
-    editor: "配置编辑器",
+    editor: "配置中心",
     about: "关于",
   };
   return titles[activePage.value];
@@ -118,14 +118,14 @@ const pageTitle = computed(() => {
 const pageDescription = computed(() => {
   const descriptions: Record<PageKey, string> = {
     overview: "管理方案、外观、词库与部署状态。",
-    quick: "集中调整雾凇方案、候选数量、按键和候选窗行为。",
-    schemas: "查看、启用、复制和定位本机 Rime 输入方案。",
-    configs: "集中查看、定位和备份 Rime 配置文件。",
-    appearance: "调整小狼毫候选窗主题、字号、边距和颜色。",
-    phrases: "编辑自定义短语，支持添加、搜索、导入和批量管理。",
-    dictionaries: "浏览和管理 Rime 词库文件，查看条目统计与健康状态。",
-    backups: "查看、打开和恢复 Rime Studio 创建的配置备份。",
-    editor: "直接编辑 Rime YAML 配置文件，支持语法高亮和自动备份。",
+    quick: "集中调整雾凇方案、候选数量、按键绑定与 Lua 扩展脚本。",
+    schemas: "查看、启用、复制本机方案，浏览并一键安装社区方案与双拼键位图。",
+    configs: "集中查看、定位、编辑和校验 Rime 关键配置文件。",
+    appearance: "调整小狼毫候选窗主题、字号、边距、颜色并测试打字效果。",
+    phrases: "编辑自定义短语，支持添加、搜索、多格式导入与批量管理。",
+    dictionaries: "浏览和管理 Rime 词库文件，查看条目统计、健康状态与在线导入。",
+    backups: "查看、打开和恢复 Rime Studio 创建的配置备份与整包导出。",
+    editor: "集中查看、定位、编辑和校验 Rime 关键配置文件。",
     about: "关于 Rime Studio 与相关开源项目。",
   };
   return descriptions[activePage.value];
@@ -307,15 +307,7 @@ onBeforeUnmount(() => {
                 :env="env"
                 @saved="refreshEnvironment"
                 @deploy="handleDeploy"
-              />
-
-              <ConfigFilesPage
-                v-else-if="activePage === 'configs'"
-                key="configs"
-                :env="env"
-                :backing-up="backingUp"
-                @refresh="loadEnvironment"
-                @create-backup="handleCreateBackup"
+                @install="handleInstallRimeIce"
               />
 
               <AppearancePage

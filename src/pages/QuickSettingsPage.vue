@@ -21,6 +21,8 @@ import type {
   RimeIceSettings,
   SchemaInfo,
 } from "../types";
+import DoublePinyinVisualizer from "../components/schemas/DoublePinyinVisualizer.vue";
+import LuaPluginManager from "../components/plugins/LuaPluginManager.vue";
 
 const props = defineProps<{
   env?: RimeEnvironment;
@@ -90,6 +92,14 @@ const schemaPresets = [
   { id: "double_pinyin_flypy", name: "小鹤双拼", description: "小鹤双拼入口，依赖本地方案文件" },
   { id: "luna_pinyin", name: "朙月拼音", description: "Rime 内置拼音方案" },
 ];
+
+const showKeymap = ref(false);
+const isDoublePinyin = computed(
+  () =>
+    form.schema_id.includes("double_pinyin") ||
+    form.schema_id.includes("flypy") ||
+    form.schema_id.includes("ziranma"),
+);
 
 function applyConfig(config: QuickSettingsConfig) {
   Object.assign(form, config);
@@ -333,8 +343,18 @@ onBeforeUnmount(() => {
               />
             </el-select>
           </el-form-item>
+          <div v-if="isDoublePinyin || showKeymap" class="keymap-toggle-wrapper">
+            <el-button size="small" type="primary" plain @click="showKeymap = !showKeymap">
+              {{ showKeymap ? "收起双拼键位图" : "查看双拼键位分布图" }}
+            </el-button>
+            <div v-if="showKeymap" style="margin-top: 12px">
+              <DoublePinyinVisualizer />
+            </div>
+          </div>
         </el-form>
       </el-card>
+
+      <LuaPluginManager @change="emit('saved')" @deploy="emit('deploy')" />
 
       <el-card class="panel" shadow="never">
         <template #header>

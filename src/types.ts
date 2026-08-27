@@ -124,6 +124,7 @@ export type PhraseEntry = {
   text: string;
   code: string;
   weight: number;
+  tag?: string;
 };
 
 export type SchemaInfo = {
@@ -250,4 +251,25 @@ export type AppUpdateInfo = {
   asset_name?: string;
   asset_url?: string;
   update_available: boolean;
+};
+
+export type LuaPluginInfo = {
+  id: string;
+  name: string;
+  description: string;
+  file_name: string;
+  trigger_preview: string;
+  installed: boolean;
+  enabled: boolean;
+  author: string;
+};
+
+export type CommunitySchema = {
+  id: string;
+  name: string;
+  description: string;
+  recipe: string;
+  author: string;
+  tags: string[];
+  installed: boolean;
 };

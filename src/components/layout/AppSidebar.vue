@@ -3,7 +3,6 @@ import {
   Brush,
   Collection,
   Document,
-  Edit,
   EditPen,
   Files,
   FolderOpened,
@@ -55,9 +54,9 @@ const { isDark, toggleTheme } = useTheme();
         <el-icon><Files /></el-icon>
         <span>方案</span>
       </el-menu-item>
-      <el-menu-item index="configs">
+      <el-menu-item index="editor">
         <el-icon><Document /></el-icon>
-        <span>配置</span>
+        <span>配置中心</span>
       </el-menu-item>
       <el-menu-item index="appearance">
         <el-icon><Brush /></el-icon>
@@ -70,10 +69,6 @@ const { isDark, toggleTheme } = useTheme();
       <el-menu-item index="dictionaries">
         <el-icon><Collection /></el-icon>
         <span>词库</span>
-      </el-menu-item>
-      <el-menu-item index="editor">
-        <el-icon><Edit /></el-icon>
-        <span>编辑器</span>
       </el-menu-item>
       <el-menu-item index="backups">
         <el-icon><FolderOpened /></el-icon>

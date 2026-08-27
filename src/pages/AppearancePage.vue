@@ -2,9 +2,10 @@
 import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { invoke } from "@tauri-apps/api/core";
-import { Brush, Check, CopyDocument, UploadFilled } from "@element-plus/icons-vue";
+import { Brush, Check, CopyDocument, Download, UploadFilled } from "@element-plus/icons-vue";
 import type { AppearanceConfig, RimeEnvironment } from "../types";
 import { useErrorHandler } from "../composables/useErrorHandler";
+import TypingSandbox from "../components/common/TypingSandbox.vue";
 
 const props = defineProps<{
   env?: RimeEnvironment;
@@ -402,6 +403,48 @@ async function saveAppearance(shouldDeploy = false) {
   }
 }
 
+const showThemeExportDialog = ref(false);
+const themeExportText = ref("");
+
+function openThemeExport() {
+  themeExportText.value = JSON.stringify(
+    {
+      theme_name: form.theme_name,
+      corner_radius: form.corner_radius,
+      font_point: form.font_point,
+      spacing: form.spacing,
+      line_spacing: form.line_spacing,
+      colors: colorsFromConfig(form),
+    },
+    null,
+    2,
+  );
+  showThemeExportDialog.value = true;
+}
+
+function importCustomThemeJson() {
+  try {
+    const data = JSON.parse(themeExportText.value);
+    if (data && data.colors) {
+      programmaticChange = true;
+      Object.assign(form, data.colors);
+      if (data.theme_name) form.theme_name = data.theme_name;
+      if (data.corner_radius) form.corner_radius = data.corner_radius;
+      if (data.font_point) form.font_point = data.font_point;
+      markEdited();
+      ElMessage.success("配色已成功导入！");
+      showThemeExportDialog.value = false;
+      nextTick(() => {
+        programmaticChange = false;
+      });
+    } else {
+      ElMessage.error("未识别的配色 JSON 格式");
+    }
+  } catch {
+    ElMessage.error("JSON 解析失败，请检查输入格式");
+  }
+}
+
 watch(
   () => props.env,
   (env) => {
@@ -493,6 +536,10 @@ onMounted(() => {
             <span v-if="userEdited" class="dirty-dot">已修改</span>
           </div>
           <div class="form-actions">
+            <TypingSandbox :appearance="form" />
+            <el-button :icon="Download" size="small" @click="openThemeExport"
+              >导入/导出配色</el-button
+            >
             <el-button
               v-if="!isLocked"
               type="primary"
@@ -676,5 +723,28 @@ onMounted(() => {
         </p>
       </el-card>
     </aside>
+
+    <!-- Theme Export / Import Dialog -->
+    <el-dialog
+      v-model="showThemeExportDialog"
+      title="导入 / 导出主题配色"
+      width="540px"
+      append-to-body
+    >
+      <p style="font-size: 13px; color: var(--color-muted); margin-bottom: 8px">
+        您可以复制下方 JSON 分享给他人，或者粘贴其他配色方案 JSON 点击「导入配色」立即应用。
+      </p>
+      <el-input
+        v-model="themeExportText"
+        type="textarea"
+        :rows="12"
+        placeholder="{ ... }"
+        style="font-family: var(--font-mono)"
+      />
+      <template #footer>
+        <el-button @click="showThemeExportDialog = false">关闭</el-button>
+        <el-button type="primary" @click="importCustomThemeJson">导入配色</el-button>
+      </template>
+    </el-dialog>
   </section>
 </template>

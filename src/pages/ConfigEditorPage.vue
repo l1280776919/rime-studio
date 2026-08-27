@@ -8,7 +8,14 @@ import { EditorView, basicSetup } from "codemirror";
 import { yaml } from "@codemirror/lang-yaml";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorState } from "@codemirror/state";
-import { Refresh, UploadFilled, MagicStick } from "@element-plus/icons-vue";
+import {
+  Document,
+  FolderOpened,
+  MagicStick,
+  Refresh,
+  Search,
+  UploadFilled,
+} from "@element-plus/icons-vue";
 import { useErrorHandler } from "../composables/useErrorHandler";
 import type { FileStatus, RimeEnvironment } from "../types";
 
@@ -21,12 +28,84 @@ const selectedFile = ref<FileStatus | null>(null);
 const dirty = ref(false);
 const saving = ref(false);
 const loading = ref(false);
+const fileSearch = ref("");
+const sidebarTab = ref<"key" | "all">("key");
 
 const editorContainer = ref<HTMLDivElement>();
 let editorView: EditorView | null = null;
 let originalContent = "";
 let allowWindowClose = false;
 let unlistenCloseRequested: UnlistenFn | undefined;
+
+type KeyConfigFile = {
+  name: string;
+  label: string;
+  group: "core" | "ui" | "data";
+  role: string;
+};
+
+const KEY_CONFIG_FILES: KeyConfigFile[] = [
+  {
+    name: "default.custom.yaml",
+    label: "默认方案配置",
+    group: "core",
+    role: "当前方案、候选数、按键绑定",
+  },
+  {
+    name: "weasel.custom.yaml",
+    label: "小狼毫外观配置",
+    group: "ui",
+    role: "主题、字号、候选窗方向",
+  },
+  {
+    name: "rime_ice.custom.yaml",
+    label: "雾凇组件配置",
+    group: "ui",
+    role: "Emoji、繁简、标点、全角开关",
+  },
+  {
+    name: "custom_phrase.txt",
+    label: "自定义短语",
+    group: "data",
+    role: "短语、编码、权重",
+  },
+  {
+    name: "rime_ice.schema.yaml",
+    label: "雾凇方案",
+    group: "core",
+    role: "雾凇输入方案入口",
+  },
+  {
+    name: "rime_ice.dict.yaml",
+    label: "雾凇主词库",
+    group: "data",
+    role: "雾凇基础词条",
+  },
+  {
+    name: "sogou_ext.dict.yaml",
+    label: "搜狗扩展词库",
+    group: "data",
+    role: "导入词库条目",
+  },
+];
+
+const filesByName = computed(() => {
+  return new Map((files.value ?? []).map((file) => [file.name, file]));
+});
+
+const keyFileRows = computed(() => {
+  const customMap = new Map((props.env?.custom_files ?? []).map((f) => [f.name, f]));
+  return KEY_CONFIG_FILES.map((meta) => ({
+    ...meta,
+    file: filesByName.value.get(meta.name) ?? customMap.get(meta.name),
+  }));
+});
+
+const filteredAllFiles = computed(() => {
+  const q = fileSearch.value.trim().toLowerCase();
+  if (!q) return files.value;
+  return files.value.filter((f) => f.name.toLowerCase().includes(q));
+});
 
 function getEditorExtensions() {
   return [
@@ -42,9 +121,8 @@ function getEditorExtensions() {
 }
 
 const selectedFilePath = computed(() => selectedFile.value?.path ?? "");
-const hasFiles = computed(() => files.value.length > 0);
 const headerTitle = computed(() => {
-  if (!selectedFile.value) return "配置编辑器";
+  if (!selectedFile.value) return "配置中心 & YAML 编辑器";
   return `${selectedFile.value.name}${dirty.value ? " [已修改]" : ""}`;
 });
 
@@ -150,7 +228,11 @@ async function handleRefresh() {
     await readFileContent(selectedFile.value);
   }
 
-  ElMessage.success("文件列表已刷新");
+  ElMessage.success("配置文件已刷新");
+}
+
+async function openRimeUserDir() {
+  await withErrorHandling(() => invoke("open_rime_user_dir"));
 }
 
 async function confirmDiscard(action: string, confirmButtonText: string): Promise<boolean> {
@@ -225,6 +307,12 @@ onMounted(async () => {
   await nextTick();
   await loadFiles();
 
+  // Select default.custom.yaml if present
+  if (!selectedFile.value && files.value.length > 0) {
+    const def = files.value.find((f) => f.name === "default.custom.yaml") ?? files.value[0];
+    await selectFile(def);
+  }
+
   unlistenCloseRequested = await getCurrentWindow().onCloseRequested(async (event) => {
     if (!dirty.value || allowWindowClose) return;
 
@@ -247,33 +335,88 @@ onBeforeUnmount(() => {
   <section class="content-grid config-editor-grid">
     <aside class="file-sidebar">
       <div class="file-sidebar-header">
-        <h3>YAML 配置文件</h3>
-        <span v-if="hasFiles" class="file-count">{{ files.length }} 个文件</span>
-      </div>
-
-      <div v-if="hasFiles" class="file-list">
-        <button
-          v-for="file in files"
-          :key="file.name"
-          class="file-list-item"
-          :class="{ active: selectedFile?.name === file.name }"
-          @click="selectFile(file)"
-        >
-          <span class="file-name">{{ file.name }}</span>
-          <span
-            v-if="selectedFile?.name === file.name && dirty"
-            class="dirty-dot"
-            aria-hidden="true"
+        <div class="header-title-box">
+          <h3>配置中心</h3>
+          <span class="file-count">{{ files.length }} 个文件</span>
+        </div>
+        <div class="header-actions">
+          <el-button
+            :icon="FolderOpened"
+            circle
+            size="small"
+            title="在资源管理器中打开 Rime 目录"
+            @click="openRimeUserDir"
           />
-        </button>
+          <el-button :icon="Refresh" circle size="small" title="刷新文件" @click="handleRefresh" />
+        </div>
       </div>
 
-      <div v-else class="file-empty">
-        <el-empty description="暂无 YAML 配置文件" />
+      <!-- Tab Switch: Key vs All -->
+      <div class="sidebar-tabs">
+        <el-radio-group v-model="sidebarTab" size="small" style="width: 100%">
+          <el-radio-button value="key" style="width: 50%">核心配置</el-radio-button>
+          <el-radio-button value="all" style="width: 50%">全部文件</el-radio-button>
+        </el-radio-group>
       </div>
 
-      <div class="file-sidebar-footer">
-        <el-button :icon="Refresh" size="small" @click="handleRefresh">刷新</el-button>
+      <!-- Key Config Files List -->
+      <div v-if="sidebarTab === 'key'" class="file-list key-files-list">
+        <div
+          v-for="item in keyFileRows"
+          :key="item.name"
+          class="key-file-card"
+          :class="{
+            active: selectedFile?.name === item.name,
+            missing: !item.file?.exists,
+          }"
+          @click="item.file?.exists ? selectFile(item.file) : null"
+        >
+          <div class="card-top">
+            <span class="card-label">{{ item.label }}</span>
+            <el-tag size="small" :type="item.file?.exists ? 'success' : 'info'">
+              {{ item.file?.exists ? "已生成" : "未生成" }}
+            </el-tag>
+          </div>
+          <div class="card-name">{{ item.name }}</div>
+          <div class="card-role">{{ item.role }}</div>
+        </div>
+      </div>
+
+      <!-- All YAML Files List -->
+      <div v-else class="all-files-wrapper">
+        <div class="search-input-box">
+          <el-input
+            v-model="fileSearch"
+            size="small"
+            placeholder="搜索配置文件..."
+            :prefix-icon="Search"
+            clearable
+          />
+        </div>
+
+        <div v-if="filteredAllFiles.length > 0" class="file-list">
+          <button
+            v-for="file in filteredAllFiles"
+            :key="file.name"
+            class="file-list-item"
+            :class="{ active: selectedFile?.name === file.name }"
+            @click="selectFile(file)"
+          >
+            <div class="file-item-left">
+              <el-icon><Document /></el-icon>
+              <span class="file-name">{{ file.name }}</span>
+            </div>
+            <span
+              v-if="selectedFile?.name === file.name && dirty"
+              class="dirty-dot"
+              aria-hidden="true"
+            />
+          </button>
+        </div>
+
+        <div v-else class="file-empty">
+          <el-empty description="未找到匹配文件" />
+        </div>
       </div>
     </aside>
 
@@ -284,7 +427,7 @@ onBeforeUnmount(() => {
           <p v-if="selectedFilePath">{{ selectedFilePath }}</p>
         </div>
         <div class="editor-actions">
-          <el-button :icon="Refresh" :disabled="loading" @click="handleRefresh">刷新</el-button>
+          <el-button :icon="Refresh" :disabled="loading" @click="handleRefresh">重新读取</el-button>
           <el-button
             type="primary"
             :icon="UploadFilled"
@@ -292,9 +435,11 @@ onBeforeUnmount(() => {
             :disabled="!dirty || !selectedFile"
             @click="handleSave"
           >
-            保存
+            保存 (Ctrl+S)
           </el-button>
-          <el-button :icon="MagicStick" @click="handleDeploy">部署</el-button>
+          <el-button type="success" plain :icon="MagicStick" @click="handleDeploy">
+            保存并重新部署
+          </el-button>
         </div>
       </header>
 
@@ -305,7 +450,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div v-if="!selectedFile && !loading" class="editor-placeholder">
-          <el-empty description="选择左侧文件开始编辑" />
+          <el-empty description="选择左侧配置文件开始编辑" />
         </div>
 
         <div
@@ -321,7 +466,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .config-editor-grid {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
+  grid-template-columns: 320px minmax(0, 1fr);
   gap: 0;
   height: 100%;
   min-height: 0;
@@ -332,185 +477,203 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--color-surface-soft);
-  border-right: 1px solid var(--color-line-soft);
+  background: var(--color-surface-soft, #f8fafc);
+  border-right: 1px solid var(--color-line-soft, #edf2f7);
 }
 
 .file-sidebar-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 16px;
-  border-bottom: 1px solid var(--color-line-soft);
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--color-line-soft, #edf2f7);
 }
 
-.file-sidebar-header h3 {
+.header-title-box h3 {
   margin: 0;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--ink-800);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-900, #0f172a);
 }
 
 .file-count {
-  font-size: 12px;
-  color: var(--ink-500);
-  font-weight: 500;
+  font-size: 11px;
+  color: var(--color-muted, #64748b);
+}
+
+.header-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.sidebar-tabs {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--color-line-soft, #edf2f7);
+}
+
+.sidebar-tabs :deep(.el-radio-button__inner) {
+  width: 100%;
 }
 
 .file-list {
   flex: 1;
-  min-height: 0;
   overflow-y: auto;
-  padding: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.key-files-list {
+  gap: 8px;
+}
+
+.key-file-card {
+  background: var(--color-surface, #ffffff);
+  border: 1px solid var(--color-line, #e2e8f0);
+  border-radius: var(--radius-sm, 8px);
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.key-file-card:hover {
+  border-color: var(--brand-400, #60a5fa);
+  transform: translateY(-1px);
+}
+
+.key-file-card.active {
+  background: var(--brand-50, #eff6ff);
+  border-color: var(--brand-500, #3b82f6);
+}
+
+.key-file-card.missing {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.card-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-800, #1e293b);
+}
+
+.card-name {
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  color: var(--color-muted, #64748b);
+}
+
+.card-role {
+  font-size: 11px;
+  color: var(--ink-500, #64748b);
+  line-height: 1.3;
+}
+
+.all-files-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.search-input-box {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-line-soft, #edf2f7);
 }
 
 .file-list-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  width: 100%;
-  padding: 10px 12px;
-  margin-bottom: 4px;
+  padding: 8px 12px;
   border: none;
-  border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--ink-700);
-  font-size: 13px;
-  font-weight: 500;
-  text-align: left;
+  border-radius: var(--radius-xs, 6px);
   cursor: pointer;
-  transition:
-    background var(--transition-fast),
-    color var(--transition-fast),
-    box-shadow var(--transition-fast);
+  text-align: left;
+  transition: all 0.12s ease;
 }
 
 .file-list-item:hover {
-  background: var(--color-accent-soft);
-  color: var(--color-accent);
+  background: var(--color-surface-hover, #eef3f9);
 }
 
 .file-list-item.active {
-  background: linear-gradient(135deg, var(--brand-100), var(--brand-50));
-  color: var(--brand-700);
-  font-weight: 700;
-  box-shadow: var(--shadow-xs);
+  background: var(--brand-50, #eff6ff);
+  color: var(--brand-700, #1d4ed8);
+  font-weight: 600;
 }
 
-.file-name {
-  flex: 1;
-  min-width: 0;
+.file-item-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: var(--font-mono);
 }
 
 .dirty-dot {
-  flex-shrink: 0;
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius-full);
-  background: var(--color-accent);
-}
-
-.file-empty {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 0;
-}
-
-.file-sidebar-footer {
-  display: flex;
-  justify-content: flex-end;
-  padding: 12px 16px;
-  border-top: 1px solid var(--color-line-soft);
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--amber-500, #f59e0b);
 }
 
 .editor-main {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--color-surface);
+  background: var(--color-surface, #ffffff);
 }
 
 .editor-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--color-line-soft);
-}
-
-.editor-title {
-  min-width: 0;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--color-line-soft, #edf2f7);
 }
 
 .editor-title h2 {
   margin: 0;
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--ink-800);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink-900, #0f172a);
 }
 
 .editor-title p {
-  margin: 2px 0 0;
+  margin: 2px 0 0 0;
   font-size: 12px;
-  color: var(--ink-500);
-  font-family: var(--font-mono);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-family: var(--font-mono, monospace);
+  color: var(--color-muted, #64748b);
 }
 
 .editor-actions {
   display: flex;
-  align-items: center;
   gap: 8px;
-  flex-shrink: 0;
 }
 
 .editor-body {
-  position: relative;
   flex: 1;
+  position: relative;
   min-height: 0;
-  overflow: hidden;
   outline: none;
-}
-
-.editor-loading {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  color: var(--ink-500);
-  font-size: 13px;
-  z-index: 2;
-}
-
-.editor-loading .el-icon {
-  font-size: 24px;
-}
-
-.editor-placeholder {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1;
+  background: #282c34;
 }
 
 .codemirror-host {
-  width: 100%;
   height: 100%;
   overflow: auto;
 }
@@ -521,11 +684,18 @@ onBeforeUnmount(() => {
 
 .codemirror-host :deep(.cm-editor) {
   height: 100%;
-  font-family: var(--font-mono);
-  font-size: 13px;
+  font-family: var(--font-mono, monospace);
+  font-size: 14px;
 }
 
-.codemirror-host :deep(.cm-scroller) {
-  overflow: auto;
+.editor-loading,
+.editor-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #94a3b8;
+  gap: 12px;
 }
 </style>
