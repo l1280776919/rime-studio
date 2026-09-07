@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.3
+
+- 修复 CI Clippy：`sort_by` 改为 `sort_by_key`
+
 ## 0.6.2
 
 ### 可靠性

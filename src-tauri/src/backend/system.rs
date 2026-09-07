@@ -195,7 +195,7 @@ fn collect_weasel_logs(user_dir: &Path) -> String {
                 })
                 .filter_map(|path| file_mtime(&path).map(|mtime| (mtime, path)))
                 .collect();
-            temp_logs.sort_by(|left, right| right.0.cmp(&left.0));
+            temp_logs.sort_by_key(|left| std::cmp::Reverse(left.0));
             candidates.extend(temp_logs.into_iter().take(3).map(|(_, path)| path));
         }
     }
