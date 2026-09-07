@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
-import { invoke } from "@tauri-apps/api/core";
+import { api } from "../api";
 import { useErrorHandler } from "../composables/useErrorHandler";
 import {
   Check,
@@ -111,9 +111,7 @@ function schedulePostDeployCheck() {
   }
   postDeployChecking.value = true;
   postDeployTimer = setTimeout(async () => {
-    const report = await withErrorHandling(() =>
-      invoke<ConfigHealthReport>("inspect_config_health"),
-    );
+    const report = await withErrorHandling(() => api.inspectConfigHealth());
     if (report) {
       healthReport.value = report;
       const hasError = report.checks.some((check) => check.status === "error");
@@ -135,10 +133,10 @@ async function loadQuickSettings() {
   loading.value = true;
   const result = await withErrorHandling(() =>
     Promise.all([
-      invoke<QuickSettingsConfig>("get_quick_settings"),
-      invoke<SchemaInfo[]>("list_schemas"),
-      invoke<ConfigHealthReport>("inspect_config_health"),
-      invoke<RimeIceSettings>("get_rime_ice_settings"),
+      api.getQuickSettings(),
+      api.listSchemas(),
+      api.inspectConfigHealth(),
+      api.getRimeIceSettings(),
     ]),
   );
   if (result) {
@@ -154,11 +152,7 @@ async function loadQuickSettings() {
 async function saveQuickSettings(shouldDeploy = false) {
   saving.value = !shouldDeploy;
   deploying.value = shouldDeploy;
-  const config = await withErrorHandling(() =>
-    invoke<QuickSettingsConfig>("save_quick_settings", {
-      config: { ...form },
-    }),
-  );
+  const config = await withErrorHandling(() => api.saveQuickSettings({ ...form }));
   if (config) {
     applyConfig(config);
     emit("saved");
@@ -174,11 +168,7 @@ async function saveQuickSettings(shouldDeploy = false) {
 
 async function previewQuickSettings() {
   previewing.value = true;
-  const preview = await withErrorHandling(() =>
-    invoke<ConfigPreview>("preview_quick_settings", {
-      config: { ...form },
-    }),
-  );
+  const preview = await withErrorHandling(() => api.previewQuickSettings({ ...form }));
   if (preview) {
     configPreview.value = preview;
     showPreviewDialog.value = true;
@@ -188,7 +178,7 @@ async function previewQuickSettings() {
 
 async function inspectHealth() {
   checkingHealth.value = true;
-  const report = await withErrorHandling(() => invoke<ConfigHealthReport>("inspect_config_health"));
+  const report = await withErrorHandling(() => api.inspectConfigHealth());
   if (report) {
     healthReport.value = report;
     const hasError = report.checks.some((check) => check.status === "error");
@@ -203,7 +193,7 @@ async function inspectHealth() {
 
 async function repairHealth() {
   repairingHealth.value = true;
-  const report = await withErrorHandling(() => invoke<ConfigHealthReport>("repair_config_health"));
+  const report = await withErrorHandling(() => api.repairConfigHealth());
   if (report) {
     healthReport.value = report;
     emit("saved");
@@ -215,11 +205,7 @@ async function repairHealth() {
 
 async function repairHealthItem(check: ConfigHealthCheck) {
   repairingHealthItem.value = check.name;
-  const report = await withErrorHandling(() =>
-    invoke<ConfigHealthReport>("repair_config_health_item", {
-      name: check.name,
-    }),
-  );
+  const report = await withErrorHandling(() => api.repairConfigHealthItem(check.name));
   if (report) {
     healthReport.value = report;
     emit("saved");
@@ -231,13 +217,19 @@ async function repairHealthItem(check: ConfigHealthCheck) {
   repairingHealthItem.value = undefined;
 }
 
+async function previewIceSettings() {
+  previewing.value = true;
+  const preview = await withErrorHandling(() => api.previewRimeIceSettings({ ...iceSettings }));
+  if (preview) {
+    configPreview.value = preview;
+    showPreviewDialog.value = true;
+  }
+  previewing.value = false;
+}
+
 async function saveIceSettings() {
   savingIceSettings.value = true;
-  const settings = await withErrorHandling(() =>
-    invoke<RimeIceSettings>("save_rime_ice_settings", {
-      settings: { ...iceSettings },
-    }),
-  );
+  const settings = await withErrorHandling(() => api.saveRimeIceSettings({ ...iceSettings }));
   if (settings) {
     Object.assign(iceSettings, settings);
     emit("saved");
@@ -411,6 +403,14 @@ onBeforeUnmount(() => {
         <template #header>
           <div class="panel-title">
             <span>雾凇组件</span>
+            <el-button
+              plain
+              :loading="previewing"
+              :disabled="!hasRimeIce"
+              @click="previewIceSettings"
+            >
+              预览变更
+            </el-button>
             <el-button
               type="primary"
               plain
@@ -631,10 +631,10 @@ onBeforeUnmount(() => {
       </el-card>
     </aside>
 
-    <el-dialog v-model="showPreviewDialog" title="快速设置变更预览" width="760px">
+    <el-dialog v-model="showPreviewDialog" title="配置变更预览" width="760px">
       <div class="config-preview-dialog">
         <p class="helper-text">
-          这里展示保存快速设置会写入的文件变更。实际保存前仍会自动创建保存前备份。
+          这里展示保存会写入的文件变更。未知 patch 键会保留，保存前仍会自动创建备份。
         </p>
         <div v-if="configPreview?.files.some((file) => file.changed)" class="config-preview-list">
           <section

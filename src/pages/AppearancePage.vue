@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
-import { invoke } from "@tauri-apps/api/core";
-import { Brush, Check, CopyDocument, Download, UploadFilled } from "@element-plus/icons-vue";
-import type { AppearanceConfig, RimeEnvironment } from "../types";
+import { Brush, Check, CopyDocument, Download, UploadFilled, View } from "@element-plus/icons-vue";
+import type { AppearanceConfig, ColorScheme, ConfigPreview, RimeEnvironment } from "../types";
+import { api } from "../api";
 import { useErrorHandler } from "../composables/useErrorHandler";
 import TypingSandbox from "../components/common/TypingSandbox.vue";
 
@@ -33,6 +33,10 @@ interface CustomScheme {
 }
 const CUSTOM_SCHEMES_STORAGE_KEY = "rime-studio:custom-schemes:v1";
 const customSchemes = ref<CustomScheme[]>([]);
+const systemFonts = ref<string[]>([]);
+const showPreviewDialog = ref(false);
+const configPreview = ref<ConfigPreview>();
+const previewing = ref(false);
 
 // Merge presets + custom schemes for display
 const allSchemes = computed(() => [
@@ -61,6 +65,8 @@ const form = reactive<AppearanceConfig>({
   theme_name: "rime_studio_blue",
   font_point: 11,
   label_font_point: 10,
+  font_face: "",
+  label_font_face: "",
   page_size: 7,
   switch_key: "shift",
   horizontal: true,
@@ -94,7 +100,7 @@ const colorFields = [
   { key: "hilited_candidate_text_color", label: "候选高亮文字" },
 ] as const;
 
-function colorsFromConfig(config: AppearanceConfig): SchemeColors {
+function colorsFromConfig(config: { [K in ColorKey]: string }): SchemeColors {
   return Object.fromEntries(colorFields.map(({ key }) => [key, config[key]])) as SchemeColors;
 }
 
@@ -126,6 +132,29 @@ function loadCustomSchemes() {
 
 function persistCustomSchemes() {
   window.localStorage.setItem(CUSTOM_SCHEMES_STORAGE_KEY, JSON.stringify(customSchemes.value));
+}
+
+function colorSchemeFromCustom(scheme: CustomScheme): ColorScheme {
+  return {
+    name: scheme.name,
+    label: scheme.label,
+    ...scheme.colors,
+  };
+}
+
+function customFromColorScheme(scheme: ColorScheme): CustomScheme {
+  return {
+    name: scheme.name,
+    label: scheme.label,
+    colors: colorsFromConfig(scheme),
+  };
+}
+
+function payloadFromForm(): AppearanceConfig {
+  return {
+    ...form,
+    custom_schemes: customSchemes.value.map(colorSchemeFromCustom),
+  };
 }
 
 function upsertCustomScheme(config: AppearanceConfig) {
@@ -248,9 +277,11 @@ const previewPreeditStyle = computed(() => ({
   paddingBottom: `${form.line_spacing}px`,
   marginBottom: `${form.line_spacing}px`,
 }));
+const previewFontFamily = computed(() => form.font_face || "var(--font-sans)");
 const previewCandidateStyle = computed(() => ({
   color: rimeToCssColor(form.candidate_text_color),
   fontSize: `${form.font_point}px`,
+  fontFamily: previewFontFamily.value,
 }));
 const previewCommentStyle = computed(() => ({
   color: rimeToCssColor(form.comment_text_color),
@@ -353,27 +384,26 @@ const isPreset = computed(() => presets.some((p) => p.name === form.theme_name))
 const isLocked = computed(() => isPreset.value);
 
 async function loadAppearance() {
-  const config = await withErrorHandling(() => invoke<AppearanceConfig>("get_appearance_config"));
+  const [config, fonts] = await Promise.all([
+    withErrorHandling(() => api.getAppearance()),
+    withErrorHandling(() => api.listSystemFonts(), { silent: true }),
+  ]);
+  if (fonts) systemFonts.value = fonts;
   if (!config) return;
 
-  // If the saved theme is a preset, reset to code defaults so dev changes take effect
+  const fromYaml = (config.custom_schemes ?? []).map(customFromColorScheme);
+  const known = new Set(fromYaml.map((scheme) => scheme.name));
+  customSchemes.value = [
+    ...fromYaml,
+    ...customSchemes.value.filter((scheme) => !known.has(scheme.name)),
+  ];
+  persistCustomSchemes();
+
   const matchPreset = presets.find((p) => p.name === config.theme_name);
   if (matchPreset) {
-    // Preset: use code defaults for all values, ignore saved config
     applyConfig({
+      ...config,
       theme_name: matchPreset.name,
-      font_point: 11,
-      label_font_point: 10,
-      page_size: 7,
-      switch_key: "shift",
-      horizontal: true,
-      inline_preedit: true,
-      candidate_format: "%c. %@",
-      corner_radius: 8,
-      border_height: 4,
-      border_width: 4,
-      line_spacing: 6,
-      spacing: 8,
       ...matchPreset.colors,
     });
   } else {
@@ -383,18 +413,34 @@ async function loadAppearance() {
   userEdited.value = false;
 }
 
+async function previewAppearance() {
+  previewing.value = true;
+  const preview = await withErrorHandling(() => api.previewAppearance(payloadFromForm()));
+  if (preview) {
+    configPreview.value = preview;
+    showPreviewDialog.value = true;
+  }
+  previewing.value = false;
+}
+
+function diffLineClass(line: string) {
+  if (line.startsWith("+ ")) return "added";
+  if (line.startsWith("- ")) return "removed";
+  return "";
+}
+
 async function saveAppearance(shouldDeploy = false) {
   saving.value = !shouldDeploy;
   deploying.value = shouldDeploy;
   try {
-    const config = await withErrorHandling(() =>
-      invoke<AppearanceConfig>("save_appearance_config", { config: { ...form } }),
-    );
+    const config = await withErrorHandling(() => api.saveAppearance(payloadFromForm()));
     if (config) {
+      customSchemes.value = (config.custom_schemes ?? []).map(customFromColorScheme);
+      persistCustomSchemes();
       upsertCustomScheme(config);
       applyConfig(config);
       emit("saved");
-      ElMessage.success(shouldDeploy ? "已保存并部署" : "已保存");
+      ElMessage.success(shouldDeploy ? "已保存并部署" : "已保存，未知 patch 键已保留");
       if (shouldDeploy) emit("deploy");
     }
   } finally {
@@ -485,7 +531,7 @@ onMounted(() => {
             :style="{
               color: rimeToCssColor(form.text_color),
               fontSize: `${form.font_point}px`,
-              fontFamily: 'var(--font-sans)',
+              fontFamily: previewFontFamily,
             }"
           >
             <span class="preview-inline-code">wo</span>
@@ -540,6 +586,9 @@ onMounted(() => {
             <el-button :icon="Download" size="small" @click="openThemeExport"
               >导入/导出配色</el-button
             >
+            <el-button :icon="View" size="small" :loading="previewing" @click="previewAppearance">
+              预览变更
+            </el-button>
             <el-button
               v-if="!isLocked"
               type="primary"
@@ -636,6 +685,44 @@ onMounted(() => {
                     :disabled="isLocked"
                   />
                 </el-form-item>
+                <el-form-item label="候选字体">
+                  <el-select
+                    v-model="form.font_face"
+                    filterable
+                    clearable
+                    allow-create
+                    default-first-option
+                    size="small"
+                    placeholder="系统默认"
+                    :disabled="isLocked"
+                  >
+                    <el-option
+                      v-for="font in systemFonts"
+                      :key="font"
+                      :label="font"
+                      :value="font"
+                    />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="标签字体">
+                  <el-select
+                    v-model="form.label_font_face"
+                    filterable
+                    clearable
+                    allow-create
+                    default-first-option
+                    size="small"
+                    placeholder="跟随候选字体"
+                    :disabled="isLocked"
+                  >
+                    <el-option
+                      v-for="font in systemFonts"
+                      :key="font"
+                      :label="font"
+                      :value="font"
+                    />
+                  </el-select>
+                </el-form-item>
               </div>
 
               <h4 style="margin: 14px 0 6px; font-size: 12px; color: var(--ink-500)">尺寸</h4>
@@ -719,7 +806,8 @@ onMounted(() => {
           }}</span>
         </div>
         <p class="helper-text">
-          保存后会写入 style 和 preset_color_schemes 配置，写入前会自动创建保存前备份。
+          保存时只更新 Rime Studio 管理的 style / 配色键，用户自己的 patch 会保留。自定义方案写入
+          weasel.custom.yaml，可被备份恢复。
         </p>
       </el-card>
     </aside>
@@ -744,6 +832,47 @@ onMounted(() => {
       <template #footer>
         <el-button @click="showThemeExportDialog = false">关闭</el-button>
         <el-button type="primary" @click="importCustomThemeJson">导入配色</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="showPreviewDialog" title="主题配置变更预览" width="760px">
+      <div class="config-preview-dialog">
+        <p class="helper-text">
+          保存前可确认将写入 weasel.custom.yaml 的差异。未知 patch 键会保留。
+        </p>
+        <div v-if="configPreview?.files.some((file) => file.changed)" class="config-preview-list">
+          <section
+            v-for="file in configPreview.files"
+            :key="file.name"
+            class="config-preview-file"
+            :class="{ unchanged: !file.changed }"
+          >
+            <header>
+              <strong>{{ file.name }}</strong>
+              <el-tag :type="file.changed ? 'warning' : 'success'" effect="light" size="small">
+                {{ file.changed ? "将更新" : "无变化" }}
+              </el-tag>
+            </header>
+            <pre v-if="file.changed"><span
+              v-for="(line, index) in file.diff_lines"
+              :key="`${file.name}-${index}`"
+              :class="diffLineClass(line)"
+            >{{ line }}</span></pre>
+          </section>
+        </div>
+        <el-empty v-else description="没有检测到配置变更" :image-size="64" />
+      </div>
+      <template #footer>
+        <el-button @click="showPreviewDialog = false">关闭</el-button>
+        <el-button
+          type="primary"
+          @click="
+            showPreviewDialog = false;
+            saveAppearance(false);
+          "
+        >
+          保存
+        </el-button>
       </template>
     </el-dialog>
   </section>

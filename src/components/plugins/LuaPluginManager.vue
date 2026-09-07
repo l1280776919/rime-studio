@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { ElMessage } from "element-plus";
-import { invoke } from "@tauri-apps/api/core";
+import { api } from "../../api";
 import { Edit, Refresh } from "@element-plus/icons-vue";
 import type { LuaPluginInfo } from "../../types";
 import { useErrorHandler } from "../../composables/useErrorHandler";
@@ -24,7 +24,7 @@ const { withErrorHandling } = useErrorHandler();
 async function loadPlugins() {
   loading.value = true;
   try {
-    const list = await withErrorHandling(() => invoke<LuaPluginInfo[]>("list_lua_plugins"));
+    const list = await withErrorHandling(() => api.listLuaPlugins());
     if (list) {
       plugins.value = list;
     }
@@ -36,12 +36,7 @@ async function loadPlugins() {
 async function handleToggle(plugin: LuaPluginInfo, enabled: boolean) {
   toggling.value = plugin.id;
   try {
-    const result = await withErrorHandling(() =>
-      invoke<LuaPluginInfo[]>("toggle_lua_plugin", {
-        pluginId: plugin.id,
-        enabled,
-      }),
-    );
+    const result = await withErrorHandling(() => api.toggleLuaPlugin(plugin.id, enabled));
     if (result) {
       plugins.value = result;
       ElMessage.success(`${plugin.name} 已${enabled ? "启用" : "禁用"}，点击右上角部署即可生效`);
@@ -55,9 +50,7 @@ async function handleToggle(plugin: LuaPluginInfo, enabled: boolean) {
 async function openScriptEditor(plugin: LuaPluginInfo) {
   editingPlugin.value = plugin;
   editDialogVisible.value = true;
-  const content = await withErrorHandling(() =>
-    invoke<string>("get_lua_script_content", { pluginId: plugin.id }),
-  );
+  const content = await withErrorHandling(() => api.getLuaScriptContent(plugin.id));
   if (content !== undefined) {
     scriptContent.value = content;
   }
@@ -68,10 +61,7 @@ async function saveScript() {
   savingScript.value = true;
   try {
     await withErrorHandling(() =>
-      invoke("save_lua_script_content", {
-        pluginId: editingPlugin.value!.id,
-        content: scriptContent.value,
-      }),
+      api.saveLuaScriptContent(editingPlugin.value!.id, scriptContent.value),
     );
     ElMessage.success("Lua 脚本已保存");
     editDialogVisible.value = false;

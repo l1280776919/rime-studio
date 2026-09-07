@@ -1,7 +1,7 @@
 {
   "name": "rime-studio",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.6.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -24,6 +24,7 @@
     "@tauri-apps/plugin-opener": "^2",
     "codemirror": "^6.0.2",
     "element-plus": "^2.14.2",
+    "pinia": "^3.0.3",
     "vue": "^3.5.39"
   },
   "devDependencies": {

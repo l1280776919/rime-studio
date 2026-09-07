@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { invoke } from "@tauri-apps/api/core";
+import { api } from "../api";
 import {
   CopyDocument,
   Download,
@@ -77,11 +77,7 @@ async function loadSchemas() {
   loading.value = true;
   try {
     const result = await withErrorHandling(() =>
-      Promise.all([
-        invoke<SchemaInfo[]>("list_schemas"),
-        invoke<QuickSettingsConfig>("get_quick_settings"),
-        invoke<CommunitySchema[]>("list_community_schemas"),
-      ]),
+      Promise.all([api.listSchemas(), api.getQuickSettings(), api.listCommunitySchemas()]),
     );
     if (result) {
       const [schemaList, config, communityList] = result;
@@ -102,9 +98,7 @@ async function loadSchemas() {
 async function activateSchema(schema: SchemaInfo, shouldDeploy = false) {
   activating.value = schema.id;
   try {
-    const config = await withErrorHandling(() =>
-      invoke<QuickSettingsConfig>("set_active_schema", { schemaId: schema.id }),
-    );
+    const config = await withErrorHandling(() => api.setActiveSchema(schema.id));
     if (config) {
       currentConfig.value = config;
       await loadSchemas();
@@ -143,11 +137,7 @@ async function saveSchemaMenu(shouldDeploy = false) {
 
   savingMenu.value = true;
   try {
-    const config = await withErrorHandling(() =>
-      invoke<QuickSettingsConfig>("save_active_schema_list", {
-        schemaIds: menuIds.value,
-      }),
-    );
+    const config = await withErrorHandling(() => api.saveActiveSchemaList(menuIds.value));
     if (config) {
       currentConfig.value = config;
       await loadSchemas();
@@ -165,9 +155,7 @@ async function saveSchemaMenu(shouldDeploy = false) {
 async function copySchema(schema: SchemaInfo) {
   copying.value = schema.id;
   try {
-    const path = await withErrorHandling(() =>
-      invoke<string>("copy_schema", { schemaId: schema.id }),
-    );
+    const path = await withErrorHandling(() => api.copySchema(schema.id));
     if (path) {
       await loadSchemas();
       ElMessage.success(`已复制到 ${path}`);
@@ -223,11 +211,11 @@ async function installCommunity(item: CommunitySchema) {
 }
 
 async function openSchemaFile(schema: SchemaInfo) {
-  await withErrorHandling(() => invoke("open_schema_file", { path: schema.path }));
+  await withErrorHandling(() => api.openSchemaFile(schema.path));
 }
 
 async function openSchemaDir(schema: SchemaInfo) {
-  await withErrorHandling(() => invoke("open_schema_dir", { path: schema.path }));
+  await withErrorHandling(() => api.openSchemaDir(schema.path));
 }
 
 onMounted(loadSchemas);

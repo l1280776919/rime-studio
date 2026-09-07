@@ -1,13 +1,11 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { invoke } from "@tauri-apps/api/core";
+import { api } from "../api";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   DictHealth,
-  DictionaryCleanResult,
   DictionaryConfig,
   DictInfo,
-  DictionaryExportResult,
   DictionaryImportPreview,
   DictionaryImportResult,
   DictionaryReference,
@@ -64,8 +62,8 @@ export function useDictionaries(emit: EmitFn) {
     loading.value = true;
     try {
       const [dictList, config] = await Promise.all([
-        invoke<DictInfo[]>("list_dictionaries"),
-        invoke<DictionaryConfig>("get_dictionary_config"),
+        api.listDictionaries(),
+        api.getDictionaryConfig(),
       ]);
       dictionaries.value = dictList;
       dictConfig.value = config;
@@ -87,9 +85,7 @@ export function useDictionaries(emit: EmitFn) {
     healthLoading.value = true;
     dictHealth.value = null;
     try {
-      dictHealth.value = await invoke<DictHealth>("get_dict_health", {
-        dictName: dict.name,
-      });
+      dictHealth.value = await api.getDictHealth(dict.name);
     } catch (error) {
       ElMessage.error(String(error));
     } finally {
@@ -134,10 +130,10 @@ export function useDictionaries(emit: EmitFn) {
       importOnlineId.value = "";
       importUrl.value = "";
       importUrlSourceName.value = "";
-      importPreview.value = await invoke<DictionaryImportPreview>("preview_dictionary_import", {
-        sourceName: file.name,
-        data: importData.value,
-      });
+      importPreview.value = await api.previewDictionaryImport(
+        file.name,
+        Array.from(importData.value),
+      );
       showImportPreviewDialog.value = true;
     } catch (error) {
       importSourceName.value = "";
@@ -153,8 +149,8 @@ export function useDictionaries(emit: EmitFn) {
     onlineLoading.value = true;
     try {
       const [dicts, categories] = await Promise.all([
-        invoke<OnlineDictionary[]>("list_online_dictionaries"),
-        invoke<OnlineDictionaryCategory[]>("list_online_dictionary_categories"),
+        api.listOnlineDictionaries(),
+        api.listOnlineDictionaryCategories(),
       ]);
       onlineDictionaries.value = dicts;
       onlineCategories.value = categories;
@@ -169,11 +165,8 @@ export function useDictionaries(emit: EmitFn) {
     if (!selectedOnlineCategory.value) return;
     categoryLoading.value = true;
     try {
-      categoryDictionaries.value = await invoke<OnlineDictionary[]>(
-        "list_online_dictionaries_by_category",
-        {
-          categoryId: selectedOnlineCategory.value,
-        },
+      categoryDictionaries.value = await api.listOnlineDictionariesByCategory(
+        selectedOnlineCategory.value,
       );
     } catch (error) {
       ElMessage.error(String(error));
@@ -190,7 +183,7 @@ export function useDictionaries(emit: EmitFn) {
       downloaded_bytes: 0,
     };
     try {
-      const result = await invoke<LmdgInstallResult>("install_lmdg_dicts");
+      const result = await api.installLmdgDicts();
       lmdgResult.value = result;
       await loadAllStats();
       ElMessage.success(result.message);
@@ -210,7 +203,7 @@ export function useDictionaries(emit: EmitFn) {
       downloaded_bytes: 0,
     };
     try {
-      const result = await invoke<LmdgGrammarInstallResult>("install_lmdg_grammar");
+      const result = await api.installLmdgGrammar();
       lmdgGrammarResult.value = result;
       ElMessage.success(result.message);
     } catch (error) {
@@ -223,7 +216,7 @@ export function useDictionaries(emit: EmitFn) {
   async function uninstallLmdgGrammar() {
     lmdgGrammarUninstalling.value = true;
     try {
-      const result = await invoke<LmdgGrammarUninstallResult>("uninstall_lmdg_grammar");
+      const result = await api.uninstallLmdgGrammar();
       lmdgGrammarUninstallResult.value = result;
       lmdgGrammarResult.value = undefined;
       ElMessage.success(result.message);
@@ -243,10 +236,7 @@ export function useDictionaries(emit: EmitFn) {
       importData.value = new Uint8Array(0);
       importUrl.value = dict.detail_url;
       importUrlSourceName.value = dict.source_name;
-      importPreview.value = await invoke<DictionaryImportPreview>("preview_dictionary_url_import", {
-        url: dict.detail_url,
-        sourceName: dict.source_name,
-      });
+      importPreview.value = await api.previewDictionaryUrlImport(dict.detail_url, dict.source_name);
       showImportPreviewDialog.value = true;
     } catch (error) {
       importPreview.value = undefined;
@@ -269,10 +259,10 @@ export function useDictionaries(emit: EmitFn) {
       importSourceName.value = "";
       importOnlineId.value = "";
       importData.value = new Uint8Array(0);
-      importPreview.value = await invoke<DictionaryImportPreview>("preview_dictionary_url_import", {
+      importPreview.value = await api.previewDictionaryUrlImport(
         url,
-        sourceName: importUrlSourceName.value.trim() || undefined,
-      });
+        importUrlSourceName.value.trim() || undefined,
+      );
       showUrlImportDialog.value = false;
       showImportPreviewDialog.value = true;
     } catch (error) {
@@ -290,20 +280,15 @@ export function useDictionaries(emit: EmitFn) {
     try {
       let result: DictionaryImportResult;
       if (importKind.value === "online") {
-        result = await invoke<DictionaryImportResult>("import_online_dictionary", {
-          id: importOnlineId.value,
-        });
+        result = await api.importOnlineDictionary(importOnlineId.value);
       } else if (importKind.value === "url") {
-        result = await invoke<DictionaryImportResult>("import_dictionary_url", {
-          url: importUrl.value.trim(),
-          sourceName: importUrlSourceName.value.trim() || undefined,
-        });
+        result = await api.importDictionaryUrl(
+          importUrl.value.trim(),
+          importUrlSourceName.value.trim() || undefined,
+        );
       } else {
         if (!importSourceName.value || !importData.value.length) return;
-        result = await invoke<DictionaryImportResult>("import_dictionary", {
-          sourceName: importSourceName.value,
-          data: importData.value,
-        });
+        result = await api.importDictionary(importSourceName.value, Array.from(importData.value));
       }
       await loadAllStats();
       ElMessage.success(
@@ -330,9 +315,7 @@ export function useDictionaries(emit: EmitFn) {
   async function exportDictionary(dict: DictInfo) {
     exportingDict.value = dict.name;
     try {
-      const result = await invoke<DictionaryExportResult>("export_dictionary", {
-        dictName: dict.name,
-      });
+      const result = await api.exportDictionary(dict.name);
       const blob = new Blob([result.contents], { type: "text/yaml;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -351,9 +334,7 @@ export function useDictionaries(emit: EmitFn) {
   async function addDictionaryReference(reference: string) {
     updatingReference.value = reference;
     try {
-      dictConfig.value = await invoke<DictionaryConfig>("add_dictionary_to_current_schema", {
-        reference,
-      });
+      dictConfig.value = await api.addDictionaryToCurrentSchema(reference);
       await loadAllStats();
       ElMessage.success("已加入当前方案，重新部署后生效");
     } catch (error) {
@@ -366,9 +347,7 @@ export function useDictionaries(emit: EmitFn) {
   async function removeDictionaryReference(reference: string) {
     updatingReference.value = reference;
     try {
-      dictConfig.value = await invoke<DictionaryConfig>("remove_dictionary_from_current_schema", {
-        reference,
-      });
+      dictConfig.value = await api.removeDictionaryFromCurrentSchema(reference);
       await loadAllStats();
       ElMessage.success("已从当前方案移除引用");
     } catch (error) {
@@ -391,7 +370,7 @@ export function useDictionaries(emit: EmitFn) {
 
     updatingReference.value = reference;
     try {
-      dictConfig.value = await invoke<DictionaryConfig>("save_dictionary_imports", { imports });
+      dictConfig.value = await api.saveDictionaryImports(imports);
       await loadAllStats();
     } catch (error) {
       ElMessage.error(String(error));
@@ -412,7 +391,7 @@ export function useDictionaries(emit: EmitFn) {
     }
     deletingDict.value = dict.name;
     try {
-      await invoke("delete_dictionary", { dictName: dict.name });
+      await api.deleteDictionary(dict.name);
       ElMessage.success("词库已删除");
       await loadAllStats();
     } catch (error) {
@@ -440,11 +419,9 @@ export function useDictionaries(emit: EmitFn) {
 
     cleaningDict.value = dictName;
     try {
-      const result = await invoke<DictionaryCleanResult>("clean_dictionary_duplicates", {
-        dictName,
-      });
+      const result = await api.cleanDictionaryDuplicates(dictName);
       await loadAllStats();
-      dictHealth.value = await invoke<DictHealth>("get_dict_health", { dictName });
+      dictHealth.value = await api.getDictHealth(dictName);
       ElMessage.success(
         result.removed_duplicate_lines
           ? `已移除 ${result.removed_duplicate_lines.toLocaleString()} 条重复词条`

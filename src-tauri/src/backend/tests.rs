@@ -1,10 +1,12 @@
 #[cfg(test)]
 mod tests {
     use crate::backend::*;
+    use crate::*;
     use std::{
         env,
         ffi::OsStr,
         fs,
+        path::PathBuf,
         process::{self},
     };
 
@@ -281,5 +283,129 @@ patch:
 
         assert!(!rules.contains(&"derive/^g/k/"));
         assert!(!rules.contains(&"derive/^k/g/"));
+    }
+
+    fn sample_appearance() -> AppearanceConfig {
+        AppearanceConfig {
+            theme_name: "rime_studio_blue".to_string(),
+            font_point: 12,
+            label_font_point: 10,
+            font_face: "Sarasa Gothic".to_string(),
+            label_font_face: String::new(),
+            page_size: 7,
+            switch_key: "shift".to_string(),
+            horizontal: true,
+            inline_preedit: true,
+            candidate_format: "%c. %@".to_string(),
+            corner_radius: 8,
+            border_height: 4,
+            border_width: 4,
+            line_spacing: 6,
+            spacing: 8,
+            back_color: "0xFFF6F0".to_string(),
+            border_color: "0xF5E0CD".to_string(),
+            text_color: "0x6E4D33".to_string(),
+            candidate_text_color: "0x6E4D33".to_string(),
+            comment_text_color: "0xAE937A".to_string(),
+            hilited_text_color: "0xFFFFFF".to_string(),
+            hilited_back_color: "0xD48E3B".to_string(),
+            hilited_candidate_text_color: "0xFFFFFF".to_string(),
+            hilited_candidate_back_color: "0xD48E3B".to_string(),
+            custom_schemes: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn appearance_merge_keeps_unknown_weasel_keys() {
+        let existing = r#"
+patch:
+  "style/layout": horizontal
+  "style/color_scheme": old_theme
+  "preset_color_schemes/lost_temple/back_color": 0x111111
+"#;
+        let rendered =
+            merge_weasel_custom(existing, &sample_appearance()).expect("merge appearance");
+
+        assert!(rendered.contains("style/layout") || rendered.contains("layout:"));
+        assert!(rendered.contains("lost_temple"));
+        assert!(rendered.contains("Sarasa Gothic"));
+        assert!(rendered.contains("rime_studio_blue"));
+    }
+
+    #[test]
+    fn ice_settings_merge_keeps_unknown_keys() {
+        let existing = r#"
+patch:
+  "translator/enable_user_dict": true
+  "switches/@3/reset": 0
+"#;
+        let settings = RimeIceSettings {
+            emoji: true,
+            traditionalization: false,
+            ascii_punct: false,
+            full_shape: false,
+            search_single_char: false,
+            fuzzy_pinyin: false,
+            traditional_preset: "s2t.json".to_string(),
+        };
+        let rendered =
+            merge_rime_ice_custom(existing, &settings, LmdgPatchAction::Keep).expect("merge ice");
+
+        assert!(rendered.contains("enable_user_dict"));
+        assert!(rendered.contains("s2t.json"));
+    }
+
+    #[test]
+    fn rejects_yaml_filename_traversal() {
+        assert!(validate_yaml_filename("default.custom.yaml").is_ok());
+        assert!(validate_yaml_filename("../default.custom.yaml").is_err());
+        assert!(validate_yaml_filename("sub/default.custom.yaml").is_err());
+        assert!(validate_yaml_filename("default.custom.txt").is_err());
+        assert!(validate_yaml_filename("").is_err());
+    }
+
+    #[test]
+    fn rejects_dictionary_path_traversal() {
+        let dir = env::temp_dir().join(format!(
+            "rime-studio-dict-path-{}-{}",
+            process::id(),
+            timestamp()
+        ));
+        fs::create_dir_all(&dir).expect("create test dir");
+        fs::write(dir.join("ok.dict.yaml"), "x").expect("write dict");
+
+        assert!(validate_dictionary_path(&dir, "ok.dict.yaml").is_ok());
+        assert!(validate_dictionary_path(&dir, "../ok.dict.yaml").is_err());
+        assert!(validate_dictionary_path(&dir, "..\\secret.dict.yaml").is_err());
+        assert!(validate_dictionary_path(&dir, "ok.txt").is_err());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn skips_compiled_and_sync_dictionary_dirs() {
+        let root = PathBuf::from(r"C:\Users\test\AppData\Roaming\Rime");
+        assert!(should_skip_dict_directory(&root.join("build"), &root));
+        assert!(should_skip_dict_directory(&root.join("sync"), &root));
+        assert!(should_skip_dict_directory(
+            &root.join("luna_pinyin.userdb"),
+            &root
+        ));
+        assert!(!should_skip_dict_directory(&root, &root));
+        assert!(!should_skip_dict_directory(&root.join("cn_dicts"), &root));
+    }
+
+    #[test]
+    fn backup_scope_describes_exclusions() {
+        assert!(backup_scope_label("manual").contains("userdb"));
+        assert!(backup_scope_label("before-save").contains("词库"));
+    }
+
+    #[test]
+    fn detects_lmdg_grammar_patch() {
+        assert!(has_lmdg_grammar_patch(
+            "grammar:\n  language: wanxiang-lts-zh-hans\n"
+        ));
+        assert!(!has_lmdg_grammar_patch("patch:\n  emoji: true\n"));
     }
 }

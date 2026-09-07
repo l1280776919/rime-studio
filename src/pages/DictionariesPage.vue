@@ -405,6 +405,10 @@ const {
               {{ env.sogou_health.long_low_weight_entries.toLocaleString() }}
             </strong>
           </div>
+          <div v-if="env.sogou_health.truncated">
+            <span>分析范围</span>
+            <strong class="warn-text">大词库已截断分析</strong>
+          </div>
         </div>
       </el-card>
     </aside>

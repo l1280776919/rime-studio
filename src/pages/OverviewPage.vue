@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { ElMessage } from "element-plus";
-import { invoke } from "@tauri-apps/api/core";
+import { api } from "../api";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   Check,
@@ -102,9 +102,7 @@ async function autoDownloadAndInstall() {
   try {
     // Step 1: Download the installer
     downloadStatus.value = "正在下载小狼毫安装包...";
-    const result = await invoke<{ success: boolean; installer_path?: string; message: string }>(
-      "download_rime_installer",
-    );
+    const result = await api.downloadRimeInstaller();
 
     if (!result.success || !result.installer_path) {
       ElMessage.warning("自动下载失败，将跳转到官网下载");
@@ -114,7 +112,7 @@ async function autoDownloadAndInstall() {
 
     // Step 2: Launch the installer
     downloadStatus.value = "正在启动安装程序...";
-    await invoke("launch_rime_installer", { path: result.installer_path });
+    await api.launchRimeInstaller(result.installer_path);
     ElMessage.success("安装程序已启动，请按提示完成安装");
     downloadStatus.value = "安装程序已启动 — 完成后返回此页面点击刷新";
   } catch (error) {
@@ -131,9 +129,7 @@ async function autoDownloadGitAndInstall() {
 
   try {
     gitDownloadStatus.value = "正在下载 Git for Windows 安装包...";
-    const result = await invoke<{ success: boolean; installer_path?: string; message: string }>(
-      "download_git_installer",
-    );
+    const result = await api.downloadGitInstaller();
 
     if (!result.success || !result.installer_path) {
       ElMessage.warning("自动下载 Git 失败，将跳转到官网下载");
@@ -142,7 +138,7 @@ async function autoDownloadGitAndInstall() {
     }
 
     gitDownloadStatus.value = "正在启动 Git 安装程序...";
-    await invoke("launch_git_installer", { path: result.installer_path });
+    await api.launchGitInstaller(result.installer_path);
     ElMessage.success("Git 安装程序已启动，请按提示完成安装");
     gitDownloadStatus.value = "安装程序已启动 — 完成后返回此页面点击刷新";
   } catch (error) {

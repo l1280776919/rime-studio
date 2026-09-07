@@ -1,5 +1,6 @@
 use crate::backend::*;
 use crate::*;
+use serde_yaml::Value;
 use std::{ffi::OsStr, fs, path::PathBuf};
 
 pub(crate) fn list_schemas_sync() -> Result<Vec<SchemaInfo>, RimeError> {
@@ -205,57 +206,68 @@ pub(crate) fn sanitize_schema_ids(schema_ids: Vec<String>) -> Vec<String> {
         .collect()
 }
 
-pub(crate) fn render_default_custom_with_schema_list(
+pub(crate) fn managed_key_bindings(config: &QuickSettingsConfig) -> Vec<Value> {
+    let mut bindings = Vec::new();
+    let arrow_paging = config.paging_keys == "arrow_keys";
+    let left_right_nav = config.navigation_keys == "left_right";
+
+    if arrow_paging && left_right_nav {
+        bindings.push(binding_value("paging", "Up", "Page_Up"));
+        bindings.push(binding_value("has_menu", "Down", "Page_Down"));
+        bindings.push(binding_value("has_menu", "Left", "Up"));
+        bindings.push(binding_value("has_menu", "Right", "Down"));
+    } else if arrow_paging {
+        bindings.push(binding_value("paging", "Up", "Page_Up"));
+        bindings.push(binding_value("has_menu", "Down", "Page_Down"));
+    } else if left_right_nav {
+        bindings.push(binding_value("has_menu", "Left", "Page_Up"));
+        bindings.push(binding_value("has_menu", "Right", "Page_Down"));
+    } else if config.paging_keys == "minus_equal" {
+        bindings.push(binding_value("paging", "minus", "Page_Up"));
+        bindings.push(binding_value("has_menu", "equal", "Page_Down"));
+    }
+
+    bindings
+}
+
+pub(crate) fn apply_default_custom_patch(
+    patch: &mut serde_yaml::Mapping,
     config: &QuickSettingsConfig,
     schema_ids: &[String],
-) -> String {
+) {
     let switch_value = if config.switch_key == "shift" {
         "commit_code"
     } else {
         "noop"
     };
-    let mut default_contents = vec![
-        "# Managed by Rime Studio. Previous versions are kept in RimeStudio backups.".to_string(),
-        "patch:".to_string(),
-        "  \"schema_list\":".to_string(),
-    ];
 
-    for schema_id in schema_ids {
-        default_contents.push(format!("    - {{schema: {schema_id}}}"));
-    }
+    set_patch_path(patch, "schema_list", schema_list_value(schema_ids));
+    set_patch_path(
+        patch,
+        "menu/page_size",
+        Value::from(i64::from(config.page_size)),
+    );
+    set_patch_path(
+        patch,
+        "ascii_composer/switch_key/Shift_L",
+        yaml_str(switch_value),
+    );
+    set_patch_path(
+        patch,
+        "ascii_composer/switch_key/Shift_R",
+        yaml_str(switch_value),
+    );
+    merge_key_binder_bindings(patch, managed_key_bindings(config));
+}
 
-    default_contents.extend([
-        format!("  \"menu/page_size\": {}", config.page_size),
-        format!("  \"ascii_composer/switch_key/Shift_L\": {switch_value}"),
-        format!("  \"ascii_composer/switch_key/Shift_R\": {switch_value}"),
-    ]);
-
-    let mut bindings: Vec<String> = Vec::new();
-    let arrow_paging = config.paging_keys == "arrow_keys";
-    let left_right_nav = config.navigation_keys == "left_right";
-
-    if arrow_paging && left_right_nav {
-        bindings.push("    - {when: paging, accept: Up, send: Page_Up}".to_string());
-        bindings.push("    - {when: has_menu, accept: Down, send: Page_Down}".to_string());
-        bindings.push("    - {when: has_menu, accept: Left, send: Up}".to_string());
-        bindings.push("    - {when: has_menu, accept: Right, send: Down}".to_string());
-    } else if arrow_paging {
-        bindings.push("    - {when: paging, accept: Up, send: Page_Up}".to_string());
-        bindings.push("    - {when: has_menu, accept: Down, send: Page_Down}".to_string());
-    } else if left_right_nav {
-        bindings.push("    - {when: has_menu, accept: Left, send: Page_Up}".to_string());
-        bindings.push("    - {when: has_menu, accept: Right, send: Page_Down}".to_string());
-    } else if config.paging_keys == "minus_equal" {
-        bindings.push("    - {when: paging, accept: minus, send: Page_Up}".to_string());
-        bindings.push("    - {when: has_menu, accept: equal, send: Page_Down}".to_string());
-    }
-
-    if !bindings.is_empty() {
-        default_contents.push("  \"key_binder/bindings\":".to_string());
-        default_contents.extend(bindings);
-    }
-    default_contents.push(String::new());
-    default_contents.join("\n")
+pub(crate) fn merge_default_custom(
+    existing: &str,
+    config: &QuickSettingsConfig,
+    schema_ids: &[String],
+) -> Result<String, RimeError> {
+    merge_custom_yaml(existing, |patch| {
+        apply_default_custom_patch(patch, config, schema_ids);
+    })
 }
 
 pub(crate) fn save_active_schema_list_sync(
@@ -274,9 +286,11 @@ pub(crate) fn save_active_schema_list_sync(
 
     let mut config = get_quick_settings_sync()?;
     config.schema_id = safe_schema_ids[0].clone();
+    let default_custom_path = user_dir.join("default.custom.yaml");
+    let existing = read_to_string(&default_custom_path);
     write_text_file(
-        &user_dir.join("default.custom.yaml"),
-        &render_default_custom_with_schema_list(&config, &safe_schema_ids),
+        &default_custom_path,
+        &merge_default_custom(&existing, &config, &safe_schema_ids)?,
         "写入 default.custom.yaml 失败",
     )?;
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { invoke } from "@tauri-apps/api/core";
+import { api } from "../api";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { EditorView, basicSetup } from "codemirror";
@@ -127,7 +127,7 @@ const headerTitle = computed(() => {
 });
 
 async function loadFiles() {
-  const result = await withErrorHandling(() => invoke<FileStatus[]>("list_yaml_config_files"));
+  const result = await withErrorHandling(() => api.listYamlConfigFiles());
   if (result !== undefined) {
     files.value = result;
   }
@@ -135,9 +135,7 @@ async function loadFiles() {
 
 async function readFileContent(file: FileStatus) {
   loading.value = true;
-  const content = await withErrorHandling(() =>
-    invoke<string>("read_config_file_content", { filename: file.name }),
-  );
+  const content = await withErrorHandling(() => api.readConfigFileContent(file.name));
   loading.value = false;
 
   if (content === undefined) {
@@ -169,10 +167,7 @@ async function handleSave(): Promise<boolean> {
   let result: boolean | undefined;
   try {
     result = await withErrorHandling(() =>
-      invoke<boolean>("write_config_file_content", {
-        filename: selectedFile.value!.name,
-        content,
-      }),
+      api.writeConfigFileContent(selectedFile.value!.name, content),
     );
   } finally {
     saving.value = false;
@@ -232,7 +227,7 @@ async function handleRefresh() {
 }
 
 async function openRimeUserDir() {
-  await withErrorHandling(() => invoke("open_rime_user_dir"));
+  await withErrorHandling(() => api.openRimeUserDir());
 }
 
 async function confirmDiscard(action: string, confirmButtonText: string): Promise<boolean> {

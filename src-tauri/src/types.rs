@@ -141,11 +141,13 @@ pub(crate) struct FileStatus {
     pub(crate) modified: Option<u64>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub(crate) struct DictHealth {
     pub(crate) entries: usize,
     pub(crate) duplicate_exact_lines: usize,
     pub(crate) long_low_weight_entries: usize,
+    #[serde(default)]
+    pub(crate) truncated: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -167,10 +169,16 @@ pub(crate) struct RimeEnvironment {
     pub(crate) sogou_health: Option<DictHealth>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub(crate) struct DeployResult {
     pub(crate) success: bool,
     pub(crate) message: String,
+    #[serde(default)]
+    pub(crate) log: String,
+    #[serde(default)]
+    pub(crate) hints: Vec<String>,
+    #[serde(default)]
+    pub(crate) duration_ms: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -188,6 +196,7 @@ pub(crate) struct BackupEntry {
     pub(crate) kind: String,
     pub(crate) modified: Option<u64>,
     pub(crate) files: usize,
+    pub(crate) scope: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -254,11 +263,30 @@ pub(crate) struct DictionaryCleanResult {
     pub(crate) backup_dir: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub(crate) struct ColorScheme {
+    pub(crate) name: String,
+    pub(crate) label: String,
+    pub(crate) back_color: String,
+    pub(crate) border_color: String,
+    pub(crate) text_color: String,
+    pub(crate) candidate_text_color: String,
+    pub(crate) comment_text_color: String,
+    pub(crate) hilited_text_color: String,
+    pub(crate) hilited_back_color: String,
+    pub(crate) hilited_candidate_text_color: String,
+    pub(crate) hilited_candidate_back_color: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub(crate) struct AppearanceConfig {
     pub(crate) theme_name: String,
     pub(crate) font_point: u32,
     pub(crate) label_font_point: u32,
+    #[serde(default)]
+    pub(crate) font_face: String,
+    #[serde(default)]
+    pub(crate) label_font_face: String,
     pub(crate) page_size: u32,
     pub(crate) switch_key: String,
     pub(crate) horizontal: bool,
@@ -278,6 +306,8 @@ pub(crate) struct AppearanceConfig {
     pub(crate) hilited_back_color: String,
     pub(crate) hilited_candidate_text_color: String,
     pub(crate) hilited_candidate_back_color: String,
+    #[serde(default)]
+    pub(crate) custom_schemes: Vec<ColorScheme>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -317,7 +347,7 @@ pub(crate) struct ConfigPreview {
     pub(crate) files: Vec<ConfigPreviewFile>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub(crate) struct RimeIceSettings {
     pub(crate) emoji: bool,
     pub(crate) traditionalization: bool,

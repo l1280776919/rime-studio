@@ -10,6 +10,7 @@ export type DictHealth = {
   entries: number;
   duplicate_exact_lines: number;
   long_low_weight_entries: number;
+  truncated?: boolean;
 };
 
 export type RimeEnvironment = {
@@ -33,6 +34,9 @@ export type RimeEnvironment = {
 export type DeployResult = {
   success: boolean;
   message: string;
+  log?: string;
+  hints?: string[];
+  duration_ms?: number;
 };
 
 export type InstallResult = {
@@ -48,6 +52,7 @@ export type BackupEntry = {
   kind: "manual" | "before-save" | "before-restore" | "before-install" | string;
   modified?: number;
   files: number;
+  scope?: string;
 };
 
 export type RestoreResult = {
@@ -55,10 +60,26 @@ export type RestoreResult = {
   safety_backup_dir: string;
 };
 
+export type ColorScheme = {
+  name: string;
+  label: string;
+  back_color: string;
+  border_color: string;
+  text_color: string;
+  candidate_text_color: string;
+  comment_text_color: string;
+  hilited_text_color: string;
+  hilited_back_color: string;
+  hilited_candidate_text_color: string;
+  hilited_candidate_back_color: string;
+};
+
 export type AppearanceConfig = {
   theme_name: string;
   font_point: number;
   label_font_point: number;
+  font_face?: string;
+  label_font_face?: string;
   page_size: number;
   switch_key: string;
   horizontal: boolean;
@@ -78,6 +99,7 @@ export type AppearanceConfig = {
   hilited_back_color: string;
   hilited_candidate_text_color: string;
   hilited_candidate_back_color: string;
+  custom_schemes?: ColorScheme[];
 };
 
 export type QuickSettingsConfig = {
@@ -272,4 +294,10 @@ export type CommunitySchema = {
   author: string;
   tags: string[];
   installed: boolean;
+};
+
+export type RimeDownloadResult = {
+  success: boolean;
+  installer_path?: string;
+  message: string;
 };

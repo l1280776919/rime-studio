@@ -2,7 +2,7 @@ use crate::backend::*;
 use crate::*;
 use std::fs;
 
-fn validate_yaml_filename(filename: &str) -> Result<(), RimeError> {
+pub(crate) fn validate_yaml_filename(filename: &str) -> Result<(), RimeError> {
     let has_invalid_path = filename.is_empty()
         || filename.contains('/')
         || filename.contains('\\')

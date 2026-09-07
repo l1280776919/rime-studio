@@ -250,9 +250,10 @@ where
     )?;
 
     let settings = get_rime_ice_settings_sync()?;
+    let existing = read_to_string(&patch_path);
     write_text_file(
         &patch_path,
-        &render_rime_ice_custom(&settings, true, settings.fuzzy_pinyin),
+        &merge_rime_ice_custom(&existing, &settings, LmdgPatchAction::Enable)?,
         "写入 rime_ice.custom.yaml 失败",
     )?;
 
@@ -284,9 +285,10 @@ pub(crate) fn uninstall_lmdg_grammar_sync() -> Result<LmdgGrammarUninstallResult
     };
 
     let settings = get_rime_ice_settings_sync()?;
+    let existing = read_to_string(&patch_path);
     write_text_file(
         &patch_path,
-        &render_rime_ice_custom(&settings, false, settings.fuzzy_pinyin),
+        &merge_rime_ice_custom(&existing, &settings, LmdgPatchAction::Disable)?,
         "写入 rime_ice.custom.yaml 失败",
     )?;
 

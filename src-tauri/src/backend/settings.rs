@@ -1,5 +1,6 @@
 use crate::backend::*;
 use crate::*;
+use serde_yaml::Value;
 use std::{
     ffi::OsStr,
     fs,
@@ -106,20 +107,24 @@ pub(crate) fn preview_quick_settings_sync(
     appearance.horizontal = config.horizontal;
     appearance.inline_preedit = config.inline_preedit;
 
+    let default_existing = read_to_string(&user_dir.join("default.custom.yaml"));
+    let weasel_existing = read_to_string(&user_dir.join("weasel.custom.yaml"));
+
     Ok(ConfigPreview {
         files: vec![
             preview_file(
                 &user_dir,
                 "default.custom.yaml",
-                render_default_custom_with_schema_list(
+                merge_default_custom(
+                    &default_existing,
                     &config,
                     &[sanitize_schema_id(&config.schema_id)],
-                ),
+                )?,
             ),
             preview_file(
                 &user_dir,
                 "weasel.custom.yaml",
-                render_weasel_custom(&appearance),
+                merge_weasel_custom(&weasel_existing, &appearance)?,
             ),
         ],
     })
@@ -134,9 +139,14 @@ pub(crate) fn save_quick_settings_sync(
     backup_user_config(&user_dir, BackupKind::BeforeSave)?;
 
     let default_custom_path = user_dir.join("default.custom.yaml");
+    let existing_default = read_to_string(&default_custom_path);
     write_text_file(
         &default_custom_path,
-        &render_default_custom_with_schema_list(&config, &[sanitize_schema_id(&config.schema_id)]),
+        &merge_default_custom(
+            &existing_default,
+            &config,
+            &[sanitize_schema_id(&config.schema_id)],
+        )?,
         "写入 default.custom.yaml 失败",
     )?;
 
@@ -316,6 +326,14 @@ pub(crate) fn inspect_config_health_sync() -> Result<ConfigHealthReport, RimeErr
     }
 
     if rime_ice_custom_path.exists() {
+        if has_lmdg_grammar_patch(&rime_ice_custom) {
+            push_check(
+                &mut checks,
+                "万象语法模型",
+                "ok",
+                "已检测到 LMDG 语法模型 patch".to_string(),
+            );
+        }
         if !rime_ice_custom.lines().any(|line| line.trim() == "patch:") {
             push_check(
                 &mut checks,
@@ -588,59 +606,100 @@ pub(crate) fn fuzzy_pinyin_algebra_rules() -> Vec<&'static str> {
     ]
 }
 
-pub(crate) fn render_rime_ice_custom(
+#[derive(Clone, Copy)]
+pub(crate) enum LmdgPatchAction {
+    Keep,
+    Enable,
+    Disable,
+}
+
+fn apply_lmdg_grammar_patch(patch: &mut serde_yaml::Mapping, enable: bool) {
+    if enable {
+        let mut grammar = serde_yaml::Mapping::new();
+        grammar.insert(yaml_str("language"), yaml_str("wanxiang-lts-zh-hans"));
+        grammar.insert(yaml_str("collocation_max_length"), Value::from(5));
+        grammar.insert(yaml_str("collocation_min_length"), Value::from(2));
+        set_patch_path(patch, "grammar", Value::Mapping(grammar));
+        set_patch_path(
+            patch,
+            "translator/contextual_suggestions",
+            Value::from(true),
+        );
+        set_patch_path(patch, "translator/max_homophones", Value::from(7));
+        set_patch_path(patch, "translator/max_homographs", Value::from(7));
+        return;
+    }
+
+    remove_patch_path(patch, "grammar");
+    remove_patch_path(patch, "translator/contextual_suggestions");
+    remove_patch_path(patch, "translator/max_homophones");
+    remove_patch_path(patch, "translator/max_homographs");
+}
+
+fn patch_has_our_fuzzy_rules(patch: &serde_yaml::Mapping) -> bool {
+    match get_patch_path(patch, "speller/algebra/+") {
+        Some(Value::Sequence(items)) => items
+            .iter()
+            .any(|item| matches!(item, Value::String(value) if value.contains("derive/ang$/an/"))),
+        _ => false,
+    }
+}
+
+pub(crate) fn apply_rime_ice_patch(
+    patch: &mut serde_yaml::Mapping,
     settings: &RimeIceSettings,
-    enable_lmdg_grammar: bool,
-    enable_fuzzy_pinyin: bool,
-) -> String {
-    let bool_to_reset = |value: bool| if value { 1 } else { 0 };
-    let mut lines = vec![
-        "# Managed by Rime Studio. Previous versions are kept in RimeStudio backups.".to_string(),
-        "patch:".to_string(),
-        format!(
-            "  \"switches/@1/reset\": {}",
-            bool_to_reset(settings.ascii_punct)
-        ),
-        format!(
-            "  \"switches/@2/reset\": {}",
-            bool_to_reset(settings.traditionalization)
-        ),
-        format!("  \"switches/@3/reset\": {}", bool_to_reset(settings.emoji)),
-        format!(
-            "  \"switches/@4/reset\": {}",
-            bool_to_reset(settings.full_shape)
-        ),
-        format!(
-            "  \"switches/@5/reset\": {}",
-            bool_to_reset(settings.search_single_char)
-        ),
-        format!(
-            "  \"traditionalize/opencc_config\": \"{}\"",
-            settings.traditional_preset
-        ),
-    ];
+    lmdg: LmdgPatchAction,
+) {
+    let reset = |value: bool| Value::from(if value { 1 } else { 0 });
+    set_patch_path(patch, "switches/@1/reset", reset(settings.ascii_punct));
+    set_patch_path(
+        patch,
+        "switches/@2/reset",
+        reset(settings.traditionalization),
+    );
+    set_patch_path(patch, "switches/@3/reset", reset(settings.emoji));
+    set_patch_path(patch, "switches/@4/reset", reset(settings.full_shape));
+    set_patch_path(
+        patch,
+        "switches/@5/reset",
+        reset(settings.search_single_char),
+    );
+    set_patch_path(
+        patch,
+        "traditionalize/opencc_config",
+        yaml_str(&settings.traditional_preset),
+    );
 
-    if enable_lmdg_grammar {
-        lines.extend([
-            "  grammar:".to_string(),
-            "    language: wanxiang-lts-zh-hans".to_string(),
-            "    collocation_max_length: 5".to_string(),
-            "    collocation_min_length: 2".to_string(),
-            "  translator/contextual_suggestions: true".to_string(),
-            "  translator/max_homophones: 7".to_string(),
-            "  translator/max_homographs: 7".to_string(),
-        ]);
+    if settings.fuzzy_pinyin {
+        set_patch_path(
+            patch,
+            "speller/algebra/+",
+            Value::Sequence(
+                fuzzy_pinyin_algebra_rules()
+                    .into_iter()
+                    .map(yaml_str)
+                    .collect(),
+            ),
+        );
+    } else if patch_has_our_fuzzy_rules(patch) {
+        remove_patch_path(patch, "speller/algebra/+");
     }
 
-    if enable_fuzzy_pinyin {
-        lines.push("  \"speller/algebra/+\":".to_string());
-        for rule in fuzzy_pinyin_algebra_rules() {
-            lines.push(format!("    - {rule}"));
-        }
+    match lmdg {
+        LmdgPatchAction::Keep => {}
+        LmdgPatchAction::Enable => apply_lmdg_grammar_patch(patch, true),
+        LmdgPatchAction::Disable => apply_lmdg_grammar_patch(patch, false),
     }
+}
 
-    lines.push(String::new());
-    lines.join("\n")
+pub(crate) fn merge_rime_ice_custom(
+    existing: &str,
+    settings: &RimeIceSettings,
+    lmdg: LmdgPatchAction,
+) -> Result<String, RimeError> {
+    merge_custom_yaml(existing, |patch| {
+        apply_rime_ice_patch(patch, settings, lmdg);
+    })
 }
 
 pub(crate) fn save_rime_ice_settings_sync(
@@ -651,14 +710,41 @@ pub(crate) fn save_rime_ice_settings_sync(
         .map_err(|err| RimeError::SettingsError(format!("创建 Rime 目录失败: {err}")))?;
     let custom_path = user_dir.join("rime_ice.custom.yaml");
     let custom = read_to_string(&custom_path);
-    let keep_lmdg_grammar = has_lmdg_grammar_patch(&custom);
     backup_user_config(&user_dir, BackupKind::BeforeSave)?;
     write_text_file(
         &custom_path,
-        &render_rime_ice_custom(&settings, keep_lmdg_grammar, settings.fuzzy_pinyin),
+        &merge_rime_ice_custom(&custom, &settings, LmdgPatchAction::Keep)?,
         "写入 rime_ice.custom.yaml 失败",
     )?;
     Ok(settings)
+}
+
+pub(crate) fn preview_appearance_config_sync(
+    config: AppearanceConfig,
+) -> Result<ConfigPreview, RimeError> {
+    let user_dir = rime_user_dir()?;
+    let existing = read_to_string(&user_dir.join("weasel.custom.yaml"));
+    Ok(ConfigPreview {
+        files: vec![preview_file(
+            &user_dir,
+            "weasel.custom.yaml",
+            merge_weasel_custom(&existing, &config)?,
+        )],
+    })
+}
+
+pub(crate) fn preview_rime_ice_settings_sync(
+    settings: RimeIceSettings,
+) -> Result<ConfigPreview, RimeError> {
+    let user_dir = rime_user_dir()?;
+    let existing = read_to_string(&user_dir.join("rime_ice.custom.yaml"));
+    Ok(ConfigPreview {
+        files: vec![preview_file(
+            &user_dir,
+            "rime_ice.custom.yaml",
+            merge_rime_ice_custom(&existing, &settings, LmdgPatchAction::Keep)?,
+        )],
+    })
 }
 
 pub(crate) fn save_appearance_config_sync(

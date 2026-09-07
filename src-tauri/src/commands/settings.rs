@@ -50,3 +50,10 @@ pub(crate) async fn save_rime_ice_settings(
 ) -> Result<RimeIceSettings, RimeError> {
     run_blocking(move || save_rime_ice_settings_sync(settings)).await
 }
+
+#[tauri::command]
+pub(crate) async fn preview_rime_ice_settings(
+    settings: RimeIceSettings,
+) -> Result<ConfigPreview, RimeError> {
+    run_blocking(move || preview_rime_ice_settings_sync(settings)).await
+}

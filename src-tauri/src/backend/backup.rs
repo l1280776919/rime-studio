@@ -19,37 +19,6 @@ pub(crate) fn is_dictionary_entry_line(trimmed: &str) -> bool {
         && trimmed.contains('\t')
 }
 
-pub(crate) fn analyze_sogou(path: &Path) -> Option<DictHealth> {
-    let contents = fs::read_to_string(path).ok()?;
-    let mut entries = 0usize;
-    let mut duplicate_exact_lines = 0usize;
-    let mut long_low_weight_entries = 0usize;
-    let mut seen = std::collections::HashSet::new();
-
-    for line in contents.lines() {
-        let trimmed = line.trim();
-        if !is_dictionary_entry_line(trimmed) {
-            continue;
-        }
-
-        entries += 1;
-        if !seen.insert(trimmed.to_string()) {
-            duplicate_exact_lines += 1;
-        }
-
-        let parts: Vec<&str> = trimmed.split('\t').collect();
-        if parts.len() >= 3 && parts[0].chars().count() > 12 && parts.last() == Some(&"1") {
-            long_low_weight_entries += 1;
-        }
-    }
-
-    Some(DictHealth {
-        entries,
-        duplicate_exact_lines,
-        long_low_weight_entries,
-    })
-}
-
 pub(crate) fn timestamp() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -229,6 +198,23 @@ pub(crate) fn is_managed_config_file(name: &str) -> bool {
         || name == "weasel.yaml"
 }
 
+pub(crate) fn is_manual_backup_file(name: &str) -> bool {
+    is_managed_config_file(name)
+        || name.ends_with(".schema.yaml")
+        || name.ends_with(".lua")
+        || name == "installation.yaml"
+        || name == "user.yaml"
+}
+
+pub(crate) fn backup_scope_label(kind: &str) -> String {
+    if kind == "manual" {
+        "配置快照：*.custom.yaml、词库、短语、方案、Lua、installation.yaml。不含 build/、sync/、*.userdb。"
+            .to_string()
+    } else {
+        "配置快照：*.custom.yaml、词库、短语。不含方案源文件、Lua、用户词库和 build/。".to_string()
+    }
+}
+
 pub(crate) fn backup_user_config(user_dir: &Path, kind: BackupKind) -> Result<PathBuf, RimeError> {
     let backup_root = app_data_dir()?;
     fs::create_dir_all(&backup_root)
@@ -249,7 +235,12 @@ pub(crate) fn backup_user_config(user_dir: &Path, kind: BackupKind) -> Result<Pa
             continue;
         };
 
-        if is_managed_config_file(name) {
+        let include = if matches!(kind, BackupKind::Manual) {
+            is_manual_backup_file(name)
+        } else {
+            is_managed_config_file(name)
+        };
+        if include {
             copy_if_exists(&path, &backup_dir.join(name))
                 .map_err(|err| RimeError::BackupError(format!("备份 {name} 失败: {err}")))?;
         }
@@ -301,12 +292,14 @@ pub(crate) fn list_backup_dirs(_user_dir: &Path) -> Result<Vec<BackupEntry>, Rim
             })
             .unwrap_or(0);
 
+        let kind = backup_kind_from_name(name);
         backups.push(BackupEntry {
             name: name.to_string(),
             path: path.display().to_string(),
-            kind: backup_kind_from_name(name),
+            kind: kind.clone(),
             modified,
             files,
+            scope: backup_scope_label(&kind),
         });
     }
 

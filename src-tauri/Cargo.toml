@@ -1,6 +1,6 @@
 [package]
 name = "rime-studio"
-version = "0.6.0"
+version = "0.6.1"
 description = "A desktop configuration manager for Rime and rime-ice"
 authors = ["Rime Studio"]
 edition = "2021"
@@ -36,5 +36,6 @@ serde_yaml = "0.9"
 thiserror = "1"
 winreg = "0.52"
 log = "0.4"
+tauri-plugin-log = "2"
 similar = { version = "2.7", features = ["text"] }
 zip = { version = "2.2", default-features = false, features = ["deflate"] }

@@ -1,16 +1,13 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { storeToRefs } from "pinia";
 import zhCn from "element-plus/es/locale/lang/zh-cn";
 import { ElMessageBox } from "element-plus";
-import { useErrorHandler } from "./composables/useErrorHandler";
-import { invoke } from "@tauri-apps/api/core";
 import AppSidebar from "./components/layout/AppSidebar.vue";
 import AppTopbar from "./components/layout/AppTopbar.vue";
 import AppStatusbar from "./components/layout/AppStatusbar.vue";
-import type { BackupEntry, RimeEnvironment } from "./types";
 import { useTheme } from "./composables/useTheme";
-import { useBackup } from "./composables/useBackup";
-import { useDeploy } from "./composables/useDeploy";
+import { useStudioStore } from "./stores/studio";
 
 // ── Lazy page components ──────────────────────────
 const AboutPage = defineAsyncComponent(() => import("./pages/AboutPage.vue"));
@@ -23,21 +20,21 @@ const PhrasesPage = defineAsyncComponent(() => import("./pages/PhrasesPage.vue")
 const QuickSettingsPage = defineAsyncComponent(() => import("./pages/QuickSettingsPage.vue"));
 const SchemasPage = defineAsyncComponent(() => import("./pages/SchemasPage.vue"));
 
-// ── Composables ────────────────────────────────────
 const { initTheme } = useTheme();
+const studio = useStudioStore();
 const {
+  env,
+  scanning,
+  status,
+  deploying,
+  installingRecipe,
+  log,
   backups,
   backingUp,
   restoringBackup,
   deletingBackup,
-  loadBackups,
-  createManualBackup,
-  openBackupDir,
-  restoreBackup,
-  deleteBackupEntry,
-} = useBackup();
-const { deploying, installingRecipe, log, deploy, installRimeIce } = useDeploy();
-const { withErrorHandling } = useErrorHandler();
+  hasDeployer,
+} = storeToRefs(studio);
 
 // ── Navigation ─────────────────────────────────────
 type PageKey =
@@ -91,13 +88,8 @@ async function navigateTo(key: string) {
 
 const activePage = ref<PageKey>("overview");
 const editorDirty = ref(false);
-const env = ref<RimeEnvironment>();
-const scanning = ref(false);
-const status = ref("启动中...");
 const elapsedSeconds = ref(0);
 let elapsedTimer: ReturnType<typeof setInterval> | undefined;
-
-const hasDeployer = computed(() => Boolean(env.value?.deployer_path));
 
 const pageTitle = computed(() => {
   const titles: Record<PageKey, string> = {
@@ -131,79 +123,13 @@ const pageDescription = computed(() => {
   return descriptions[activePage.value];
 });
 
-// ── Environment ────────────────────────────────────
-async function loadEnvironment() {
-  scanning.value = true;
-  status.value = "正在扫描 Rime 配置...";
-
-  const result = await withErrorHandling(async () => {
-    env.value = await invoke<RimeEnvironment>("scan_rime_environment");
-    await loadBackups();
-    return true;
-  });
-
-  if (result !== undefined) {
-    status.value = "扫描完成";
-  }
-
-  scanning.value = false;
-}
-
 let envRefreshTimer: ReturnType<typeof setTimeout> | undefined;
 
 function refreshEnvironment() {
   if (envRefreshTimer) clearTimeout(envRefreshTimer);
   envRefreshTimer = setTimeout(() => {
-    loadEnvironment();
+    void studio.loadEnvironment();
   }, 300);
-}
-
-async function openKnownPath(command: "open_rime_user_dir" | "open_plum_dir") {
-  await withErrorHandling(() => invoke(command));
-}
-
-// ── Wrapper handlers (status updates) ──────────────
-async function handleDeploy() {
-  status.value = "正在重新部署小狼毫...";
-  try {
-    await deploy();
-    await loadEnvironment();
-    status.value = "部署完成";
-  } catch (error) {
-    status.value = String(error);
-  }
-}
-
-async function handleInstallRimeIce(recipe: string) {
-  status.value = `正在安装 ${recipe}...`;
-  try {
-    await installRimeIce(recipe);
-    await loadEnvironment();
-    status.value = `${recipe} 安装完成`;
-  } catch (error) {
-    status.value = String(error);
-  }
-}
-
-async function handleCreateBackup() {
-  status.value = "正在创建配置备份...";
-  try {
-    const backup = await createManualBackup();
-    if (backup) status.value = `已创建备份：${backup.name}`;
-  } catch (error) {
-    status.value = String(error);
-  }
-}
-
-async function handleRestoreBackup(backup: BackupEntry) {
-  status.value = `正在恢复备份：${backup.name}`;
-  try {
-    await restoreBackup(backup);
-    await loadEnvironment();
-    status.value = "备份已恢复";
-  } catch (error) {
-    status.value = String(error);
-  }
 }
 
 // ── Busy / Elapsed timer ──────────────────────────
@@ -245,7 +171,7 @@ watch(isBusy, (busy) => {
 // ── Lifecycle ──────────────────────────────────────
 onMounted(() => {
   initTheme();
-  loadEnvironment();
+  void studio.loadEnvironment();
 });
 
 onBeforeUnmount(() => {
@@ -265,8 +191,8 @@ onBeforeUnmount(() => {
           :scanning="scanning"
           :has-deployer="hasDeployer"
           :deploying="deploying"
-          @refresh="loadEnvironment"
-          @deploy="handleDeploy"
+          @refresh="studio.loadEnvironment"
+          @deploy="studio.deploy"
         />
 
         <div class="page-container">
@@ -283,12 +209,12 @@ onBeforeUnmount(() => {
                 :restoring-backup="restoringBackup"
                 :installing-recipe="installingRecipe"
                 :deleting-backup="deletingBackup"
-                @create-backup="handleCreateBackup"
-                @open-path="openKnownPath"
-                @install="handleInstallRimeIce"
-                @open-backup="openBackupDir"
-                @restore-backup="handleRestoreBackup"
-                @delete-backup="deleteBackupEntry"
+                @create-backup="studio.createManualBackup"
+                @open-path="studio.openKnownPath"
+                @install="studio.installRimeIce"
+                @open-backup="studio.openBackupDir"
+                @restore-backup="studio.restoreBackup"
+                @delete-backup="studio.deleteBackupEntry"
               />
 
               <QuickSettingsPage
@@ -297,8 +223,8 @@ onBeforeUnmount(() => {
                 :env="env"
                 :installing-recipe="installingRecipe"
                 @saved="refreshEnvironment"
-                @deploy="handleDeploy"
-                @install="handleInstallRimeIce"
+                @deploy="studio.deploy"
+                @install="studio.installRimeIce"
               />
 
               <SchemasPage
@@ -306,8 +232,8 @@ onBeforeUnmount(() => {
                 key="schemas"
                 :env="env"
                 @saved="refreshEnvironment"
-                @deploy="handleDeploy"
-                @install="handleInstallRimeIce"
+                @deploy="studio.deploy"
+                @install="studio.installRimeIce"
               />
 
               <AppearancePage
@@ -315,7 +241,7 @@ onBeforeUnmount(() => {
                 key="appearance"
                 :env="env"
                 @saved="refreshEnvironment"
-                @deploy="handleDeploy"
+                @deploy="studio.deploy"
               />
 
               <PhrasesPage
@@ -323,15 +249,15 @@ onBeforeUnmount(() => {
                 key="phrases"
                 :env="env"
                 @saved="refreshEnvironment"
-                @deploy="handleDeploy"
+                @deploy="studio.deploy"
               />
 
               <DictionariesPage
                 v-else-if="activePage === 'dictionaries'"
                 key="dictionaries"
                 :env="env"
-                @open-path="openKnownPath"
-                @deploy="handleDeploy"
+                @open-path="studio.openKnownPath"
+                @deploy="studio.deploy"
               />
 
               <BackupsPage
@@ -341,10 +267,10 @@ onBeforeUnmount(() => {
                 :backing-up="backingUp"
                 :restoring-backup="restoringBackup"
                 :deleting-backup="deletingBackup"
-                @create-backup="handleCreateBackup"
-                @open-backup="openBackupDir"
-                @restore-backup="handleRestoreBackup"
-                @delete-backup="deleteBackupEntry"
+                @create-backup="studio.createManualBackup"
+                @open-backup="studio.openBackupDir"
+                @restore-backup="studio.restoreBackup"
+                @delete-backup="studio.deleteBackupEntry"
               />
 
               <ConfigEditorPage
@@ -352,7 +278,7 @@ onBeforeUnmount(() => {
                 key="editor"
                 :env="env"
                 @saved="refreshEnvironment"
-                @deploy="handleDeploy"
+                @deploy="studio.deploy"
                 @dirty-change="editorDirty = $event"
               />
 

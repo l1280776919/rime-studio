@@ -1,7 +1,6 @@
 import { ref } from "vue";
 import { ElMessage } from "element-plus";
-import { invoke } from "@tauri-apps/api/core";
-import type { DeployResult, InstallResult } from "../types";
+import { api } from "../api";
 
 export function useDeploy() {
   const deploying = ref(false);
@@ -12,7 +11,7 @@ export function useDeploy() {
     deploying.value = true;
 
     try {
-      const result = await invoke<DeployResult>("deploy_rime");
+      const result = await api.deploy();
       ElMessage({
         type: result.success ? "success" : "warning",
         message: result.message,
@@ -31,7 +30,7 @@ export function useDeploy() {
     log.value = "正在准备安装器...";
 
     try {
-      const result = await invoke<InstallResult>("install_rime_ice", { recipe });
+      const result = await api.installRimeIce(recipe);
       log.value = result.log;
       ElMessage({
         type: result.success ? "success" : "error",

@@ -10,11 +10,19 @@ pub(crate) use commands::*;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Info)
+                .build(),
+        )
         .invoke_handler(tauri::generate_handler![
             scan_rime_environment,
+            scan_dictionary_health,
             deploy_rime,
             install_rime_ice,
             get_appearance_config,
+            preview_appearance_config,
+            list_system_fonts,
             get_quick_settings,
             save_quick_settings,
             preview_quick_settings,
@@ -23,6 +31,7 @@ pub fn run() {
             repair_config_health_item,
             get_rime_ice_settings,
             save_rime_ice_settings,
+            preview_rime_ice_settings,
             save_appearance_config,
             list_backups,
             create_backup,
@@ -30,6 +39,7 @@ pub fn run() {
             open_config_file,
             open_plum_dir,
             open_backup_dir,
+            open_app_log_dir,
             restore_backup,
             delete_backup,
             delete_dictionary,

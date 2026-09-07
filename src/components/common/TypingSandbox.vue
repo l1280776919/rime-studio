@@ -42,6 +42,7 @@ const styleConfig = computed(() => {
   return {
     horizontal: cfg?.horizontal ?? true,
     fontSize: `${cfg?.font_point ?? 12}pt`,
+    fontFamily: cfg?.font_face || "var(--font-sans)",
     labelFontSize: `${cfg?.label_font_point ?? 10}pt`,
     pageSize: cfg?.page_size ?? 5,
     backColor: hexColor(cfg?.back_color, "#FFFFFF"),
@@ -345,6 +346,7 @@ defineExpose({
                 borderRadius: styleConfig.cornerRadius,
                 borderWidth: styleConfig.borderWidth,
                 padding: styleConfig.padding,
+                fontFamily: styleConfig.fontFamily,
               }"
             >
               <!-- Preedit string -->

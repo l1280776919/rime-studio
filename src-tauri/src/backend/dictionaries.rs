@@ -76,6 +76,10 @@ pub(crate) fn list_dictionaries_sync() -> Result<Vec<DictInfo>, RimeError> {
     let mut pending_dirs = vec![user_dir.clone()];
 
     while let Some(dir) = pending_dirs.pop() {
+        if should_skip_dict_directory(&dir, &user_dir) {
+            continue;
+        }
+
         let entries = fs::read_dir(&dir)
             .map_err(|err| RimeError::FileOperationError(format!("读取 Rime 目录失败: {err}")))?;
 
@@ -127,6 +131,73 @@ pub(crate) fn list_dictionaries_sync() -> Result<Vec<DictInfo>, RimeError> {
 
     dicts.sort_by(|a, b| b.name.cmp(&a.name));
     Ok(dicts)
+}
+
+pub(crate) fn should_skip_dict_directory(dir: &Path, user_dir: &Path) -> bool {
+    if dir == user_dir {
+        return false;
+    }
+    let Some(name) = dir.file_name().and_then(OsStr::to_str) else {
+        return false;
+    };
+    name.eq_ignore_ascii_case("build")
+        || name.eq_ignore_ascii_case("sync")
+        || name.eq_ignore_ascii_case("trash")
+        || name.eq_ignore_ascii_case("opencc")
+        || name.starts_with("backup-")
+        || name.ends_with(".userdb")
+        || name == ".git"
+}
+
+pub(crate) const MAX_DICT_HEALTH_BYTES: u64 = 20 * 1024 * 1024;
+
+pub(crate) fn analyze_dict_health(path: &Path) -> Option<DictHealth> {
+    let metadata = fs::metadata(path).ok()?;
+    let truncated = metadata.len() > MAX_DICT_HEALTH_BYTES;
+    let file = fs::File::open(path).ok()?;
+    let reader = BufReader::new(file);
+    let mut entries = 0usize;
+    let mut duplicate_exact_lines = 0usize;
+    let mut long_low_weight_entries = 0usize;
+    let mut seen = std::collections::HashSet::new();
+    let mut past_header = false;
+    let mut bytes_seen = 0u64;
+
+    for line in reader.lines().map_while(Result::ok) {
+        bytes_seen = bytes_seen.saturating_add((line.len() + 1) as u64);
+        if truncated && bytes_seen > MAX_DICT_HEALTH_BYTES {
+            break;
+        }
+
+        let trimmed = line.trim();
+        if trimmed == "..." {
+            past_header = true;
+            continue;
+        }
+        if !past_header && (trimmed.starts_with("name:") || trimmed.starts_with("---")) {
+            continue;
+        }
+        if !is_dictionary_entry_line(trimmed) {
+            continue;
+        }
+
+        entries += 1;
+        if !seen.insert(trimmed.to_string()) {
+            duplicate_exact_lines += 1;
+        }
+
+        let parts: Vec<&str> = trimmed.split('\t').collect();
+        if parts.len() >= 3 && parts[0].chars().count() > 12 && parts.last() == Some(&"1") {
+            long_low_weight_entries += 1;
+        }
+    }
+
+    Some(DictHealth {
+        entries,
+        duplicate_exact_lines,
+        long_low_weight_entries,
+        truncated,
+    })
 }
 
 pub(crate) fn validate_dictionary_path(
@@ -430,7 +501,8 @@ pub(crate) fn get_dict_health_sync(dict_name: String) -> Result<DictHealth, Rime
     let user_dir = rime_user_dir()?;
     let path = validate_dictionary_path(&user_dir, &dict_name)?;
 
-    analyze_sogou(&path).ok_or_else(|| RimeError::DictionaryNotFound("词库分析失败".to_string()))
+    analyze_dict_health(&path)
+        .ok_or_else(|| RimeError::DictionaryNotFound("词库分析失败".to_string()))
 }
 
 pub(crate) fn remove_duplicate_dictionary_lines(contents: &str) -> (String, usize) {
@@ -471,7 +543,7 @@ pub(crate) fn clean_dictionary_duplicates_sync(
         None
     };
 
-    let entries_after = analyze_sogou(&path)
+    let entries_after = analyze_dict_health(&path)
         .map(|health| health.entries)
         .unwrap_or_default();
 

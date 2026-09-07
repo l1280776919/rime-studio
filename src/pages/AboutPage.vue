@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { ElMessage } from "element-plus";
-import { invoke } from "@tauri-apps/api/core";
+import { api } from "../api";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   Check,
   Collection,
   Connection,
+  FolderOpened,
   Link,
   Refresh,
   UploadFilled,
@@ -79,7 +80,7 @@ async function checkUpdate() {
   checkingUpdate.value = true;
   updateCheckFailed.value = false;
   try {
-    const result = await withErrorHandling(() => invoke<AppUpdateInfo>("check_app_update"));
+    const result = await withErrorHandling(() => api.checkAppUpdate());
     if (!result) {
       updateInfo.value = undefined;
       updateCheckFailed.value = true;
@@ -113,9 +114,7 @@ async function handleUpdateAction() {
   downloadStatus.value = "正在下载更新...";
 
   try {
-    const result = await invoke<{ success: boolean; installer_path?: string; message: string }>(
-      "download_app_update",
-    );
+    const result = await api.downloadAppUpdate();
 
     if (!result.success || !result.installer_path) {
       ElMessage.warning("下载失败，将跳转到发布页面");
@@ -124,7 +123,7 @@ async function handleUpdateAction() {
     }
 
     downloadStatus.value = "正在启动安装程序...";
-    await invoke("launch_rime_installer", { path: result.installer_path });
+    await api.launchRimeInstaller(result.installer_path);
     ElMessage.success("安装程序已启动，请按提示完成安装");
     downloadStatus.value = "安装程序已启动";
   } catch (error) {
@@ -132,6 +131,13 @@ async function handleUpdateAction() {
     await openReleasePage();
   } finally {
     downloadingUpdate.value = false;
+  }
+}
+
+async function openLogDir() {
+  const dir = await withErrorHandling(() => api.openAppLogDir());
+  if (dir) {
+    ElMessage.success(`已打开日志目录：${dir}`);
   }
 }
 
@@ -156,8 +162,10 @@ onMounted(() => {
           <p>小狼毫输入法配置工作台 v{{ pkg.version }}</p>
           <p class="helper-text">
             基于 Tauri 2 + Vue 3 + Rust 构建的桌面应用，提供图形化界面来管理 Rime
-            输入法的外观主题、自定义短语、词库和配置备份。
+            输入法的外观主题、自定义短语、词库和配置备份。保存配置时会合并
+            patch，不会覆盖你手写的未知键。
           </p>
+          <el-button :icon="FolderOpened" @click="openLogDir">打开应用日志</el-button>
         </div>
       </el-card>
 

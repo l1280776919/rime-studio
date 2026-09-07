@@ -43,7 +43,10 @@ const visibleBackups = computed(() => {
         <div>
           <span>配置备份</span>
           <strong>{{ latestBackup ? formatTime(latestBackup.modified) : "还没有备份" }}</strong>
-          <small>保存配置、安装方案和恢复备份前会自动留档；重要节点也可以手动创建备份。</small>
+          <small>
+            自动备份只保存 *.custom.yaml、词库和短语；手动备份还会带上方案、Lua 和
+            installation.yaml。build/、sync/ 和用户词库 *.userdb 不会进入备份。
+          </small>
         </div>
         <el-button
           type="primary"
@@ -128,6 +131,7 @@ const visibleBackups = computed(() => {
                 {{ backupLabel(backup) }}
               </strong>
               <span>{{ formatTime(backup.modified) }} · {{ backup.files }} 个文件</span>
+              <span v-if="backup.scope" class="backup-scope">{{ backup.scope }}</span>
             </div>
             <div class="backup-manual-note">
               <span>恢复前会先创建安全备份</span>

@@ -1,7 +1,7 @@
 import { ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { invoke } from "@tauri-apps/api/core";
-import type { BackupEntry, RestoreResult } from "../types";
+import { api } from "../api";
+import type { BackupEntry } from "../types";
 
 export function useBackup() {
   const backups = ref<BackupEntry[]>([]);
@@ -10,14 +10,14 @@ export function useBackup() {
   const deletingBackup = ref<string>();
 
   async function loadBackups() {
-    backups.value = await invoke<BackupEntry[]>("list_backups");
+    backups.value = await api.listBackups();
   }
 
   async function createManualBackup() {
     backingUp.value = true;
 
     try {
-      const backup = await invoke<BackupEntry>("create_backup");
+      const backup = await api.createBackup();
       await loadBackups();
       ElMessage.success("备份已创建");
       return backup;
@@ -31,7 +31,7 @@ export function useBackup() {
 
   async function openBackupDir(backup: BackupEntry) {
     try {
-      await invoke("open_backup_dir", { backupName: backup.name });
+      await api.openBackupDir(backup.name);
     } catch (error) {
       ElMessage.error(String(error));
     }
@@ -55,7 +55,7 @@ export function useBackup() {
     restoringBackup.value = backup.name;
 
     try {
-      const result = await invoke<RestoreResult>("restore_backup", { backupName: backup.name });
+      const result = await api.restoreBackup(backup.name);
       ElMessage.success("备份已恢复");
       return result;
     } catch (error) {
@@ -79,7 +79,7 @@ export function useBackup() {
 
     deletingBackup.value = backup.name;
     try {
-      await invoke("delete_backup", { backupName: backup.name });
+      await api.deleteBackup(backup.name);
       await loadBackups();
       ElMessage.success("备份已删除");
     } catch (error) {

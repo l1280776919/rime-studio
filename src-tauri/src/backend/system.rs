@@ -1,6 +1,12 @@
 use crate::backend::*;
 use crate::*;
-use std::{fs, path::Path, process::Command};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
+    thread,
+    time::{Duration, Instant},
+};
 
 pub(crate) fn open_in_explorer(path: &Path) -> Result<(), RimeError> {
     if !path.exists() {
@@ -94,23 +100,197 @@ pub(crate) fn ensure_plum(plum_dir: &Path) -> Result<String, RimeError> {
     Ok(log)
 }
 
+fn file_mtime(path: &Path) -> Option<std::time::SystemTime> {
+    fs::metadata(path)
+        .ok()
+        .and_then(|meta| meta.modified().ok())
+}
+
+fn collect_weasel_logs(user_dir: &Path) -> String {
+    let mut candidates = vec![
+        user_dir.join("rime.log"),
+        user_dir.join("weasel.log"),
+        user_dir.join("build").join("rime.log"),
+    ];
+    if let Ok(tmp) = env::var("TEMP").or_else(|_| env::var("TMP")) {
+        if let Ok(entries) = fs::read_dir(tmp) {
+            let mut temp_logs: Vec<(std::time::SystemTime, PathBuf)> = entries
+                .flatten()
+                .map(|entry| entry.path())
+                .filter(|path| {
+                    let name = path
+                        .file_name()
+                        .and_then(|value| value.to_str())
+                        .unwrap_or("")
+                        .to_ascii_lowercase();
+                    name.contains("rime")
+                        && (name.ends_with(".log") || name.ends_with(".txt"))
+                        && path.is_file()
+                })
+                .filter_map(|path| file_mtime(&path).map(|mtime| (mtime, path)))
+                .collect();
+            temp_logs.sort_by(|left, right| right.0.cmp(&left.0));
+            candidates.extend(temp_logs.into_iter().take(3).map(|(_, path)| path));
+        }
+    }
+
+    let mut chunks = Vec::new();
+    for path in candidates {
+        let Ok(contents) = fs::read_to_string(&path) else {
+            continue;
+        };
+        if contents.trim().is_empty() {
+            continue;
+        }
+        let tail: String = contents
+            .lines()
+            .rev()
+            .take(80)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .join("\n");
+        chunks.push(format!("# {}\n{tail}", path.display()));
+    }
+
+    let mut log = chunks.join("\n\n");
+    if log.len() > 8000 {
+        log = log[log.len() - 8000..].to_string();
+    }
+    log
+}
+
+fn diagnose_yaml_files(user_dir: &Path, hints: &mut Vec<String>) {
+    for name in [
+        "default.custom.yaml",
+        "weasel.custom.yaml",
+        "rime_ice.custom.yaml",
+    ] {
+        let path = user_dir.join(name);
+        if !path.exists() {
+            continue;
+        }
+        let contents = read_to_string(&path);
+        if let Err(err) = serde_yaml::from_str::<serde_yaml::Value>(&contents) {
+            hints.push(format!("{name} YAML 语法错误: {err}"));
+        }
+    }
+}
+
 pub(crate) fn deploy_rime_internal() -> Result<DeployResult, RimeError> {
-    let deployer_path = locate_deployer()
-        .ok_or_else(|| RimeError::DeployerNotFound("未找到 WeaselDeployer.exe".to_string()))?;
+    let started = Instant::now();
+    let mut hints = Vec::new();
+    let deployer_path = match locate_deployer() {
+        Some(path) => path,
+        None => {
+            return Ok(DeployResult {
+                success: false,
+                message: "未找到 WeaselDeployer.exe".to_string(),
+                log: String::new(),
+                hints: vec![
+                    "请先安装小狼毫输入法".to_string(),
+                    "安装完成后回到概览页重新扫描环境".to_string(),
+                ],
+                duration_ms: started.elapsed().as_millis() as u64,
+            });
+        }
+    };
+
+    let user_dir = rime_user_dir()?;
+    if !user_dir.exists() {
+        hints.push("Rime 用户目录不存在，部署器可能没有可编译的配置".to_string());
+    }
+    diagnose_yaml_files(&user_dir, &mut hints);
+
+    let build_weasel = user_dir.join("build").join("weasel.yaml");
+    let build_default = user_dir.join("build").join("default.yaml");
+    let before_weasel = file_mtime(&build_weasel);
+    let before_default = file_mtime(&build_default);
 
     let mut command = Command::new(&deployer_path);
-    command.arg("/deploy").current_dir(
-        deployer_path
-            .parent()
-            .ok_or_else(|| RimeError::DeployerNotFound("部署器路径异常".to_string()))?,
-    );
-    suppress_console_window(&mut command)
+    command
+        .arg("/deploy")
+        .current_dir(
+            deployer_path
+                .parent()
+                .ok_or_else(|| RimeError::DeployerNotFound("部署器路径异常".to_string()))?,
+        )
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    suppress_console_window(&mut command);
+
+    log::info!("Starting WeaselDeployer: {}", deployer_path.display());
+    let mut child = command
         .spawn()
         .map_err(|err| RimeError::CommandExecutionFailed(format!("运行部署器失败: {err}")))?;
 
+    let timeout = Duration::from_secs(90);
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if started.elapsed() > timeout => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Ok(DeployResult {
+                    success: false,
+                    message: "部署超时（90 秒），已尝试结束部署器".to_string(),
+                    log: collect_weasel_logs(&user_dir),
+                    hints: vec![
+                        "请手动运行「开始菜单 → 小狼毫输入法 → 重新部署」".to_string(),
+                        "如果弹出 UAC 或部署窗口，请在窗口内确认".to_string(),
+                    ],
+                    duration_ms: started.elapsed().as_millis() as u64,
+                });
+            }
+            Ok(None) => thread::sleep(Duration::from_millis(200)),
+            Err(err) => {
+                return Err(RimeError::CommandExecutionFailed(format!(
+                    "等待部署器失败: {err}"
+                )));
+            }
+        }
+    };
+
+    let log = collect_weasel_logs(&user_dir);
+    let success = status.success();
+    if success && before_weasel == file_mtime(&build_weasel) && build_weasel.exists() {
+        hints.push(
+            "build/weasel.yaml 修改时间未变化。若刚改过主题，请再部署一次或检查 YAML。".to_string(),
+        );
+    }
+    if success && before_default == file_mtime(&build_default) && !build_default.exists() {
+        hints.push("build/default.yaml 不存在，方案可能没有成功编译。".to_string());
+    }
+    if !success {
+        hints.push(format!(
+            "部署器退出码: {}",
+            status
+                .code()
+                .map(|code| code.to_string())
+                .unwrap_or_else(|| "未知".to_string())
+        ));
+        hints.push("常见原因：YAML 语法错误、方案文件缺失，或部署窗口被取消。".to_string());
+    }
+
+    let duration_ms = started.elapsed().as_millis() as u64;
+    let message = if !success {
+        "部署失败".to_string()
+    } else if hints.iter().any(|hint| hint.contains("语法错误")) {
+        "部署器已退出，但配置仍有问题".to_string()
+    } else {
+        format!("部署完成（{duration_ms} ms），候选窗应已更新")
+    };
+
+    log::info!("Weasel deploy finished: success={success}, {message}");
+
     Ok(DeployResult {
-        success: true,
-        message: "已启动小狼毫重新部署，请稍候查看候选窗变化".to_string(),
+        success,
+        message,
+        log,
+        hints,
+        duration_ms,
     })
 }
 
@@ -150,8 +330,13 @@ pub(crate) fn scan_rime_environment_sync() -> Result<RimeEnvironment, RimeError>
         .into_iter()
         .map(|name| file_status(&user_dir, name))
         .collect(),
-        sogou_health: analyze_sogou(&user_dir.join("sogou_ext.dict.yaml")),
+        sogou_health: None,
     })
+}
+
+pub(crate) fn scan_dictionary_health_sync() -> Result<Option<DictHealth>, RimeError> {
+    let path = rime_user_dir()?.join("sogou_ext.dict.yaml");
+    Ok(analyze_dict_health(&path))
 }
 
 pub(crate) fn deploy_rime_sync() -> Result<DeployResult, RimeError> {

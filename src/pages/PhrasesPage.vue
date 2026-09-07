@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { invoke } from "@tauri-apps/api/core";
+import { api } from "../api";
 import {
   Delete,
   Download,
@@ -103,7 +103,7 @@ function dedupePhrases(phrases: PhraseEntry[]) {
 
 async function loadPhrases() {
   loading.value = true;
-  const result = await withErrorHandling(() => invoke<PhraseEntry[]>("get_custom_phrases"));
+  const result = await withErrorHandling(() => api.getCustomPhrases());
   if (result !== undefined) {
     entries.value = result;
   }
@@ -114,7 +114,7 @@ async function savePhrases(shouldDeploy: boolean) {
   saving.value = !shouldDeploy;
   deploying.value = shouldDeploy;
   const saved = await withErrorHandling(async () => {
-    await invoke("save_custom_phrases", { phrases: entries.value });
+    await api.saveCustomPhrases(entries.value);
     return true;
   });
   if (saved) {

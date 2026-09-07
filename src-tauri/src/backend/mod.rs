@@ -5,6 +5,7 @@ pub(crate) mod config_editor;
 pub(crate) mod core;
 pub(crate) mod dictionaries;
 pub(crate) mod downloads;
+pub(crate) mod fonts;
 pub(crate) mod http;
 pub(crate) mod lua_plugins;
 pub(crate) mod phrases;
@@ -12,6 +13,7 @@ pub(crate) mod proxy;
 pub(crate) mod schemas;
 pub(crate) mod settings;
 pub(crate) mod system;
+pub(crate) mod yaml_patch;
 
 #[cfg(test)]
 #[path = "tests.rs"]
@@ -25,6 +27,7 @@ pub(crate) use self::config_editor::*;
 pub(crate) use self::core::*;
 pub(crate) use self::dictionaries::*;
 pub(crate) use self::downloads::*;
+pub(crate) use self::fonts::*;
 pub(crate) use self::http::*;
 pub(crate) use self::lua_plugins::*;
 pub(crate) use self::phrases::*;
@@ -32,3 +35,4 @@ pub(crate) use self::proxy::*;
 pub(crate) use self::schemas::*;
 pub(crate) use self::settings::*;
 pub(crate) use self::system::*;
+pub(crate) use self::yaml_patch::*;
