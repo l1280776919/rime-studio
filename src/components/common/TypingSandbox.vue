@@ -2,6 +2,8 @@
 import { computed, nextTick, ref } from "vue";
 import { ChatLineRound, Delete, Opportunity, RefreshRight } from "@element-plus/icons-vue";
 import type { AppearanceConfig } from "../../types";
+import { api } from "../../api";
+import { cssFontFamily, formatCandidateLabel, rimeToCssColor } from "../../utils/rimeColor";
 
 const props = defineProps<{
   appearance?: AppearanceConfig;
@@ -13,6 +15,7 @@ const committedText = ref("");
 const selectedCandidateIndex = ref(0);
 const pageOffset = ref(0);
 const sandboxInputRef = ref<HTMLInputElement>();
+const loadedAppearance = ref<AppearanceConfig>();
 
 // Predefined mock pinyin / query database for instant interactive test
 const PINYIN_DICT: Record<string, string[]> = {
@@ -36,43 +39,48 @@ const PINYIN_DICT: Record<string, string[]> = {
   r1234: ["壹仟贰佰叁拾肆元整", "壹仟贰佰叁拾肆", "1234"],
 };
 
-// Fallback styling if appearance not passed
+const appearance = computed(() => props.appearance ?? loadedAppearance.value);
+
 const styleConfig = computed(() => {
-  const cfg = props.appearance;
+  const cfg = appearance.value;
+  const spacing = cfg?.spacing ?? 8;
+  const borderHeight = cfg?.border_height ?? 4;
+  const lineSpacing = cfg?.line_spacing ?? 6;
+  const horizontal = cfg?.horizontal ?? true;
   return {
-    horizontal: cfg?.horizontal ?? true,
-    fontSize: `${cfg?.font_point ?? 12}pt`,
-    fontFamily: cfg?.font_face || "var(--font-sans)",
-    labelFontSize: `${cfg?.label_font_point ?? 10}pt`,
-    pageSize: cfg?.page_size ?? 5,
-    backColor: hexColor(cfg?.back_color, "#FFFFFF"),
-    borderColor: hexColor(cfg?.border_color, "#E2E8F0"),
-    textColor: hexColor(cfg?.text_color, "#1E293B"),
-    candidateTextColor: hexColor(cfg?.candidate_text_color, "#334155"),
-    commentTextColor: hexColor(cfg?.comment_text_color, "#94A3B8"),
-    hilitedTextColor: hexColor(cfg?.hilited_text_color, "#FFFFFF"),
-    hilitedBackColor: hexColor(cfg?.hilited_back_color, "#2563EB"),
-    hilitedCandTextColor: hexColor(cfg?.hilited_candidate_text_color, "#FFFFFF"),
-    hilitedCandBackColor: hexColor(cfg?.hilited_candidate_back_color, "#2563EB"),
+    horizontal,
+    inlinePreedit: cfg?.inline_preedit ?? true,
+    fontSize: `${cfg?.font_point ?? 12}px`,
+    fontFamily: cssFontFamily(cfg?.font_face),
+    labelFontSize: `${cfg?.label_font_point ?? 10}px`,
+    labelFontFamily: cssFontFamily(cfg?.label_font_face || cfg?.font_face),
+    pageSize: cfg?.page_size ?? 7,
+    candidateFormat: cfg?.candidate_format || "%c. %@",
+    backColor: rimeToCssColor(cfg?.back_color, "#FFFFFF"),
+    borderColor: rimeToCssColor(cfg?.border_color, "#E2E8F0"),
+    textColor: rimeToCssColor(cfg?.text_color, "#1E293B"),
+    candidateTextColor: rimeToCssColor(cfg?.candidate_text_color, "#334155"),
+    commentTextColor: rimeToCssColor(cfg?.comment_text_color, "#94A3B8"),
+    hilitedTextColor: rimeToCssColor(cfg?.hilited_text_color, "#FFFFFF"),
+    hilitedBackColor: rimeToCssColor(cfg?.hilited_back_color, "#2563EB"),
+    hilitedCandTextColor: rimeToCssColor(cfg?.hilited_candidate_text_color, "#FFFFFF"),
+    hilitedCandBackColor: rimeToCssColor(cfg?.hilited_candidate_back_color, "#2563EB"),
     cornerRadius: `${cfg?.corner_radius ?? 8}px`,
     borderWidth: `${cfg?.border_width ?? 1}px`,
-    padding: `${cfg?.border_height ?? 6}px ${cfg?.spacing ?? 8}px`,
+    padding: `${borderHeight}px ${spacing}px`,
+    candidateGap: `${horizontal ? spacing : lineSpacing}px`,
+    preeditGap: `${lineSpacing}px`,
   };
 });
 
-function hexColor(colorStr?: string, fallback = "#000000"): string {
-  if (!colorStr) return fallback;
-  const cleaned = colorStr.trim();
-  if (cleaned.startsWith("#")) return cleaned;
-  if (cleaned.startsWith("0x") || cleaned.startsWith("0X")) {
-    const hex = cleaned.slice(2);
-    if (hex.length === 6) {
-      // In Weasel BGR/RGB hex or standard hex, format to 6-digit hex
-      return `#${hex}`;
-    }
-  }
-  return fallback;
-}
+const windowStyle = computed(() => ({
+  backgroundColor: styleConfig.value.backColor,
+  borderColor: styleConfig.value.borderColor,
+  borderRadius: styleConfig.value.cornerRadius,
+  borderWidth: styleConfig.value.borderWidth,
+  padding: styleConfig.value.padding,
+  fontFamily: styleConfig.value.fontFamily,
+}));
 
 const currentCandidates = computed<string[]>(() => {
   const buf = inputBuffer.value.toLowerCase().trim();
@@ -246,11 +254,17 @@ function quickTry(sample: string) {
   }
 }
 
-function openSandbox() {
+async function openSandbox() {
   visible.value = true;
-  nextTick(() => {
-    sandboxInputRef.value?.focus();
-  });
+  if (!props.appearance) {
+    try {
+      loadedAppearance.value = await api.getAppearance();
+    } catch {
+      // keep previous snapshot if the scan fails
+    }
+  }
+  await nextTick();
+  sandboxInputRef.value?.focus();
 }
 
 defineExpose({
@@ -335,35 +349,37 @@ defineExpose({
               @keydown="handleKeyDown"
             />
 
-            <!-- Floating / Inline Rime Candidate Window Simulation -->
             <div
               v-if="inputBuffer"
               class="rime-candidate-window"
               :class="{ vertical: !styleConfig.horizontal }"
-              :style="{
-                backgroundColor: styleConfig.backColor,
-                borderColor: styleConfig.borderColor,
-                borderRadius: styleConfig.cornerRadius,
-                borderWidth: styleConfig.borderWidth,
-                padding: styleConfig.padding,
-                fontFamily: styleConfig.fontFamily,
-              }"
+              :style="windowStyle"
             >
-              <!-- Preedit string -->
               <div
+                v-if="!styleConfig.inlinePreedit"
                 class="rime-preedit"
                 :style="{
                   color: styleConfig.textColor,
                   fontSize: styleConfig.fontSize,
+                  marginBottom: styleConfig.preeditGap,
                 }"
               >
                 <span class="preedit-text">{{ inputBuffer }}</span>
+                <span
+                  class="preedit-hilite"
+                  :style="{
+                    color: styleConfig.hilitedTextColor,
+                    backgroundColor: styleConfig.hilitedBackColor,
+                  }"
+                >
+                  {{ pagedCandidates[selectedCandidateIndex] ?? "" }}
+                </span>
               </div>
 
-              <!-- Candidate list -->
               <div
                 class="rime-candidate-list"
                 :class="{ horizontal: styleConfig.horizontal, vertical: !styleConfig.horizontal }"
+                :style="{ gap: styleConfig.candidateGap }"
               >
                 <div
                   v-for="(cand, idx) in pagedCandidates"
@@ -375,7 +391,6 @@ defineExpose({
                       ? {
                           backgroundColor: styleConfig.hilitedCandBackColor,
                           color: styleConfig.hilitedCandTextColor,
-                          borderRadius: '4px',
                         }
                       : {
                           color: styleConfig.candidateTextColor,
@@ -384,28 +399,25 @@ defineExpose({
                   @click="commitCandidate(cand)"
                 >
                   <span
-                    class="cand-index"
+                    class="cand-text"
                     :style="{
-                      fontSize: styleConfig.labelFontSize,
-                      color:
-                        idx === selectedCandidateIndex
-                          ? styleConfig.hilitedCandTextColor
-                          : styleConfig.commentTextColor,
+                      fontSize: styleConfig.fontSize,
+                      fontFamily: styleConfig.fontFamily,
                     }"
                   >
-                    {{ idx + 1 }}.
+                    {{ formatCandidateLabel(styleConfig.candidateFormat, idx, cand).text }}
                   </span>
-                  <span class="cand-text" :style="{ fontSize: styleConfig.fontSize }">{{
-                    cand
-                  }}</span>
                 </div>
               </div>
 
-              <!-- Paging indicator -->
               <div
                 v-if="hasPrevPage || hasNextPage"
                 class="rime-paging-indicator"
-                :style="{ color: styleConfig.commentTextColor }"
+                :style="{
+                  color: styleConfig.commentTextColor,
+                  fontFamily: styleConfig.labelFontFamily,
+                  fontSize: styleConfig.labelFontSize,
+                }"
               >
                 <span v-if="hasPrevPage">▲</span>
                 <span v-if="hasNextPage">▼</span>
@@ -530,67 +542,56 @@ defineExpose({
 /* Candidate window */
 .rime-candidate-window {
   position: absolute;
-  top: calc(100% + 8px);
+  top: calc(100% + 4px);
   left: 0;
   z-index: 100;
   border-style: solid;
-  box-shadow:
-    0 10px 25px -5px rgba(0, 0, 0, 0.15),
-    0 8px 10px -6px rgba(0, 0, 0, 0.1);
-  min-width: 240px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.18);
+  min-width: 180px;
+  max-width: min(92vw, 640px);
   user-select: none;
-  animation: fadeIn 0.15s ease-out;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  overflow: hidden;
 }
 
 .rime-preedit {
-  margin-bottom: 6px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  font-weight: 500;
+}
+
+.preedit-hilite {
+  padding: 0 3px;
+  border-radius: 2px;
 }
 
 .rime-candidate-list.horizontal {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
 }
 
 .rime-candidate-list.vertical {
   display: flex;
   flex-direction: column;
-  gap: 4px;
 }
 
 .rime-candidate-item {
   display: inline-flex;
   align-items: baseline;
-  gap: 4px;
-  padding: 4px 8px;
+  padding: 1px 4px;
   cursor: pointer;
-  transition: all 0.12s ease;
+  white-space: nowrap;
 }
 
-.rime-candidate-item:hover {
-  filter: brightness(0.95);
-}
-
-.cand-index {
-  opacity: 0.85;
+.rime-candidate-item.selected {
+  border-radius: 2px;
 }
 
 .cand-text {
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .rime-paging-indicator {

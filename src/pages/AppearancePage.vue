@@ -7,6 +7,7 @@ import { api } from "../api";
 import { useErrorHandler } from "../composables/useErrorHandler";
 import TypingSandbox from "../components/common/TypingSandbox.vue";
 import { colorFields, presets } from "../appearance/schemes";
+import { cssFontFamily, cssToRimeColor, rimeToCssColor } from "../utils/rimeColor";
 
 const props = defineProps<{
   env?: RimeEnvironment;
@@ -173,7 +174,7 @@ const previewPreeditStyle = computed(() => ({
   paddingBottom: `${form.line_spacing}px`,
   marginBottom: `${form.line_spacing}px`,
 }));
-const previewFontFamily = computed(() => form.font_face || "var(--font-sans)");
+const previewFontFamily = computed(() => cssFontFamily(form.font_face));
 const previewCandidateStyle = computed(() => ({
   color: rimeToCssColor(form.candidate_text_color),
   fontSize: `${form.font_point}px`,
@@ -188,17 +189,6 @@ const previewHighlightStyle = computed(() => ({
   color: rimeToCssColor(form.hilited_candidate_text_color),
   fontSize: `${form.font_point}px`,
 }));
-
-function rimeToCssColor(value: string) {
-  const n = value.replace(/^0x/i, "").padStart(6, "0").slice(-6);
-  return `#${n.slice(4, 6)}${n.slice(2, 4)}${n.slice(0, 2)}`;
-}
-
-function cssToRimeColor(value: string) {
-  const n = value.replace(/^#/, "").padStart(6, "0").slice(-6);
-  if (!/^[0-9A-Fa-f]{6}$/.test(n)) return "0x000000";
-  return `0x${n.slice(4, 6)}${n.slice(2, 4)}${n.slice(0, 2)}`.toUpperCase();
-}
 
 function setColor(key: (typeof colorFields)[number]["key"], value: string | null) {
   if (!value) return;

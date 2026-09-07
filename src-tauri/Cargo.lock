@@ -2770,7 +2770,7 @@ dependencies = [
 
 [[package]]
 name = "rime-studio"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "log",
  "serde",
