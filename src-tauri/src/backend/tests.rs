@@ -346,6 +346,7 @@ patch:
             full_shape: false,
             search_single_char: false,
             fuzzy_pinyin: false,
+            fuzzy_pairs: None,
             traditional_preset: "s2t.json".to_string(),
         };
         let rendered =

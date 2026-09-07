@@ -2,8 +2,6 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { api } from "../api";
-import type { UnlistenFn } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { EditorView, basicSetup } from "codemirror";
 import { yaml } from "@codemirror/lang-yaml";
 import { oneDark } from "@codemirror/theme-one-dark";
@@ -34,8 +32,6 @@ const sidebarTab = ref<"key" | "all">("key");
 const editorContainer = ref<HTMLDivElement>();
 let editorView: EditorView | null = null;
 let originalContent = "";
-let allowWindowClose = false;
-let unlistenCloseRequested: UnlistenFn | undefined;
 
 type KeyConfigFile = {
   name: string;
@@ -314,21 +310,9 @@ onMounted(async () => {
     const def = files.value.find((f) => f.name === "default.custom.yaml") ?? files.value[0];
     await selectFile(def);
   }
-
-  unlistenCloseRequested = await getCurrentWindow().onCloseRequested(async (event) => {
-    if (!dirty.value || allowWindowClose) return;
-
-    event.preventDefault();
-    const confirmed = await confirmDiscard("关闭 Rime Studio", "放弃修改并关闭");
-    if (!confirmed) return;
-
-    allowWindowClose = true;
-    await getCurrentWindow().close();
-  });
 });
 
 onBeforeUnmount(() => {
-  unlistenCloseRequested?.();
   destroyEditor();
 });
 </script>

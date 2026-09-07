@@ -62,3 +62,36 @@ pub(crate) async fn open_app_log_dir(app: tauri::AppHandle) -> Result<String, Ri
     open_in_explorer(&dir)?;
     Ok(dir.display().to_string())
 }
+
+#[tauri::command]
+pub(crate) async fn restart_weasel_server() -> Result<String, RimeError> {
+    run_blocking(restart_weasel_server_sync).await
+}
+
+#[tauri::command]
+pub(crate) async fn get_sync_config() -> Result<RimeSyncConfig, RimeError> {
+    run_blocking(get_sync_config_sync).await
+}
+
+#[tauri::command]
+pub(crate) async fn save_sync_config(
+    installation_id: Option<String>,
+    sync_dir: Option<String>,
+) -> Result<(), RimeError> {
+    run_blocking(move || save_sync_config_sync(installation_id, sync_dir)).await
+}
+
+#[tauri::command]
+pub(crate) async fn sync_rime() -> Result<String, RimeError> {
+    run_blocking(sync_rime_sync).await
+}
+
+#[tauri::command]
+pub(crate) async fn list_userdb_entries(
+    filename: String,
+    limit: usize,
+    offset: usize,
+    query: Option<String>,
+) -> Result<UserdbEntriesResult, RimeError> {
+    run_blocking(move || list_userdb_entries_sync(filename, limit, offset, query)).await
+}

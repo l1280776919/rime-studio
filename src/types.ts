@@ -155,6 +155,7 @@ export type RimeIceSettings = {
   full_shape: boolean;
   search_single_char: boolean;
   fuzzy_pinyin: boolean;
+  fuzzy_pairs?: string[];
   traditional_preset: string;
 };
 
@@ -316,4 +317,30 @@ export type RimeDownloadResult = {
   success: boolean;
   installer_path?: string;
   message: string;
+};
+
+export type UserdbSnapshotInfo = {
+  name: string;
+  file_size: number;
+  modified?: number;
+  entry_count: number;
+};
+
+export type RimeSyncConfig = {
+  installation_id: string;
+  sync_dir?: string;
+  resolved_sync_dir: string;
+  last_sync_time?: number;
+  snapshot_files: UserdbSnapshotInfo[];
+};
+
+export type UserdbEntry = {
+  word: string;
+  code: string;
+  count: number;
+};
+
+export type UserdbEntriesResult = {
+  entries: UserdbEntry[];
+  total: number;
 };

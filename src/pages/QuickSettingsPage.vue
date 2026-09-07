@@ -70,7 +70,92 @@ const iceSettings = reactive<RimeIceSettings>({
   search_single_char: false,
   fuzzy_pinyin: false,
   traditional_preset: "s2t.json",
+  fuzzy_pairs: [],
 });
+
+interface FuzzyGroup {
+  name: string;
+  pairs: { key: string; label: string; desc: string }[];
+}
+
+const fuzzyGroups: FuzzyGroup[] = [
+  {
+    name: "平翘舌音",
+    pairs: [
+      { key: "z_zh", label: "z ⇄ zh", desc: "例如：早 / 找" },
+      { key: "c_ch", label: "c ⇄ ch", desc: "例如：草 / 吵" },
+      { key: "s_sh", label: "s ⇄ sh", desc: "例如：三 / 山" },
+    ],
+  },
+  {
+    name: "鼻音 / 边音",
+    pairs: [
+      { key: "l_n", label: "l ⇄ n", desc: "例如：蓝 / 男" },
+      { key: "r_l", label: "r ⇄ l", desc: "例如：日 / 力" },
+      { key: "f_h", label: "f ⇄ h", desc: "例如：发 / 花" },
+    ],
+  },
+  {
+    name: "前后鼻音",
+    pairs: [
+      { key: "an_ang", label: "an ⇄ ang", desc: "例如：安 / 昂" },
+      { key: "en_eng", label: "en ⇄ eng", desc: "例如：森 / 僧" },
+      { key: "in_ing", label: "in ⇄ ing", desc: "例如：因 / 英" },
+      { key: "ian_iang", label: "ian ⇄ iang", desc: "例如：简 / 讲" },
+      { key: "uan_uang", label: "uan ⇄ uang", desc: "例如：关 / 光" },
+    ],
+  },
+  {
+    name: "韵母 / 介音容错",
+    pairs: [
+      { key: "ui_uei", label: "ui ⇄ uei", desc: "例如：归 gui / guei" },
+      { key: "un_uen", label: "un ⇄ uen", desc: "例如：论 lun / luen" },
+      { key: "iu_iou", label: "iu ⇄ iou", desc: "例如：流 liu / liou" },
+    ],
+  },
+];
+
+const allFuzzyKeys = fuzzyGroups.flatMap((g) => g.pairs.map((p) => p.key));
+
+function isFuzzyPairActive(key: string): boolean {
+  return iceSettings.fuzzy_pairs?.includes(key) ?? false;
+}
+
+function toggleFuzzyPair(key: string) {
+  if (!iceSettings.fuzzy_pairs) {
+    iceSettings.fuzzy_pairs = [];
+  }
+  const idx = iceSettings.fuzzy_pairs.indexOf(key);
+  if (idx >= 0) {
+    iceSettings.fuzzy_pairs.splice(idx, 1);
+  } else {
+    iceSettings.fuzzy_pairs.push(key);
+  }
+  // Auto toggle master fuzzy_pinyin
+  iceSettings.fuzzy_pinyin = iceSettings.fuzzy_pairs.length > 0;
+}
+
+function selectAllFuzzyPairs() {
+  iceSettings.fuzzy_pairs = [...allFuzzyKeys];
+  iceSettings.fuzzy_pinyin = true;
+}
+
+function clearAllFuzzyPairs() {
+  iceSettings.fuzzy_pairs = [];
+  iceSettings.fuzzy_pinyin = false;
+}
+
+function onMasterFuzzyToggle(val: boolean | string | number) {
+  const enabled = Boolean(val);
+  if (enabled) {
+    if (!iceSettings.fuzzy_pairs || iceSettings.fuzzy_pairs.length === 0) {
+      // Default common set
+      iceSettings.fuzzy_pairs = ["z_zh", "c_ch", "s_sh", "an_ang", "en_eng", "in_ing"];
+    }
+  } else {
+    iceSettings.fuzzy_pairs = [];
+  }
+}
 
 const activeSchema = computed(() => {
   return schemas.value.find((schema) => schema.id === form.schema_id);
@@ -460,12 +545,56 @@ onBeforeUnmount(() => {
             </span>
             <el-switch v-model="iceSettings.search_single_char" :disabled="!hasRimeIce" />
           </div>
-          <div class="ice-toggle">
+          <div class="ice-toggle fuzzy-master-toggle">
             <span>
               <strong>常用模糊音</strong>
-              <small>启用 z/zh、n/l 和前后鼻音容错；避免 g/k 这类过宽混淆</small>
+              <small>自定义声母、平翘舌及前后鼻音容错，按需勾选</small>
             </span>
-            <el-switch v-model="iceSettings.fuzzy_pinyin" :disabled="!hasRimeIce" />
+            <el-switch
+              v-model="iceSettings.fuzzy_pinyin"
+              :disabled="!hasRimeIce"
+              @change="onMasterFuzzyToggle"
+            />
+          </div>
+
+          <!-- Granular Fuzzy Pairs Panel -->
+          <div v-if="iceSettings.fuzzy_pinyin" class="fuzzy-pairs-panel">
+            <div class="fuzzy-pairs-toolbar">
+              <span class="fuzzy-toolbar-title">
+                细粒度音节容错
+                <el-tag size="small" type="primary" effect="plain">
+                  已选 {{ iceSettings.fuzzy_pairs?.length ?? 0 }} 项
+                </el-tag>
+              </span>
+              <div class="fuzzy-toolbar-actions">
+                <el-button link type="primary" size="small" @click="selectAllFuzzyPairs">
+                  全选
+                </el-button>
+                <el-button link type="info" size="small" @click="clearAllFuzzyPairs">
+                  清空
+                </el-button>
+              </div>
+            </div>
+
+            <div class="fuzzy-groups-container">
+              <div v-for="group in fuzzyGroups" :key="group.name" class="fuzzy-group-item">
+                <span class="fuzzy-group-name">{{ group.name }}</span>
+                <div class="fuzzy-chip-list">
+                  <button
+                    v-for="pair in group.pairs"
+                    :key="pair.key"
+                    type="button"
+                    class="fuzzy-chip"
+                    :class="{ active: isFuzzyPairActive(pair.key) }"
+                    :title="pair.desc"
+                    @click="toggleFuzzyPair(pair.key)"
+                  >
+                    <span class="fuzzy-chip-label">{{ pair.label }}</span>
+                    <small class="fuzzy-chip-desc">{{ pair.desc.replace("例如：", "") }}</small>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
           <div class="ice-toggle select-toggle">
             <span>

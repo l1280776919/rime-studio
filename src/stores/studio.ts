@@ -24,6 +24,8 @@ export const useStudioStore = defineStore("studio", () => {
   const backingUp = ref(false);
   const restoringBackup = ref<string>();
   const deletingBackup = ref<string>();
+  const restartingServer = ref(false);
+  const syncing = ref(false);
 
   const hasDeployer = computed(() => Boolean(env.value?.deployer_path));
 
@@ -246,6 +248,37 @@ export const useStudioStore = defineStore("studio", () => {
     }
   }
 
+  async function restartWeaselServer() {
+    restartingServer.value = true;
+    status.value = "正在重启小狼毫输入法服务...";
+    try {
+      const msg = await api.restartWeaselServer();
+      ElMessage.success(msg);
+      status.value = msg;
+    } catch (error) {
+      status.value = String(error);
+      ElMessage.error(String(error));
+    } finally {
+      restartingServer.value = false;
+    }
+  }
+
+  async function syncUserdb() {
+    syncing.value = true;
+    status.value = "正在同步 Rime 用户词库...";
+    try {
+      const msg = await api.syncRime();
+      ElMessage.success(msg);
+      status.value = msg;
+      await loadEnvironment();
+    } catch (error) {
+      status.value = String(error);
+      ElMessage.error(String(error));
+    } finally {
+      syncing.value = false;
+    }
+  }
+
   return {
     env,
     scanning,
@@ -259,6 +292,8 @@ export const useStudioStore = defineStore("studio", () => {
     backingUp,
     restoringBackup,
     deletingBackup,
+    restartingServer,
+    syncing,
     hasDeployer,
     loadEnvironment,
     loadDictionaryHealth,
@@ -271,5 +306,7 @@ export const useStudioStore = defineStore("studio", () => {
     restoreBackup,
     deleteBackupEntry,
     openKnownPath,
+    restartWeaselServer,
+    syncUserdb,
   };
 });

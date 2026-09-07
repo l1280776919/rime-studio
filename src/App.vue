@@ -3,7 +3,9 @@ import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch 
 import { storeToRefs } from "pinia";
 import { useRoute, useRouter } from "vue-router";
 import zhCn from "element-plus/es/locale/lang/zh-cn";
-import { ElMessageBox } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
+import type { UnlistenFn } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import AppSidebar from "./components/layout/AppSidebar.vue";
 import AppTopbar from "./components/layout/AppTopbar.vue";
 import AppStatusbar from "./components/layout/AppStatusbar.vue";
@@ -35,6 +37,7 @@ const {
   backingUp,
   restoringBackup,
   deletingBackup,
+  restartingServer,
   hasDeployer,
 } = storeToRefs(studio);
 
@@ -100,6 +103,7 @@ const pageDescription = computed(() => {
 });
 
 let envRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+let unlistenCloseRequested: UnlistenFn | undefined;
 
 function refreshEnvironment() {
   if (envRefreshTimer) clearTimeout(envRefreshTimer);
@@ -144,14 +148,33 @@ watch(isBusy, (busy) => {
   }
 });
 
+let hideNotified = false;
+
 // ── Lifecycle ──────────────────────────────────────
-onMounted(() => {
+onMounted(async () => {
   initTheme();
   void studio.loadEnvironment();
+
+  try {
+    unlistenCloseRequested = await getCurrentWindow().onCloseRequested(async (event) => {
+      event.preventDefault();
+      await getCurrentWindow().hide();
+      if (!hideNotified) {
+        hideNotified = true;
+        ElMessage.info({
+          message: "应用已最小化到系统托盘，可在右下角托盘图标唤起或退出",
+          duration: 3500,
+        });
+      }
+    });
+  } catch (err) {
+    console.error("Failed to register close requested listener:", err);
+  }
 });
 
 onBeforeUnmount(() => {
   if (envRefreshTimer) clearTimeout(envRefreshTimer);
+  unlistenCloseRequested?.();
 });
 </script>
 
@@ -167,8 +190,10 @@ onBeforeUnmount(() => {
           :scanning="scanning"
           :has-deployer="hasDeployer"
           :deploying="deploying"
+          :restarting-server="restartingServer"
           @refresh="studio.loadEnvironment"
           @deploy="studio.deploy"
+          @restart-server="studio.restartWeaselServer"
         />
 
         <div class="page-container">

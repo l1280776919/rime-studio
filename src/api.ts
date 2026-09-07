@@ -37,7 +37,9 @@ import type {
   RimeDownloadResult,
   RimeEnvironment,
   RimeIceSettings,
+  RimeSyncConfig,
   SchemaInfo,
+  UserdbEntriesResult,
 } from "./types";
 
 export const api = {
@@ -81,6 +83,13 @@ export const api = {
   openPlumDir: () => invoke("open_plum_dir"),
   openConfigFile: (name: string) => invoke("open_config_file", { name }),
   openAppLogDir: () => invoke<string>("open_app_log_dir"),
+  restartWeaselServer: () => invoke<string>("restart_weasel_server"),
+  getSyncConfig: () => invoke<RimeSyncConfig>("get_sync_config"),
+  saveSyncConfig: (installationId?: string, syncDir?: string) =>
+    invoke<void>("save_sync_config", { installationId, syncDir }),
+  syncRime: () => invoke<string>("sync_rime"),
+  listUserdbEntries: (filename: string, limit: number, offset: number, query?: string) =>
+    invoke<UserdbEntriesResult>("list_userdb_entries", { filename, limit, offset, query }),
 
   getCustomPhrases: () => invoke<PhraseEntry[]>("get_custom_phrases"),
   saveCustomPhrases: (phrases: PhraseEntry[]) => invoke("save_custom_phrases", { phrases }),

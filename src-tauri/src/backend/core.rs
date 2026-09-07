@@ -318,6 +318,18 @@ pub(crate) fn locate_deployer() -> Option<PathBuf> {
         .find_map(|path| resolve_windows_shortcut(&path))
 }
 
+pub(crate) fn locate_weasel_server() -> Option<PathBuf> {
+    if let Some(deployer) = locate_deployer() {
+        if let Some(parent) = deployer.parent() {
+            let candidate = parent.join("WeaselServer.exe");
+            if candidate.exists() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
 pub(crate) fn command_success(command: impl AsRef<Path>, arg: &str) -> bool {
     let mut cmd = Command::new(command.as_ref());
     cmd.arg(arg);

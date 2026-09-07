@@ -397,7 +397,39 @@ pub(crate) struct RimeIceSettings {
     pub(crate) full_shape: bool,
     pub(crate) search_single_char: bool,
     pub(crate) fuzzy_pinyin: bool,
+    #[serde(default)]
+    pub(crate) fuzzy_pairs: Option<Vec<String>>,
     pub(crate) traditional_preset: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct UserdbSnapshotInfo {
+    pub(crate) name: String,
+    pub(crate) file_size: u64,
+    pub(crate) modified: Option<u64>,
+    pub(crate) entry_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct RimeSyncConfig {
+    pub(crate) installation_id: String,
+    pub(crate) sync_dir: Option<String>,
+    pub(crate) resolved_sync_dir: String,
+    pub(crate) last_sync_time: Option<u64>,
+    pub(crate) snapshot_files: Vec<UserdbSnapshotInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct UserdbEntry {
+    pub(crate) word: String,
+    pub(crate) code: String,
+    pub(crate) count: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct UserdbEntriesResult {
+    pub(crate) entries: Vec<UserdbEntry>,
+    pub(crate) total: usize,
 }
 
 #[derive(Debug, Serialize)]

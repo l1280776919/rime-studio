@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { api } from "../api";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -12,10 +12,19 @@ import {
   Open,
   Refresh,
   RefreshLeft,
+  Search,
   Setting,
   Warning,
 } from "@element-plus/icons-vue";
-import type { BackupEntry, FileStatus, RimeEnvironment, UserDictInfo } from "../types";
+import type {
+  BackupEntry,
+  FileStatus,
+  RimeEnvironment,
+  RimeSyncConfig,
+  UserDictInfo,
+  UserdbEntry,
+  UserdbSnapshotInfo,
+} from "../types";
 
 const props = defineProps<{
   env?: RimeEnvironment;
@@ -148,6 +157,127 @@ async function autoDownloadGitAndInstall() {
     downloadingGit.value = false;
   }
 }
+
+// ── Userdb & Sync Management ──
+const syncConfig = ref<RimeSyncConfig>();
+const loadingSyncConfig = ref(false);
+const syncingUserdb = ref(false);
+const showSyncDialog = ref(false);
+const savingSyncConfig = ref(false);
+const syncForm = reactive({
+  installation_id: "",
+  sync_dir: "",
+});
+
+// Snapshot entries viewer
+const showEntriesDialog = ref(false);
+const currentSnapshot = ref<UserdbSnapshotInfo>();
+const snapshotEntries = ref<UserdbEntry[]>([]);
+const loadingEntries = ref(false);
+const entriesSearchQuery = ref("");
+const entriesPage = ref(1);
+const entriesPageSize = ref(50);
+const entriesTotal = ref(0);
+
+async function loadSyncConfig() {
+  loadingSyncConfig.value = true;
+  try {
+    syncConfig.value = await api.getSyncConfig();
+    syncForm.installation_id = syncConfig.value.installation_id ?? "";
+    syncForm.sync_dir = syncConfig.value.sync_dir ?? "";
+  } catch (error) {
+    console.error("加载同步配置失败:", error);
+  } finally {
+    loadingSyncConfig.value = false;
+  }
+}
+
+function openSyncSettings() {
+  if (syncConfig.value) {
+    syncForm.installation_id = syncConfig.value.installation_id ?? "";
+    syncForm.sync_dir = syncConfig.value.sync_dir ?? "";
+  }
+  showSyncDialog.value = true;
+}
+
+async function saveSyncSettings() {
+  savingSyncConfig.value = true;
+  try {
+    await api.saveSyncConfig(
+      syncForm.installation_id.trim() || undefined,
+      syncForm.sync_dir.trim() || undefined,
+    );
+    ElMessage.success("同步配置已保存");
+    showSyncDialog.value = false;
+    await loadSyncConfig();
+  } catch (error) {
+    ElMessage.error(`保存失败: ${String(error)}`);
+  } finally {
+    savingSyncConfig.value = false;
+  }
+}
+
+async function triggerSync() {
+  syncingUserdb.value = true;
+  try {
+    const msg = await api.syncRime();
+    ElMessage.success(msg);
+    await loadSyncConfig();
+  } catch (error) {
+    ElMessage.error(`同步失败: ${String(error)}`);
+  } finally {
+    syncingUserdb.value = false;
+  }
+}
+
+async function inspectSnapshotEntries(snapshot: UserdbSnapshotInfo) {
+  currentSnapshot.value = snapshot;
+  showEntriesDialog.value = true;
+  entriesPage.value = 1;
+  entriesSearchQuery.value = "";
+  await fetchEntries();
+}
+
+async function fetchEntries() {
+  if (!currentSnapshot.value) return;
+  loadingEntries.value = true;
+  try {
+    const offset = (entriesPage.value - 1) * entriesPageSize.value;
+    const result = await api.listUserdbEntries(
+      currentSnapshot.value.name,
+      entriesPageSize.value,
+      offset,
+      entriesSearchQuery.value || undefined,
+    );
+    snapshotEntries.value = result.entries;
+    entriesTotal.value = result.total;
+  } catch (error) {
+    ElMessage.error(`读取词条失败: ${String(error)}`);
+  } finally {
+    loadingEntries.value = false;
+  }
+}
+
+function onEntriesSearch() {
+  entriesPage.value = 1;
+  void fetchEntries();
+}
+
+function onEntriesPageChange(page: number) {
+  entriesPage.value = page;
+  void fetchEntries();
+}
+
+onMounted(() => {
+  void loadSyncConfig();
+});
+
+watch(
+  () => props.env,
+  () => {
+    void loadSyncConfig();
+  },
+);
 </script>
 
 <template>
@@ -283,42 +413,118 @@ async function autoDownloadGitAndInstall() {
           <template #header>
             <div class="panel-title">
               <span>用户词库与同步</span>
-              <el-button link type="primary" @click="emit('openPath', 'open_sync_dir')">
-                打开同步目录
-              </el-button>
+              <div class="panel-header-actions">
+                <el-button
+                  type="primary"
+                  size="small"
+                  :icon="Refresh"
+                  :loading="syncingUserdb"
+                  @click="triggerSync"
+                >
+                  立即同步
+                </el-button>
+                <el-button size="small" :icon="Setting" @click="openSyncSettings">
+                  同步设置
+                </el-button>
+                <el-button link type="primary" @click="emit('openPath', 'open_sync_dir')">
+                  打开目录
+                </el-button>
+              </div>
             </div>
           </template>
-          <p class="helper-text">
-            用户词存在 *.userdb，不会进入备份。默认同步目录是用户目录下的 sync/。
-          </p>
+
+          <!-- Sync Meta Summary -->
+          <div class="sync-summary-bar">
+            <div class="sync-summary-item">
+              <span class="sync-summary-label">设备标识 (ID)</span>
+              <el-tag size="small" effect="plain">{{
+                syncConfig?.installation_id || "未设置"
+              }}</el-tag>
+            </div>
+            <div class="sync-summary-item">
+              <span class="sync-summary-label">同步路径</span>
+              <code class="sync-summary-path" :title="syncConfig?.sync_dir">{{
+                syncConfig?.sync_dir || "默认 sync/"
+              }}</code>
+            </div>
+            <div class="sync-summary-item">
+              <span class="sync-summary-label">上次同步</span>
+              <span class="sync-summary-time">{{
+                formatTime(syncConfig?.last_sync_time) || "未同步"
+              }}</span>
+            </div>
+          </div>
+
+          <!-- Section 1: Active User DBs -->
+          <div class="sync-section-title">
+            <span>活动词库 (*.userdb)</span>
+            <small>当前输入法正在读写的动态词库</small>
+          </div>
           <el-table
             :data="env?.user_dicts ?? []"
             stripe
-            max-height="220"
-            empty-text="还没有用户词库"
+            max-height="180"
+            empty-text="暂无活动词库"
+            size="small"
           >
-            <el-table-column label="用户词库" min-width="220">
+            <el-table-column label="词库名称" min-width="180">
               <template #default="{ row }: { row: UserDictInfo }">
                 <strong>{{ row.name }}</strong>
                 <span class="mono-path file-path">{{ row.path }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="大小" width="120">
+            <el-table-column label="大小" width="110">
               <template #default="{ row }: { row: UserDictInfo }">
                 {{ formatBytes(row.size_bytes) }}
               </template>
             </el-table-column>
-            <el-table-column label="修改时间" width="170">
+            <el-table-column label="修改时间" width="160">
               <template #default="{ row }: { row: UserDictInfo }">
                 {{ formatTime(row.modified) }}
               </template>
             </el-table-column>
           </el-table>
-          <p v-if="env?.sync_dir" class="helper-text">
-            同步目录：{{
-              env.sync_dir.exists ? env.sync_dir.path : "尚未创建，点击上方按钮可打开/创建"
-            }}
-          </p>
+
+          <!-- Section 2: Sync Snapshot Files -->
+          <div class="sync-section-title" style="margin-top: 14px">
+            <span>同步快照文件 (*.userdb.txt)</span>
+            <small>同步生成的文本快照，用于多设备合并与查看</small>
+          </div>
+          <el-table
+            :data="syncConfig?.snapshot_files ?? []"
+            stripe
+            max-height="200"
+            empty-text="尚未进行同步或无快照文件"
+            size="small"
+          >
+            <el-table-column label="快照文件" min-width="180">
+              <template #default="{ row }: { row: UserdbSnapshotInfo }">
+                <strong>{{ row.name }}</strong>
+              </template>
+            </el-table-column>
+            <el-table-column label="条目估算" width="110">
+              <template #default="{ row }: { row: UserdbSnapshotInfo }">
+                <el-tag size="small" type="info">{{ row.entry_count.toLocaleString() }} 条</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="大小" width="100">
+              <template #default="{ row }: { row: UserdbSnapshotInfo }">
+                {{ formatBytes(row.file_size) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="更新时间" width="150">
+              <template #default="{ row }: { row: UserdbSnapshotInfo }">
+                {{ formatTime(row.modified) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="90" fixed="right">
+              <template #default="{ row }: { row: UserdbSnapshotInfo }">
+                <el-button link type="primary" size="small" @click="inspectSnapshotEntries(row)">
+                  浏览词条
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
         </el-card>
 
         <el-card v-if="log" class="log-panel" shadow="never">
@@ -501,5 +707,91 @@ async function autoDownloadGitAndInstall() {
         </el-card>
       </aside>
     </section>
+
+    <!-- Sync Settings Dialog -->
+    <el-dialog v-model="showSyncDialog" title="Rime 同步配置" width="520px">
+      <el-form label-position="top">
+        <el-form-item label="设备标识 (installation_id)">
+          <el-input
+            v-model="syncForm.installation_id"
+            placeholder="例如: weasel-pc, laptop-home"
+            maxlength="64"
+          />
+          <div class="field-tip">
+            用于区分多台设备的词库快照，快照文件将存放于
+            <code>&lt;sync_dir&gt;/&lt;id&gt;</code> 目录下。
+          </div>
+        </el-form-item>
+        <el-form-item label="自定义同步目录 (sync_dir)">
+          <el-input
+            v-model="syncForm.sync_dir"
+            placeholder="留空则使用默认用户目录下的 sync/ 文件夹"
+          />
+          <div class="field-tip">
+            可设置为坚果云、OneDrive、Syncthing 等网盘的同步文件夹以实现多设备自动同步。
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showSyncDialog = false">取消</el-button>
+        <el-button type="primary" :loading="savingSyncConfig" @click="saveSyncSettings">
+          保存配置
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- Userdb Snapshot Entries Viewer Dialog -->
+    <el-dialog
+      v-model="showEntriesDialog"
+      :title="`词条浏览 - ${currentSnapshot?.name ?? ''}`"
+      width="780px"
+      class="userdb-entries-dialog"
+    >
+      <div class="entries-viewer-header">
+        <el-input
+          v-model="entriesSearchQuery"
+          placeholder="搜索词条或拼音编码..."
+          clearable
+          :prefix-icon="Search"
+          style="max-width: 320px"
+          @keyup.enter="onEntriesSearch"
+          @clear="onEntriesSearch"
+        />
+        <el-button type="primary" plain :icon="Search" @click="onEntriesSearch"> 搜索 </el-button>
+        <span class="entries-total-badge"> 共 {{ entriesTotal.toLocaleString() }} 条记录 </span>
+      </div>
+
+      <el-table
+        v-loading="loadingEntries"
+        :data="snapshotEntries"
+        stripe
+        height="380"
+        empty-text="没有找到匹配词条"
+        size="small"
+      >
+        <el-table-column prop="word" label="词条 / 文字" min-width="160" />
+        <el-table-column prop="code" label="拼音编码" min-width="160">
+          <template #default="{ row }: { row: UserdbEntry }">
+            <code>{{ row.code }}</code>
+          </template>
+        </el-table-column>
+        <el-table-column prop="count" label="词频 / 权重" width="130">
+          <template #default="{ row }: { row: UserdbEntry }">
+            <el-tag size="small" type="info">{{ row.count }}</el-tag>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <div class="entries-viewer-footer">
+        <el-pagination
+          background
+          layout="prev, pager, next, total"
+          :current-page="entriesPage"
+          :page-size="entriesPageSize"
+          :total="entriesTotal"
+          @current-change="onEntriesPageChange"
+        />
+      </div>
+    </el-dialog>
   </div>
 </template>

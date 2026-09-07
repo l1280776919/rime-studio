@@ -3555,6 +3555,110 @@ button:active {
   flex-shrink: 0;
 }
 
+/* ── Granular Fuzzy Pairs Panel ── */
+.fuzzy-pairs-panel {
+  grid-column: span 2;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-xs);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fuzzy-pairs-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--color-line-soft);
+  padding-bottom: 8px;
+}
+
+.fuzzy-toolbar-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-800);
+}
+
+.fuzzy-toolbar-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.fuzzy-groups-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fuzzy-group-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fuzzy-group-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-500);
+}
+
+.fuzzy-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fuzzy-chip {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 5px 9px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--color-line-soft);
+  background: var(--color-surface);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-align: left;
+}
+
+.fuzzy-chip:hover {
+  border-color: var(--brand-300);
+  background: var(--brand-50, #eff6ff);
+}
+
+.fuzzy-chip.active {
+  border-color: var(--brand-500);
+  background: var(--brand-100, #dbeafe);
+  box-shadow: 0 0 0 1px var(--brand-500);
+}
+
+.fuzzy-chip-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-800);
+  font-family: var(--font-mono);
+}
+
+.fuzzy-chip.active .fuzzy-chip-label {
+  color: var(--brand-800, #1e40af);
+}
+
+.fuzzy-chip-desc {
+  font-size: 10px;
+  color: var(--ink-400);
+  margin-top: 1px;
+}
+
+.fuzzy-chip.active .fuzzy-chip-desc {
+  color: var(--brand-600, #2563eb);
+}
+
 .config-health-summary {
   display: grid;
   gap: 12px;
@@ -4432,4 +4536,94 @@ button:active {
   background: var(--color-surface);
   border: 1px solid var(--color-line-soft);
   border-radius: var(--radius-sm);
+}
+
+/* ── Userdb & Sync Management Styles ── */
+.panel-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sync-summary-bar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-xs);
+}
+
+.sync-summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sync-summary-label {
+  font-size: 11px;
+  color: var(--ink-500);
+  font-weight: 600;
+}
+
+.sync-summary-path {
+  font-size: 11px;
+  color: var(--ink-800);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sync-summary-time {
+  font-size: 12px;
+  color: var(--ink-800);
+  font-weight: 500;
+}
+
+.sync-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 6px;
+}
+
+.sync-section-title span {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-800);
+}
+
+.sync-section-title small {
+  font-size: 11px;
+  color: var(--ink-400);
+}
+
+.field-tip {
+  font-size: 11px;
+  color: var(--ink-500);
+  line-height: 1.4;
+  margin-top: 4px;
+}
+
+.entries-viewer-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.entries-total-badge {
+  font-size: 12px;
+  color: var(--ink-500);
+  margin-left: auto;
+}
+
+.entries-viewer-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
 }

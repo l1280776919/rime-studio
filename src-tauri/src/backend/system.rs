@@ -503,3 +503,269 @@ pub(crate) fn install_rime_ice_sync(recipe: Option<String>) -> Result<InstallRes
         }
     }
 }
+
+pub(crate) fn restart_weasel_server_sync() -> Result<String, RimeError> {
+    let server_path = locate_weasel_server().ok_or_else(|| {
+        RimeError::DeployerNotFound(
+            "未找到 WeaselServer.exe，请确认小狼毫是否已正确安装".to_string(),
+        )
+    })?;
+
+    // Terminate existing WeaselServer.exe
+    #[cfg(windows)]
+    {
+        let mut kill_cmd = Command::new("taskkill");
+        kill_cmd.args(["/F", "/IM", "WeaselServer.exe"]);
+        let _ = suppress_console_window(&mut kill_cmd).output();
+    }
+
+    thread::sleep(Duration::from_millis(300));
+
+    // Spawn WeaselServer.exe
+    let mut start_cmd = Command::new(&server_path);
+    suppress_console_window(&mut start_cmd);
+    start_cmd.spawn().map_err(|err| {
+        RimeError::CommandExecutionFailed(format!("启动 WeaselServer 失败: {err}"))
+    })?;
+
+    Ok(format!("小狼毫服务已成功重启 ({})", server_path.display()))
+}
+
+pub(crate) fn get_sync_config_sync() -> Result<RimeSyncConfig, RimeError> {
+    let user_dir = rime_user_dir()?;
+    let install_file = user_dir.join("installation.yaml");
+    let content = fs::read_to_string(&install_file).unwrap_or_default();
+
+    let yaml: serde_yaml::Value = serde_yaml::from_str(&content).unwrap_or(serde_yaml::Value::Null);
+
+    let installation_id = yaml
+        .get("installation_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("rime-desktop")
+        .to_string();
+
+    let sync_dir = yaml
+        .get("sync_dir")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    let resolved_sync_dir = sync_dir
+        .as_ref()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| user_dir.join("sync"));
+
+    let mut snapshot_files = Vec::new();
+    let mut latest_mtime: Option<u64> = None;
+
+    let target_sync_folder = resolved_sync_dir.join(&installation_id);
+    if target_sync_folder.exists() {
+        if let Ok(entries) = fs::read_dir(&target_sync_folder) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() {
+                    let name = path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or_default()
+                        .to_string();
+                    if name.ends_with(".userdb.txt") || name.ends_with(".txt") {
+                        let meta = entry.metadata().ok();
+                        let file_size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+                        let modified = file_mtime(&path)
+                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                            .map(|d| d.as_secs());
+                        if let Some(m) = modified {
+                            if latest_mtime.is_none_or(|prev| m > prev) {
+                                latest_mtime = Some(m);
+                            }
+                        }
+
+                        let entry_count = fs::read_to_string(&path)
+                            .map(|text| {
+                                text.lines()
+                                    .filter(|l| !l.starts_with('#') && !l.trim().is_empty())
+                                    .count()
+                            })
+                            .unwrap_or(0);
+
+                        snapshot_files.push(UserdbSnapshotInfo {
+                            name,
+                            file_size,
+                            modified,
+                            entry_count,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    snapshot_files.sort_by_key(|a| std::cmp::Reverse(a.modified));
+
+    Ok(RimeSyncConfig {
+        installation_id,
+        sync_dir,
+        resolved_sync_dir: resolved_sync_dir.to_string_lossy().to_string(),
+        last_sync_time: latest_mtime,
+        snapshot_files,
+    })
+}
+
+pub(crate) fn save_sync_config_sync(
+    installation_id: Option<String>,
+    sync_dir: Option<String>,
+) -> Result<(), RimeError> {
+    let user_dir = rime_user_dir()?;
+    let install_file = user_dir.join("installation.yaml");
+    let content = fs::read_to_string(&install_file).unwrap_or_default();
+
+    let mut root: serde_yaml::Value = serde_yaml::from_str(&content)
+        .unwrap_or_else(|_| serde_yaml::Value::Mapping(serde_yaml::Mapping::new()));
+
+    if let serde_yaml::Value::Mapping(ref mut map) = root {
+        if let Some(id) = installation_id {
+            let id = id.trim();
+            if !id.is_empty() {
+                map.insert(
+                    serde_yaml::Value::String("installation_id".to_string()),
+                    serde_yaml::Value::String(id.to_string()),
+                );
+            }
+        }
+        if let Some(dir) = sync_dir {
+            let dir = dir.trim();
+            if dir.is_empty() {
+                map.remove(serde_yaml::Value::String("sync_dir".to_string()));
+            } else {
+                map.insert(
+                    serde_yaml::Value::String("sync_dir".to_string()),
+                    serde_yaml::Value::String(dir.to_string()),
+                );
+            }
+        }
+    }
+
+    let serialized = serde_yaml::to_string(&root).map_err(|err| {
+        RimeError::FileOperationError(format!("序列化 installation.yaml 失败: {err}"))
+    })?;
+    fs::write(&install_file, serialized).map_err(|err| {
+        RimeError::FileOperationError(format!("写入 installation.yaml 失败: {err}"))
+    })?;
+
+    Ok(())
+}
+
+pub(crate) fn sync_rime_sync() -> Result<String, RimeError> {
+    let deployer_path = locate_deployer()
+        .ok_or_else(|| RimeError::DeployerNotFound("未找到 WeaselDeployer.exe".to_string()))?;
+
+    let mut command = Command::new(&deployer_path);
+    command
+        .arg("/sync")
+        .current_dir(
+            deployer_path
+                .parent()
+                .ok_or_else(|| RimeError::DeployerNotFound("部署器路径异常".to_string()))?,
+        )
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    suppress_console_window(&mut command);
+
+    let mut child = command
+        .spawn()
+        .map_err(|err| RimeError::CommandExecutionFailed(format!("运行同步失败: {err}")))?;
+
+    let timeout = Duration::from_secs(60);
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                if status.success() {
+                    return Ok("词库同步完成".to_string());
+                } else {
+                    return Ok(format!("同步完成（状态码: {:?}）", status.code()));
+                }
+            }
+            Ok(None) if started.elapsed() > timeout => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(RimeError::CommandExecutionFailed(
+                    "词库同步超时（60 秒）".to_string(),
+                ));
+            }
+            Ok(None) => {
+                thread::sleep(Duration::from_millis(200));
+            }
+            Err(err) => {
+                return Err(RimeError::CommandExecutionFailed(format!(
+                    "等待同步进程失败: {err}"
+                )));
+            }
+        }
+    }
+}
+
+pub(crate) fn list_userdb_entries_sync(
+    filename: String,
+    limit: usize,
+    offset: usize,
+    query: Option<String>,
+) -> Result<UserdbEntriesResult, RimeError> {
+    let sync_cfg = get_sync_config_sync()?;
+    let target_file = PathBuf::from(&sync_cfg.resolved_sync_dir)
+        .join(&sync_cfg.installation_id)
+        .join(&filename);
+
+    if !target_file.exists() {
+        return Err(RimeError::ConfigNotFound(format!(
+            "快照文件不存在: {filename}"
+        )));
+    }
+
+    let content = fs::read_to_string(&target_file)
+        .map_err(|err| RimeError::FileOperationError(format!("读取快照失败: {err}")))?;
+
+    let query_lower = query.as_deref().map(str::to_lowercase);
+    let mut all_entries = Vec::new();
+
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let parts: Vec<&str> = line.split('\t').collect();
+        if parts.is_empty() {
+            continue;
+        }
+        let word = parts[0].to_string();
+        let code = parts.get(1).unwrap_or(&"").to_string();
+        let count = parts
+            .get(2)
+            .and_then(|raw| {
+                if let Some(c) = raw.strip_prefix("c=") {
+                    c.split_whitespace()
+                        .next()
+                        .and_then(|s| s.parse::<u64>().ok())
+                } else {
+                    raw.split_whitespace()
+                        .next()
+                        .and_then(|s| s.parse::<u64>().ok())
+                }
+            })
+            .unwrap_or(1);
+
+        if let Some(ref q) = query_lower {
+            if !word.to_lowercase().contains(q) && !code.to_lowercase().contains(q) {
+                continue;
+            }
+        }
+
+        all_entries.push(UserdbEntry { word, code, count });
+    }
+
+    let total = all_entries.len();
+    let entries = all_entries.into_iter().skip(offset).take(limit).collect();
+
+    Ok(UserdbEntriesResult { entries, total })
+}

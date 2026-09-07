@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Refresh, UploadFilled } from "@element-plus/icons-vue";
+import { Refresh, SwitchButton, UploadFilled } from "@element-plus/icons-vue";
 import TypingSandbox from "../common/TypingSandbox.vue";
 
 defineProps<{
@@ -8,11 +8,13 @@ defineProps<{
   scanning: boolean;
   hasDeployer: boolean;
   deploying: boolean;
+  restartingServer: boolean;
 }>();
 
 defineEmits<{
   refresh: [];
   deploy: [];
+  restartServer: [];
 }>();
 </script>
 
@@ -26,6 +28,15 @@ defineEmits<{
     <div class="toolbar-actions">
       <TypingSandbox />
       <el-button :loading="scanning" :icon="Refresh" @click="$emit('refresh')"> 刷新 </el-button>
+      <el-button
+        :disabled="!hasDeployer"
+        :loading="restartingServer"
+        :icon="SwitchButton"
+        title="重启小狼毫输入法后台服务 (WeaselServer.exe)"
+        @click="$emit('restartServer')"
+      >
+        重启服务
+      </el-button>
       <el-button
         type="primary"
         :disabled="!hasDeployer"
