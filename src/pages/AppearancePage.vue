@@ -6,6 +6,7 @@ import type { AppearanceConfig, ColorScheme, ConfigPreview, RimeEnvironment } fr
 import { api } from "../api";
 import { useErrorHandler } from "../composables/useErrorHandler";
 import TypingSandbox from "../components/common/TypingSandbox.vue";
+import { colorFields, presets } from "../appearance/schemes";
 
 const props = defineProps<{
   env?: RimeEnvironment;
@@ -88,18 +89,6 @@ const form = reactive<AppearanceConfig>({
   hilited_candidate_back_color: "0xD48E3B",
 });
 
-const colorFields = [
-  { key: "back_color", label: "背景色" },
-  { key: "border_color", label: "边框色" },
-  { key: "text_color", label: "编码文字" },
-  { key: "candidate_text_color", label: "候选文字" },
-  { key: "comment_text_color", label: "注释文字" },
-  { key: "hilited_back_color", label: "编码高亮背景" },
-  { key: "hilited_text_color", label: "编码高亮文字" },
-  { key: "hilited_candidate_back_color", label: "候选高亮背景" },
-  { key: "hilited_candidate_text_color", label: "候选高亮文字" },
-] as const;
-
 function colorsFromConfig(config: { [K in ColorKey]: string }): SchemeColors {
   return Object.fromEntries(colorFields.map(({ key }) => [key, config[key]])) as SchemeColors;
 }
@@ -172,99 +161,6 @@ function upsertCustomScheme(config: AppearanceConfig) {
   }
   persistCustomSchemes();
 }
-
-const presets = [
-  {
-    name: "rime_studio_blue",
-    label: "浅蓝",
-    colors: {
-      back_color: "0xFFF6F0",
-      border_color: "0xF5E0CD",
-      text_color: "0x6E4D33",
-      candidate_text_color: "0x6E4D33",
-      comment_text_color: "0xAE937A",
-      hilited_text_color: "0xFFFFFF",
-      hilited_back_color: "0xD48E3B",
-      hilited_candidate_text_color: "0xFFFFFF",
-      hilited_candidate_back_color: "0xD48E3B",
-    },
-  },
-  {
-    name: "rime_studio_ice",
-    label: "冰白",
-    colors: {
-      back_color: "0xFFFFFF",
-      border_color: "0xF0E8E2",
-      text_color: "0x554133",
-      candidate_text_color: "0x554133",
-      comment_text_color: "0xB8A394",
-      hilited_text_color: "0xFFFFFF",
-      hilited_back_color: "0xF6823B",
-      hilited_candidate_text_color: "0xFFFFFF",
-      hilited_candidate_back_color: "0xF6823B",
-    },
-  },
-  {
-    name: "rime_studio_night_blue",
-    label: "夜蓝",
-    colors: {
-      back_color: "0x3B291E",
-      border_color: "0x554133",
-      text_color: "0xF0E8E2",
-      candidate_text_color: "0xF0E8E2",
-      comment_text_color: "0xB8A394",
-      hilited_text_color: "0xFFFFFF",
-      hilited_back_color: "0xF6823B",
-      hilited_candidate_text_color: "0xFFFFFF",
-      hilited_candidate_back_color: "0xF6823B",
-    },
-  },
-  {
-    name: "rime_studio_dark",
-    label: "墨黑",
-    colors: {
-      back_color: "0x2E1A1A",
-      border_color: "0x442D2D",
-      text_color: "0xD0C8C8",
-      candidate_text_color: "0xD0C8C8",
-      comment_text_color: "0x806B6B",
-      hilited_text_color: "0xFFFFFF",
-      hilited_back_color: "0xED3A7C",
-      hilited_candidate_text_color: "0xFFFFFF",
-      hilited_candidate_back_color: "0xED3A7C",
-    },
-  },
-  {
-    name: "rime_studio_warm",
-    label: "暖橙",
-    colors: {
-      back_color: "0xEDF7FE",
-      border_color: "0xD0E8FD",
-      text_color: "0x2E3D5C",
-      candidate_text_color: "0x2E3D5C",
-      comment_text_color: "0x6A95B8",
-      hilited_text_color: "0xFFFFFF",
-      hilited_back_color: "0x0B9EF5",
-      hilited_candidate_text_color: "0xFFFFFF",
-      hilited_candidate_back_color: "0x0B9EF5",
-    },
-  },
-  {
-    name: "rime_studio_bamboo",
-    label: "竹绿",
-    colors: {
-      back_color: "0xF0FAF0",
-      border_color: "0xDAEDD4",
-      text_color: "0x3E4A2D",
-      candidate_text_color: "0x3E4A2D",
-      comment_text_color: "0x7A8B6B",
-      hilited_text_color: "0xFFFFFF",
-      hilited_back_color: "0x699605",
-      hilited_candidate_text_color: "0xFFFFFF",
-      hilited_candidate_back_color: "0x699605",
-    },
-  },
-];
 
 const previewStyle = computed(() => ({
   backgroundColor: rimeToCssColor(form.back_color),

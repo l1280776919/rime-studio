@@ -1,4 +1,13 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { formatInvokeError } from "./utils/error";
+
+async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  try {
+    return await tauriInvoke<T>(cmd, args);
+  } catch (err) {
+    throw new Error(formatInvokeError(err), { cause: err });
+  }
+}
 import type {
   AppearanceConfig,
   AppUpdateInfo,
@@ -35,6 +44,7 @@ export const api = {
   scanEnvironment: () => invoke<RimeEnvironment>("scan_rime_environment"),
   scanDictionaryHealth: () => invoke<DictHealth | null>("scan_dictionary_health"),
   deploy: () => invoke<DeployResult>("deploy_rime"),
+  cancelDeploy: () => invoke("cancel_deploy"),
   installRimeIce: (recipe?: string) => invoke<InstallResult>("install_rime_ice", { recipe }),
 
   getAppearance: () => invoke<AppearanceConfig>("get_appearance_config"),
@@ -60,12 +70,14 @@ export const api = {
     invoke<ConfigPreview>("preview_rime_ice_settings", { settings }),
 
   listBackups: () => invoke<BackupEntry[]>("list_backups"),
-  createBackup: () => invoke<BackupEntry>("create_backup"),
+  createBackup: (note?: string) => invoke<BackupEntry>("create_backup", { note }),
+  previewBackup: (backupName: string) => invoke<ConfigPreview>("preview_backup", { backupName }),
   openBackupDir: (backupName: string) => invoke("open_backup_dir", { backupName }),
   restoreBackup: (backupName: string) => invoke<RestoreResult>("restore_backup", { backupName }),
   deleteBackup: (backupName: string) => invoke("delete_backup", { backupName }),
 
   openRimeUserDir: () => invoke("open_rime_user_dir"),
+  openSyncDir: () => invoke("open_sync_dir"),
   openPlumDir: () => invoke("open_plum_dir"),
   openConfigFile: (name: string) => invoke("open_config_file", { name }),
   openAppLogDir: () => invoke<string>("open_app_log_dir"),

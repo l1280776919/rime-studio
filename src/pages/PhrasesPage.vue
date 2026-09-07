@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { api } from "../api";
 import {
@@ -14,6 +14,7 @@ import {
 } from "@element-plus/icons-vue";
 import type { PhraseEntry, RimeEnvironment } from "../types";
 import { useErrorHandler } from "../composables/useErrorHandler";
+import { countDuplicatePhrases, dedupePhrases, paginateItems } from "../utils/phrases";
 
 const props = defineProps<{
   env?: RimeEnvironment;
@@ -41,6 +42,8 @@ const newPhrase = ref<PhraseEntry>({ text: "", code: "", weight: 1 });
 const { withErrorHandling } = useErrorHandler();
 
 const sortState = ref<{ prop?: string; order?: "ascending" | "descending" | null }>({});
+const phrasePage = ref(1);
+const phrasePageSize = ref(50);
 
 const userDir = computed(() => props.env?.user_dir ?? "等待扫描 Rime 目录");
 const filteredEntries = computed(() => {
@@ -60,6 +63,19 @@ const filteredEntries = computed(() => {
     return 0;
   });
 });
+const pagedEntries = computed(() =>
+  paginateItems(filteredEntries.value, phrasePage.value, phrasePageSize.value),
+);
+
+watch(searchQuery, () => {
+  phrasePage.value = 1;
+});
+watch(
+  () => pagedEntries.value.page,
+  (page) => {
+    phrasePage.value = page;
+  },
+);
 
 function handleSortChange(sort: { prop?: string; order?: "ascending" | "descending" | null }) {
   sortState.value = { prop: sort.prop, order: sort.order };
@@ -68,38 +84,6 @@ const duplicateCount = computed(() => countDuplicatePhrases(entries.value));
 const parsedDuplicateCount = computed(() =>
   countDuplicatePhrases([...entries.value, ...parsedImport.value]),
 );
-
-function phraseKey(entry: PhraseEntry) {
-  return `${entry.text.trim()}\t${entry.code.trim()}`.toLowerCase();
-}
-
-function countDuplicatePhrases(phrases: PhraseEntry[]) {
-  const seen = new Set<string>();
-  let duplicates = 0;
-  for (const phrase of phrases) {
-    const key = phraseKey(phrase);
-    if (!key.trim()) continue;
-    if (seen.has(key)) {
-      duplicates++;
-    } else {
-      seen.add(key);
-    }
-  }
-  return duplicates;
-}
-
-function dedupePhrases(phrases: PhraseEntry[]) {
-  const byKey = new Map<string, PhraseEntry>();
-  for (const phrase of phrases) {
-    const key = phraseKey(phrase);
-    if (!key.trim()) continue;
-    const current = byKey.get(key);
-    if (!current || phrase.weight > current.weight) {
-      byKey.set(key, { ...phrase });
-    }
-  }
-  return Array.from(byKey.values());
-}
 
 async function loadPhrases() {
   loading.value = true;
@@ -324,13 +308,17 @@ onMounted(loadPhrases);
         <el-table
           v-else
           v-loading="loading"
-          :data="filteredEntries"
+          :data="pagedEntries.items"
           stripe
           max-height="calc(100dvh - 280px)"
           highlight-current-row
           @sort-change="handleSortChange"
         >
-          <el-table-column label="#" type="index" width="56" />
+          <el-table-column label="#" width="56">
+            <template #default="{ $index }: { $index: number }">
+              {{ (pagedEntries.page - 1) * phrasePageSize + $index + 1 }}
+            </template>
+          </el-table-column>
           <el-table-column label="短语" min-width="200" prop="text" sortable="custom">
             <template #default="{ row }: { row: PhraseEntry }">
               <el-input
@@ -385,6 +373,16 @@ onMounted(loadPhrases);
             </template>
           </el-table-column>
         </el-table>
+        <div v-if="filteredEntries.length > phrasePageSize" class="phrases-pagination">
+          <el-pagination
+            v-model:current-page="phrasePage"
+            v-model:page-size="phrasePageSize"
+            :page-sizes="[50, 100, 200]"
+            :total="filteredEntries.length"
+            layout="total, sizes, prev, pager, next"
+            small
+          />
+        </div>
       </el-card>
     </section>
 
@@ -398,7 +396,9 @@ onMounted(loadPhrases);
           <el-icon><FolderOpened /></el-icon>
           <span>{{ userDir }}\custom_phrase.txt</span>
         </div>
-        <p class="helper-text">每行一条：短语、编码、权重以 Tab 分隔。权重越高排序越靠前。</p>
+        <p class="helper-text">
+          每行一条：短语、编码、权重以 Tab 分隔。保存时保留当前表格顺序，不会按权重重排文件。
+        </p>
       </el-card>
 
       <!-- Actions -->

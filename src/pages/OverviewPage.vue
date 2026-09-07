@@ -15,7 +15,7 @@ import {
   Setting,
   Warning,
 } from "@element-plus/icons-vue";
-import type { BackupEntry, FileStatus, RimeEnvironment } from "../types";
+import type { BackupEntry, FileStatus, RimeEnvironment, UserDictInfo } from "../types";
 
 const props = defineProps<{
   env?: RimeEnvironment;
@@ -30,7 +30,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   createBackup: [];
-  openPath: [command: "open_rime_user_dir" | "open_plum_dir"];
+  openPath: [command: "open_rime_user_dir" | "open_plum_dir" | "open_sync_dir"];
   install: [recipe: string];
   openBackup: [backup: BackupEntry];
   restoreBackup: [backup: BackupEntry];
@@ -277,6 +277,48 @@ async function autoDownloadGitAndInstall() {
               </template>
             </el-table-column>
           </el-table>
+        </el-card>
+
+        <el-card class="panel compact-panel" shadow="never">
+          <template #header>
+            <div class="panel-title">
+              <span>用户词库与同步</span>
+              <el-button link type="primary" @click="emit('openPath', 'open_sync_dir')">
+                打开同步目录
+              </el-button>
+            </div>
+          </template>
+          <p class="helper-text">
+            用户词存在 *.userdb，不会进入备份。默认同步目录是用户目录下的 sync/。
+          </p>
+          <el-table
+            :data="env?.user_dicts ?? []"
+            stripe
+            max-height="220"
+            empty-text="还没有用户词库"
+          >
+            <el-table-column label="用户词库" min-width="220">
+              <template #default="{ row }: { row: UserDictInfo }">
+                <strong>{{ row.name }}</strong>
+                <span class="mono-path file-path">{{ row.path }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="大小" width="120">
+              <template #default="{ row }: { row: UserDictInfo }">
+                {{ formatBytes(row.size_bytes) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="修改时间" width="170">
+              <template #default="{ row }: { row: UserDictInfo }">
+                {{ formatTime(row.modified) }}
+              </template>
+            </el-table-column>
+          </el-table>
+          <p v-if="env?.sync_dir" class="helper-text">
+            同步目录：{{
+              env.sync_dir.exists ? env.sync_dir.path : "尚未创建，点击上方按钮可打开/创建"
+            }}
+          </p>
         </el-card>
 
         <el-card v-if="log" class="log-panel" shadow="never">

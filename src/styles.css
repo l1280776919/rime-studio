@@ -4275,3 +4275,24 @@ button:active {
   font-weight: 600;
   white-space: nowrap;
 }
+
+.phrases-pagination {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 4px 4px;
+}
+
+.backup-preview-file {
+  margin-bottom: 12px;
+}
+
+.backup-preview-file pre {
+  max-height: 180px;
+  overflow: auto;
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-sm);
+}

@@ -107,10 +107,13 @@ const filteredAllFiles = computed(() => {
   return files.value.filter((f) => f.name.toLowerCase().includes(q));
 });
 
+function isYamlFile(name?: string) {
+  return Boolean(name && (name.endsWith(".yaml") || name.endsWith(".yml")));
+}
+
 function getEditorExtensions() {
-  return [
+  const extensions = [
     basicSetup,
-    yaml(),
     oneDark,
     EditorView.updateListener.of((update) => {
       if (update.docChanged) {
@@ -118,6 +121,10 @@ function getEditorExtensions() {
       }
     }),
   ];
+  if (isYamlFile(selectedFile.value?.name)) {
+    extensions.splice(1, 0, yaml());
+  }
+  return extensions;
 }
 
 const selectedFilePath = computed(() => selectedFile.value?.path ?? "");

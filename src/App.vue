@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
+import { useRoute, useRouter } from "vue-router";
 import zhCn from "element-plus/es/locale/lang/zh-cn";
 import { ElMessageBox } from "element-plus";
 import AppSidebar from "./components/layout/AppSidebar.vue";
@@ -8,6 +9,7 @@ import AppTopbar from "./components/layout/AppTopbar.vue";
 import AppStatusbar from "./components/layout/AppStatusbar.vue";
 import { useTheme } from "./composables/useTheme";
 import { useStudioStore } from "./stores/studio";
+import { isPageKey, type PageKey } from "./navigation";
 
 // ── Lazy page components ──────────────────────────
 const AboutPage = defineAsyncComponent(() => import("./pages/AboutPage.vue"));
@@ -36,35 +38,14 @@ const {
   hasDeployer,
 } = storeToRefs(studio);
 
-// ── Navigation ─────────────────────────────────────
-type PageKey =
-  | "overview"
-  | "quick"
-  | "schemas"
-  | "configs"
-  | "appearance"
-  | "phrases"
-  | "dictionaries"
-  | "backups"
-  | "editor"
-  | "about";
+const route = useRoute();
+const router = useRouter();
+const editorDirty = ref(false);
 
-const PAGE_KEYS: ReadonlySet<string> = new Set<PageKey>([
-  "overview",
-  "quick",
-  "schemas",
-  "configs",
-  "appearance",
-  "phrases",
-  "dictionaries",
-  "backups",
-  "editor",
-  "about",
-]);
-
-function isPageKey(value: string): value is PageKey {
-  return PAGE_KEYS.has(value);
-}
+const activePage = computed<PageKey>(() => {
+  const name = String(route.name ?? "overview");
+  return isPageKey(name) ? name : "overview";
+});
 
 async function navigateTo(key: string) {
   if (key === "configs") key = "editor";
@@ -83,11 +64,8 @@ async function navigateTo(key: string) {
     editorDirty.value = false;
   }
 
-  activePage.value = key;
+  await router.push({ name: key });
 }
-
-const activePage = ref<PageKey>("overview");
-const editorDirty = ref(false);
 const elapsedSeconds = ref(0);
 let elapsedTimer: ReturnType<typeof setInterval> | undefined;
 
@@ -96,7 +74,6 @@ const pageTitle = computed(() => {
     overview: "Rime 配置控制台",
     quick: "快速设置",
     schemas: "方案管理",
-    configs: "配置中心",
     appearance: "主题配置",
     phrases: "短语管理",
     dictionaries: "词库管理",
@@ -110,9 +87,8 @@ const pageTitle = computed(() => {
 const pageDescription = computed(() => {
   const descriptions: Record<PageKey, string> = {
     overview: "管理方案、外观、词库与部署状态。",
-    quick: "集中调整雾凇方案、候选数量、按键绑定与 Lua 扩展脚本。",
+    quick: "集中调整当前方案、候选数量、按键绑定，以及已安装的雾凇组件与 Lua 扩展。",
     schemas: "查看、启用、复制本机方案，浏览并一键安装社区方案与双拼键位图。",
-    configs: "集中查看、定位、编辑和校验 Rime 关键配置文件。",
     appearance: "调整小狼毫候选窗主题、字号、边距、颜色并测试打字效果。",
     phrases: "编辑自定义短语，支持添加、搜索、多格式导入与批量管理。",
     dictionaries: "浏览和管理 Rime 词库文件，查看条目统计、健康状态与在线导入。",
@@ -287,7 +263,13 @@ onBeforeUnmount(() => {
           </Transition>
         </div>
 
-        <AppStatusbar :status="status" :is-busy="isBusy" :elapsed-seconds="elapsedSeconds" />
+        <AppStatusbar
+          :status="status"
+          :is-busy="isBusy"
+          :elapsed-seconds="elapsedSeconds"
+          :deploying="deploying"
+          @cancel-deploy="studio.cancelDeploy"
+        />
       </section>
     </main>
   </el-config-provider>

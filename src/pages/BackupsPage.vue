@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { Delete, FolderOpened, Open, RefreshLeft } from "@element-plus/icons-vue";
+import { Delete, FolderOpened, Open, RefreshLeft, View } from "@element-plus/icons-vue";
 import { backupLabel, backupKindLabel, backupKindType, formatTime } from "../utils";
-import type { BackupEntry } from "../types";
+import type { BackupEntry, ConfigPreview } from "../types";
+import { useStudioStore } from "../stores/studio";
 
 const props = defineProps<{
   backups: BackupEntry[];
@@ -25,6 +26,20 @@ const manualCount = computed(
   () => props.backups.filter((backup) => backup.kind === "manual").length,
 );
 const autoCount = computed(() => props.backups.length - manualCount.value);
+const studio = useStudioStore();
+const showPreview = ref(false);
+const previewingBackup = ref<string>();
+const backupPreview = ref<ConfigPreview>();
+
+async function previewBackup(backup: BackupEntry) {
+  previewingBackup.value = backup.name;
+  const preview = await studio.previewBackupEntry(backup);
+  previewingBackup.value = undefined;
+  if (!preview) return;
+  backupPreview.value = preview;
+  showPreview.value = true;
+}
+
 const visibleBackups = computed(() => {
   if (activeFilter.value === "manual") {
     return props.backups.filter((backup) => backup.kind === "manual");
@@ -131,12 +146,22 @@ const visibleBackups = computed(() => {
                 {{ backupLabel(backup) }}
               </strong>
               <span>{{ formatTime(backup.modified) }} · {{ backup.files }} 个文件</span>
+              <span v-if="backup.note" class="backup-scope">备注：{{ backup.note }}</span>
               <span v-if="backup.scope" class="backup-scope">{{ backup.scope }}</span>
             </div>
             <div class="backup-manual-note">
               <span>恢复前会先创建安全备份</span>
             </div>
             <div class="backup-manual-actions">
+              <el-button
+                link
+                type="primary"
+                :icon="View"
+                :loading="previewingBackup === backup.name"
+                @click="previewBackup(backup)"
+              >
+                预览
+              </el-button>
               <el-button
                 link
                 type="warning"
@@ -163,5 +188,19 @@ const visibleBackups = computed(() => {
         </div>
       </el-card>
     </section>
+
+    <el-dialog v-model="showPreview" title="备份预览" width="720px">
+      <p class="helper-text">
+        对比当前用户目录，列出备份将覆盖的差异。空 diff 表示文件相同或当前不存在。
+      </p>
+      <el-empty v-if="!backupPreview?.files.length" description="备份里没有可对比的文件" />
+      <div v-for="file in backupPreview?.files" :key="file.path" class="backup-preview-file">
+        <strong>{{ file.name }}</strong>
+        <el-tag :type="file.changed ? 'warning' : 'success'" size="small" effect="light">
+          {{ file.changed ? "有差异" : "相同" }}
+        </el-tag>
+        <pre v-if="file.changed">{{ file.diff_lines.slice(0, 80).join("\n") }}</pre>
+      </div>
+    </el-dialog>
   </section>
 </template>

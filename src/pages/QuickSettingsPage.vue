@@ -53,7 +53,7 @@ let postDeployTimer: ReturnType<typeof setTimeout> | undefined;
 const { withErrorHandling } = useErrorHandler();
 
 const form = reactive<QuickSettingsConfig>({
-  schema_id: "rime_ice",
+  schema_id: "",
   page_size: 7,
   switch_key: "shift",
   paging_keys: "comma_period",
@@ -399,7 +399,7 @@ onBeforeUnmount(() => {
         </el-form>
       </el-card>
 
-      <el-card class="panel rime-ice-settings-panel" shadow="never">
+      <el-card v-if="hasRimeIce" class="panel rime-ice-settings-panel" shadow="never">
         <template #header>
           <div class="panel-title">
             <span>雾凇组件</span>
@@ -484,10 +484,6 @@ onBeforeUnmount(() => {
             </el-select>
           </div>
         </div>
-
-        <p v-if="!hasRimeIce" class="helper-text">
-          未检测到 rime_ice.schema.yaml，安装雾凇后可使用组件开关。
-        </p>
       </el-card>
     </section>
 

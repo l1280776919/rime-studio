@@ -3,6 +3,11 @@ defineProps<{
   status: string;
   isBusy: boolean;
   elapsedSeconds: number;
+  deploying?: boolean;
+}>();
+
+const emit = defineEmits<{
+  cancelDeploy: [];
 }>();
 
 function formatElapsed(seconds: number): string {
@@ -21,6 +26,9 @@ function formatElapsed(seconds: number): string {
         (已用时 {{ formatElapsed(elapsedSeconds) }})</template
       ></span
     >
+    <el-button v-if="deploying" link type="danger" size="small" @click="emit('cancelDeploy')">
+      取消部署
+    </el-button>
   </footer>
 </template>
 

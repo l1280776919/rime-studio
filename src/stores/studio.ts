@@ -1,8 +1,15 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { api } from "../api";
-import type { BackupEntry, DeployResult, RimeEnvironment } from "../types";
+import type {
+  BackupEntry,
+  ConfigPreview,
+  DeployProgress,
+  DeployResult,
+  RimeEnvironment,
+} from "../types";
 
 export const useStudioStore = defineStore("studio", () => {
   const env = ref<RimeEnvironment>();
@@ -57,7 +64,12 @@ export const useStudioStore = defineStore("studio", () => {
   async function deploy() {
     deploying.value = true;
     status.value = "正在重新部署小狼毫...";
+    let unlisten: UnlistenFn | undefined;
     try {
+      unlisten = await listen<DeployProgress>("deploy-progress", (event) => {
+        status.value = event.payload.stage;
+        if (event.payload.log) log.value = event.payload.log;
+      });
       const result = await api.deploy();
       lastDeploy.value = result;
       if (result.log) log.value = result.log;
@@ -75,7 +87,17 @@ export const useStudioStore = defineStore("studio", () => {
       ElMessage.error(String(error));
       throw error;
     } finally {
+      unlisten?.();
       deploying.value = false;
+    }
+  }
+
+  async function cancelDeploy() {
+    try {
+      await api.cancelDeploy();
+      status.value = "正在取消部署...";
+    } catch (error) {
+      ElMessage.error(String(error));
     }
   }
 
@@ -104,12 +126,29 @@ export const useStudioStore = defineStore("studio", () => {
   }
 
   async function createManualBackup() {
+    let note: string | undefined;
+    try {
+      const { value } = await ElMessageBox.prompt(
+        "可选：为这次备份写一句备注，方便以后识别。",
+        "创建备份",
+        {
+          confirmButtonText: "创建",
+          cancelButtonText: "取消",
+          inputPlaceholder: "例如：改主题前、导入词库后",
+          inputValue: "",
+        },
+      );
+      note = value.trim() || undefined;
+    } catch {
+      return;
+    }
+
     backingUp.value = true;
     status.value = "正在创建配置备份...";
     try {
-      const backup = await api.createBackup();
+      const backup = await api.createBackup(note);
       await loadBackups();
-      ElMessage.success("备份已创建");
+      ElMessage.success(note ? "备份已创建（含备注）" : "备份已创建");
       status.value = `已创建备份：${backup.name}`;
       return backup;
     } catch (error) {
@@ -118,6 +157,15 @@ export const useStudioStore = defineStore("studio", () => {
       throw error;
     } finally {
       backingUp.value = false;
+    }
+  }
+
+  async function previewBackupEntry(backup: BackupEntry): Promise<ConfigPreview | undefined> {
+    try {
+      return await api.previewBackup(backup.name);
+    } catch (error) {
+      ElMessage.error(String(error));
+      return undefined;
     }
   }
 
@@ -184,10 +232,12 @@ export const useStudioStore = defineStore("studio", () => {
     }
   }
 
-  async function openKnownPath(command: "open_rime_user_dir" | "open_plum_dir") {
+  async function openKnownPath(command: "open_rime_user_dir" | "open_plum_dir" | "open_sync_dir") {
     try {
       if (command === "open_rime_user_dir") {
         await api.openRimeUserDir();
+      } else if (command === "open_sync_dir") {
+        await api.openSyncDir();
       } else {
         await api.openPlumDir();
       }
@@ -213,8 +263,10 @@ export const useStudioStore = defineStore("studio", () => {
     loadEnvironment,
     loadDictionaryHealth,
     deploy,
+    cancelDeploy,
     installRimeIce,
     createManualBackup,
+    previewBackupEntry,
     openBackupDir,
     restoreBackup,
     deleteBackupEntry,

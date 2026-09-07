@@ -29,6 +29,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint -- --max-warnings=0
       - run: npm run format
+      - run: npm test
       - run: npm run build
 
   # ── Backend check ──

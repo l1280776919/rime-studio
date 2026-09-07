@@ -37,6 +37,10 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
+  test: {
+    environment: "node",
+    include: ["src/**/*.test.ts"],
+  },
   build: {
     chunkSizeWarningLimit: 1000,
     rollupOptions: {

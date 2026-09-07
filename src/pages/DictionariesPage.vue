@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { computed, ref } from "vue";
 import { formatBytes, formatTime } from "../utils";
+import { paginateItems } from "../utils/phrases";
 import { useDictionaries } from "../composables/useDictionaries";
 import DictionaryImportPreviewDialog from "../components/dictionaries/DictionaryImportPreviewDialog.vue";
 import DictionaryUrlImportDialog from "../components/dictionaries/DictionaryUrlImportDialog.vue";
@@ -84,6 +86,12 @@ const {
   totalSize,
   enabledCount,
 } = useDictionaries(emit);
+
+const availablePage = ref(1);
+const availablePageSize = ref(40);
+const pagedAvailable = computed(() =>
+  paginateItems(dictConfig.value?.available ?? [], availablePage.value, availablePageSize.value),
+);
 </script>
 
 <template>
@@ -252,7 +260,7 @@ const {
         <template v-else>
           <el-table
             v-loading="loading"
-            :data="dictConfig?.available ?? []"
+            :data="pagedAvailable.items"
             stripe
             highlight-current-row
             max-height="calc(50dvh - 180px)"
@@ -322,6 +330,19 @@ const {
               </template>
             </el-table-column>
           </el-table>
+          <div
+            v-if="(dictConfig?.available.length ?? 0) > availablePageSize"
+            class="phrases-pagination"
+          >
+            <el-pagination
+              v-model:current-page="availablePage"
+              v-model:page-size="availablePageSize"
+              :page-sizes="[40, 80, 120]"
+              :total="dictConfig?.available.length ?? 0"
+              layout="total, sizes, prev, pager, next"
+              small
+            />
+          </div>
 
           <!-- Expandable health section -->
           <Transition name="el-fade-in-linear">

@@ -4,9 +4,75 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    sync::atomic::{AtomicBool, Ordering},
     thread,
     time::{Duration, Instant},
 };
+use tauri::{AppHandle, Emitter};
+
+static CANCEL_DEPLOY: AtomicBool = AtomicBool::new(false);
+
+pub(crate) fn request_cancel_deploy() {
+    CANCEL_DEPLOY.store(true, Ordering::SeqCst);
+}
+
+fn emit_deploy_progress(app: Option<&AppHandle>, stage: &str, log: &str, started: Instant) {
+    let Some(app) = app else {
+        return;
+    };
+    let _ = app.emit(
+        "deploy-progress",
+        DeployProgress {
+            stage: stage.to_string(),
+            log: log.to_string(),
+            elapsed_ms: started.elapsed().as_millis() as u64,
+        },
+    );
+}
+
+fn directory_size(path: &Path) -> u64 {
+    let Ok(entries) = fs::read_dir(path) else {
+        return 0;
+    };
+    entries
+        .flatten()
+        .map(|entry| {
+            let child = entry.path();
+            if child.is_dir() {
+                directory_size(&child)
+            } else {
+                entry.metadata().map(|meta| meta.len()).unwrap_or(0)
+            }
+        })
+        .sum()
+}
+
+pub(crate) fn list_user_dicts(user_dir: &Path) -> Vec<UserDictInfo> {
+    let mut out = Vec::new();
+    let Ok(entries) = fs::read_dir(user_dir) else {
+        return out;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        if !name.ends_with(".userdb") {
+            continue;
+        }
+        let modified = file_mtime(&path)
+            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|duration| duration.as_secs());
+        out.push(UserDictInfo {
+            name: name.to_string(),
+            path: path.display().to_string(),
+            size_bytes: directory_size(&path),
+            modified,
+        });
+    }
+    out.sort_by(|left, right| left.name.cmp(&right.name));
+    out
+}
 
 pub(crate) fn open_in_explorer(path: &Path) -> Result<(), RimeError> {
     if !path.exists() {
@@ -178,7 +244,8 @@ fn diagnose_yaml_files(user_dir: &Path, hints: &mut Vec<String>) {
     }
 }
 
-pub(crate) fn deploy_rime_internal() -> Result<DeployResult, RimeError> {
+pub(crate) fn deploy_rime_internal(app: Option<&AppHandle>) -> Result<DeployResult, RimeError> {
+    CANCEL_DEPLOY.store(false, Ordering::SeqCst);
     let started = Instant::now();
     let mut hints = Vec::new();
     let deployer_path = match locate_deployer() {
@@ -222,21 +289,25 @@ pub(crate) fn deploy_rime_internal() -> Result<DeployResult, RimeError> {
     suppress_console_window(&mut command);
 
     log::info!("Starting WeaselDeployer: {}", deployer_path.display());
+    emit_deploy_progress(app, "正在启动 WeaselDeployer...", "", started);
     let mut child = command
         .spawn()
         .map_err(|err| RimeError::CommandExecutionFailed(format!("运行部署器失败: {err}")))?;
 
     let timeout = Duration::from_secs(90);
+    let mut last_emit = Instant::now();
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break status,
             Ok(None) if started.elapsed() > timeout => {
                 let _ = child.kill();
                 let _ = child.wait();
+                let log = collect_weasel_logs(&user_dir);
+                emit_deploy_progress(app, "部署超时", &log, started);
                 return Ok(DeployResult {
                     success: false,
                     message: "部署超时（90 秒），已尝试结束部署器".to_string(),
-                    log: collect_weasel_logs(&user_dir),
+                    log,
                     hints: vec![
                         "请手动运行「开始菜单 → 小狼毫输入法 → 重新部署」".to_string(),
                         "如果弹出 UAC 或部署窗口，请在窗口内确认".to_string(),
@@ -244,7 +315,27 @@ pub(crate) fn deploy_rime_internal() -> Result<DeployResult, RimeError> {
                     duration_ms: started.elapsed().as_millis() as u64,
                 });
             }
-            Ok(None) => thread::sleep(Duration::from_millis(200)),
+            Ok(None) => {
+                if CANCEL_DEPLOY.swap(false, Ordering::SeqCst) {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    let log = collect_weasel_logs(&user_dir);
+                    emit_deploy_progress(app, "已取消部署", &log, started);
+                    return Ok(DeployResult {
+                        success: false,
+                        message: "已取消部署".to_string(),
+                        log,
+                        hints: vec!["部署已被用户取消".to_string()],
+                        duration_ms: started.elapsed().as_millis() as u64,
+                    });
+                }
+                if last_emit.elapsed() >= Duration::from_secs(1) {
+                    let log = collect_weasel_logs(&user_dir);
+                    emit_deploy_progress(app, "正在部署小狼毫...", &log, started);
+                    last_emit = Instant::now();
+                }
+                thread::sleep(Duration::from_millis(200));
+            }
             Err(err) => {
                 return Err(RimeError::CommandExecutionFailed(format!(
                     "等待部署器失败: {err}"
@@ -331,6 +422,8 @@ pub(crate) fn scan_rime_environment_sync() -> Result<RimeEnvironment, RimeError>
         .map(|name| file_status(&user_dir, name))
         .collect(),
         sogou_health: None,
+        user_dicts: list_user_dicts(&user_dir),
+        sync_dir: file_status(&user_dir, "sync"),
     })
 }
 
@@ -339,8 +432,8 @@ pub(crate) fn scan_dictionary_health_sync() -> Result<Option<DictHealth>, RimeEr
     Ok(analyze_dict_health(&path))
 }
 
-pub(crate) fn deploy_rime_sync() -> Result<DeployResult, RimeError> {
-    deploy_rime_internal()
+pub(crate) fn deploy_rime_sync(app: Option<AppHandle>) -> Result<DeployResult, RimeError> {
+    deploy_rime_internal(app.as_ref())
 }
 
 pub(crate) fn install_rime_ice_sync(recipe: Option<String>) -> Result<InstallResult, RimeError> {
@@ -389,7 +482,7 @@ pub(crate) fn install_rime_ice_sync(recipe: Option<String>) -> Result<InstallRes
     }
 
     log.push_str("\n正在部署小狼毫...\n");
-    match deploy_rime_internal() {
+    match deploy_rime_internal(None) {
         Ok(result) => {
             log.push_str(&result.message);
             Ok(InstallResult {

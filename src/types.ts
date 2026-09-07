@@ -29,6 +29,21 @@ export type RimeEnvironment = {
   label_font_point?: number;
   custom_files: FileStatus[];
   sogou_health?: DictHealth;
+  user_dicts: UserDictInfo[];
+  sync_dir: FileStatus;
+};
+
+export type UserDictInfo = {
+  name: string;
+  path: string;
+  size_bytes: number;
+  modified?: number;
+};
+
+export type DeployProgress = {
+  stage: string;
+  log: string;
+  elapsed_ms: number;
 };
 
 export type DeployResult = {
@@ -53,6 +68,7 @@ export type BackupEntry = {
   modified?: number;
   files: number;
   scope?: string;
+  note?: string;
 };
 
 export type RestoreResult = {

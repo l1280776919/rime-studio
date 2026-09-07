@@ -21,12 +21,20 @@ export function useTheme() {
 
   function initTheme() {
     const stored = localStorage.getItem(DARK_THEME_KEY);
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
     if (stored) {
       isDark.value = stored === "dark";
     } else {
-      isDark.value = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      isDark.value = media.matches;
     }
     applyTheme(isDark.value);
+
+    const onChange = (event: MediaQueryListEvent) => {
+      if (localStorage.getItem(DARK_THEME_KEY)) return;
+      isDark.value = event.matches;
+      applyTheme(isDark.value);
+    };
+    media.addEventListener("change", onChange);
   }
 
   return { isDark, toggleTheme, initTheme };

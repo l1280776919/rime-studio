@@ -1,5 +1,6 @@
 import { ref } from "vue";
 import { ElMessage } from "element-plus";
+import { formatInvokeError } from "../utils/error";
 
 export function useErrorHandler() {
   const error = ref<string | null>(null);
@@ -35,12 +36,7 @@ export function useErrorHandler() {
    * Extract a human-readable error message from any error type.
    */
   function extractErrorMessage(err: unknown): string {
-    if (err instanceof Error) return err.message;
-    if (typeof err === "string") return err;
-    if (err && typeof err === "object" && "message" in err) {
-      return String((err as { message: unknown }).message);
-    }
-    return String(err);
+    return formatInvokeError(err);
   }
 
   return { withErrorHandling };

@@ -69,10 +69,7 @@ pub(crate) fn save_custom_phrases_sync(phrases: Vec<PhraseEntry>) -> Result<(), 
         format!("{existing_header}\n")
     };
 
-    let mut sorted = phrases;
-    sorted.sort_by_key(|b| std::cmp::Reverse(b.weight));
-
-    for phrase in &sorted {
+    for phrase in &phrases {
         contents.push_str(&format!(
             "{}\t{}\t{}\n",
             phrase.text, phrase.code, phrase.weight

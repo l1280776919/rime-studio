@@ -215,7 +215,48 @@ pub(crate) fn backup_scope_label(kind: &str) -> String {
     }
 }
 
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+struct BackupMeta {
+    note: Option<String>,
+    kind: String,
+    created_at: u64,
+}
+
+fn write_backup_meta(dir: &Path, kind: BackupKind, note: Option<&str>) -> Result<(), RimeError> {
+    let created_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    let meta = BackupMeta {
+        note: note
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string),
+        kind: kind.as_str().to_string(),
+        created_at,
+    };
+    let payload = serde_json::to_string_pretty(&meta)
+        .map_err(|err| RimeError::BackupError(format!("写入备份备注失败: {err}")))?;
+    fs::write(dir.join("backup-meta.json"), payload)
+        .map_err(|err| RimeError::BackupError(format!("写入备份备注失败: {err}")))
+}
+
+fn read_backup_meta(dir: &Path) -> BackupMeta {
+    fs::read_to_string(dir.join("backup-meta.json"))
+        .ok()
+        .and_then(|contents| serde_json::from_str(&contents).ok())
+        .unwrap_or_default()
+}
+
 pub(crate) fn backup_user_config(user_dir: &Path, kind: BackupKind) -> Result<PathBuf, RimeError> {
+    backup_user_config_with_note(user_dir, kind, None)
+}
+
+pub(crate) fn backup_user_config_with_note(
+    user_dir: &Path,
+    kind: BackupKind,
+    note: Option<&str>,
+) -> Result<PathBuf, RimeError> {
     let backup_root = app_data_dir()?;
     fs::create_dir_all(&backup_root)
         .map_err(|err| RimeError::BackupError(format!("创建备份根目录失败: {err}")))?;
@@ -245,6 +286,8 @@ pub(crate) fn backup_user_config(user_dir: &Path, kind: BackupKind) -> Result<Pa
                 .map_err(|err| RimeError::BackupError(format!("备份 {name} 失败: {err}")))?;
         }
     }
+
+    write_backup_meta(&backup_dir, kind, note)?;
 
     if !matches!(kind, BackupKind::Manual) {
         let _ = prune_old_auto_backups(&backup_root, AUTO_BACKUP_KEEP_LIMIT);
@@ -287,12 +330,16 @@ pub(crate) fn list_backup_dirs(_user_dir: &Path) -> Result<Vec<BackupEntry>, Rim
             .map(|entries| {
                 entries
                     .filter_map(Result::ok)
-                    .filter(|item| item.path().is_file())
+                    .filter(|item| {
+                        item.path().is_file()
+                            && item.file_name().to_string_lossy() != "backup-meta.json"
+                    })
                     .count()
             })
             .unwrap_or(0);
 
         let kind = backup_kind_from_name(name);
+        let meta = read_backup_meta(&path);
         backups.push(BackupEntry {
             name: name.to_string(),
             path: path.display().to_string(),
@@ -300,6 +347,7 @@ pub(crate) fn list_backup_dirs(_user_dir: &Path) -> Result<Vec<BackupEntry>, Rim
             modified,
             files,
             scope: backup_scope_label(&kind),
+            note: meta.note,
         });
     }
 
@@ -348,7 +396,11 @@ pub(crate) fn restore_backup_dir(
         let Some(name) = source.file_name().and_then(OsStr::to_str) else {
             continue;
         };
-        if !is_managed_config_file(name) {
+        if name == "backup-meta.json"
+            || name.contains("..")
+            || name.contains('/')
+            || name.contains('\\')
+        {
             continue;
         }
 

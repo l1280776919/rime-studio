@@ -41,6 +41,254 @@ pub(crate) fn serialize_custom_yaml(root: &Mapping) -> Result<String, RimeError>
     Ok(format!("{HEADER}\n{body}"))
 }
 
+fn mapping_key_string(key: &Value) -> Option<String> {
+    match key {
+        Value::String(value) => Some(value.clone()),
+        Value::Number(value) => Some(value.to_string()),
+        Value::Bool(value) => Some(value.to_string()),
+        _ => None,
+    }
+}
+
+fn patches_semantically_eq(left: &Mapping, right: &Mapping) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+    left.iter()
+        .all(|(key, value)| right.get(key) == Some(value))
+}
+
+fn indent_width(line: &str) -> usize {
+    line.chars().take_while(|ch| *ch == ' ').count()
+}
+
+fn parse_mapping_key(line: &str) -> Option<String> {
+    let trimmed = line.trim_start();
+    if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with('-') {
+        return None;
+    }
+    if let Some(rest) = trimmed.strip_prefix('"') {
+        let end = rest.find('"')?;
+        let after = rest.get(end + 1..)?.trim_start();
+        if after.starts_with(':') {
+            return Some(rest[..end].to_string());
+        }
+        return None;
+    }
+    if let Some(rest) = trimmed.strip_prefix('\'') {
+        let end = rest.find('\'')?;
+        let after = rest.get(end + 1..)?.trim_start();
+        if after.starts_with(':') {
+            return Some(rest[..end].to_string());
+        }
+        return None;
+    }
+    let end = trimmed.find(':')?;
+    let key = trimmed[..end].trim();
+    if key.is_empty() || key.contains(' ') {
+        return None;
+    }
+    Some(key.to_string())
+}
+
+fn emit_yaml_entry(key: &str, value: &Value, indent: usize) -> Result<String, RimeError> {
+    let mut tmp = Mapping::new();
+    tmp.insert(yaml_str(key), value.clone());
+    let rendered = serde_yaml::to_string(&Value::Mapping(tmp))
+        .map_err(|err| RimeError::YamlParseError(format!("序列化 YAML 失败: {err}")))?;
+    let body = rendered.trim_start_matches("---").trim_start();
+    let pad = " ".repeat(indent);
+    let mut out = String::new();
+    for line in body.lines() {
+        if line.is_empty() {
+            continue;
+        }
+        out.push_str(&pad);
+        out.push_str(line);
+        out.push('\n');
+    }
+    Ok(out)
+}
+
+fn reconstruct_preserving(existing: &str, new_root: &Mapping) -> Result<String, RimeError> {
+    let Some(Value::Mapping(new_patch)) = new_root.get(yaml_str("patch")) else {
+        return serialize_custom_yaml(new_root);
+    };
+
+    let lines: Vec<&str> = existing.lines().collect();
+    let patch_idx = lines.iter().position(|line| {
+        indent_width(line) == 0 && line.trim() == "patch:"
+            || (indent_width(line) == 0 && line.trim() == "patch: {}")
+    });
+
+    let key_indent_default = 2;
+    let mut out = String::new();
+
+    let Some(patch_idx) = patch_idx else {
+        let preamble = existing.trim_end();
+        if !preamble.is_empty() {
+            out.push_str(preamble);
+            out.push('\n');
+        }
+        out.push_str("patch:\n");
+        for (key, value) in new_patch {
+            let Some(name) = mapping_key_string(key) else {
+                continue;
+            };
+            out.push_str(&emit_yaml_entry(&name, value, key_indent_default)?);
+        }
+        return Ok(out);
+    };
+
+    let old_patch = parse_yaml_mapping(existing)
+        .ok()
+        .and_then(|root| {
+            root.get(yaml_str("patch"))
+                .and_then(Value::as_mapping)
+                .cloned()
+        })
+        .unwrap_or_default();
+
+    let preamble = lines[..patch_idx].join("\n");
+    if !preamble.is_empty() {
+        out.push_str(&preamble);
+        if !preamble.ends_with('\n') {
+            out.push('\n');
+        }
+    }
+    out.push_str("patch:\n");
+
+    let mut key_indent = None;
+    for line in lines.iter().skip(patch_idx + 1) {
+        if line.trim().is_empty() || line.trim_start().starts_with('#') {
+            continue;
+        }
+        if indent_width(line) == 0 {
+            break;
+        }
+        if parse_mapping_key(line).is_some() {
+            key_indent = Some(indent_width(line));
+            break;
+        }
+    }
+    let key_indent = key_indent.unwrap_or(key_indent_default);
+
+    let mut pending = String::new();
+    let mut seen = Vec::new();
+    let mut index = patch_idx + 1;
+    let mut postamble = String::new();
+
+    while index < lines.len() {
+        let line = lines[index];
+        let indent = indent_width(line);
+        let trimmed = line.trim();
+
+        if trimmed.is_empty() {
+            pending.push('\n');
+            index += 1;
+            continue;
+        }
+
+        if indent == 0 {
+            postamble = lines[index..].join("\n");
+            break;
+        }
+
+        if trimmed.starts_with('#') {
+            pending.push_str(line);
+            pending.push('\n');
+            index += 1;
+            continue;
+        }
+
+        if indent == key_indent {
+            if let Some(key) = parse_mapping_key(line) {
+                let mut raw = String::new();
+                raw.push_str(line);
+                raw.push('\n');
+                index += 1;
+                while index < lines.len() {
+                    let next = lines[index];
+                    let next_indent = indent_width(next);
+                    let next_trim = next.trim();
+                    if next_trim.is_empty() {
+                        let mut look = index + 1;
+                        while look < lines.len() && lines[look].trim().is_empty() {
+                            look += 1;
+                        }
+                        if look < lines.len() && indent_width(lines[look]) > key_indent {
+                            raw.push_str(next);
+                            raw.push('\n');
+                            index += 1;
+                            continue;
+                        }
+                        break;
+                    }
+                    if next_indent == 0 {
+                        break;
+                    }
+                    if next_indent == key_indent
+                        && (next_trim.starts_with('#') || parse_mapping_key(next).is_some())
+                    {
+                        break;
+                    }
+                    raw.push_str(next);
+                    raw.push('\n');
+                    index += 1;
+                }
+
+                seen.push(key.clone());
+                match new_patch.get(yaml_str(&key)) {
+                    None => pending.clear(),
+                    Some(new_value) => {
+                        out.push_str(&pending);
+                        pending.clear();
+                        if old_patch.get(yaml_str(&key)) == Some(new_value) {
+                            out.push_str(&raw);
+                        } else {
+                            out.push_str(&emit_yaml_entry(&key, new_value, key_indent)?);
+                        }
+                    }
+                }
+                continue;
+            }
+        }
+
+        pending.push_str(line);
+        pending.push('\n');
+        index += 1;
+    }
+
+    for (key, value) in new_patch {
+        let Some(name) = mapping_key_string(key) else {
+            continue;
+        };
+        if seen.iter().any(|item| item == &name) {
+            continue;
+        }
+        out.push_str(&emit_yaml_entry(&name, value, key_indent)?);
+    }
+
+    if !pending.trim().is_empty() {
+        out.push_str(&pending);
+    }
+    if !postamble.is_empty() {
+        if !out.ends_with('\n') {
+            out.push('\n');
+        }
+        out.push_str(&postamble);
+        if existing.ends_with('\n') && !out.ends_with('\n') {
+            out.push('\n');
+        }
+    }
+
+    let parsed = parse_yaml_mapping(&out)?;
+    match parsed.get(yaml_str("patch")).and_then(Value::as_mapping) {
+        Some(got) if patches_semantically_eq(got, new_patch) => Ok(out),
+        _ => serialize_custom_yaml(new_root),
+    }
+}
+
 pub(crate) fn merge_custom_yaml<F>(existing: &str, apply: F) -> Result<String, RimeError>
 where
     F: FnOnce(&mut Mapping),
@@ -56,7 +304,12 @@ where
         };
         apply(patch);
     }
-    serialize_custom_yaml(&root)
+
+    if existing.trim().is_empty() {
+        return serialize_custom_yaml(&root);
+    }
+
+    reconstruct_preserving(existing, &root)
 }
 
 fn nested_get<'a>(mapping: &'a Mapping, path: &str) -> Option<&'a Value> {
@@ -293,5 +546,20 @@ patch:
         assert!(rendered.contains("Control+p"));
         assert!(rendered.contains("minus"));
         assert!(!rendered.contains("accept: Up"));
+    }
+
+    #[test]
+    fn merge_preserves_comments_on_unmanaged_keys() {
+        let existing = "# keep this header\npatch:\n  # font comment\n  \"style/font_face\": \"Sarasa Gothic\"\n  \"menu/page_size\": 5\n";
+        let rendered = merge_custom_yaml(existing, |patch| {
+            set_patch_path(patch, "menu/page_size", Value::from(9));
+        })
+        .expect("merge yaml");
+
+        assert!(rendered.contains("# keep this header"));
+        assert!(rendered.contains("# font comment"));
+        assert!(rendered.contains("Sarasa Gothic"));
+        assert!(rendered.contains('9'));
+        assert!(!rendered.contains(": 5"));
     }
 }

@@ -13,21 +13,49 @@ pub(crate) fn get_appearance_config_sync() -> Result<AppearanceConfig, RimeError
     Ok(read_appearance_config(&user_dir))
 }
 
+fn binding_accept_send(contents: &str) -> Vec<(String, String)> {
+    let Some(Value::Sequence(items)) = yaml_lookup(contents, "key_binder/bindings") else {
+        return Vec::new();
+    };
+    items
+        .iter()
+        .filter_map(|item| {
+            let mapping = item.as_mapping()?;
+            Some((
+                yaml_mapping_get(mapping, "accept")
+                    .and_then(yaml_value_to_string)
+                    .unwrap_or_default(),
+                yaml_mapping_get(mapping, "send")
+                    .and_then(yaml_value_to_string)
+                    .unwrap_or_default(),
+            ))
+        })
+        .collect()
+}
+
 pub(crate) fn detect_paging_keys(contents: &str) -> String {
-    if contents.contains("accept: Up") && contents.contains("send: Page_Up") {
+    let bindings = binding_accept_send(contents);
+    if bindings
+        .iter()
+        .any(|(accept, send)| accept == "Up" && send == "Page_Up")
+    {
         return "arrow_keys".to_string();
     }
-    if contents.contains("accept: minus") && contents.contains("send: Page_Up") {
+    if bindings
+        .iter()
+        .any(|(accept, send)| accept == "minus" && send == "Page_Up")
+    {
         return "minus_equal".to_string();
     }
     "comma_period".to_string()
 }
 
 pub(crate) fn detect_navigation_keys(contents: &str) -> String {
-    // left_right when Left→Up (synthesize Up for selection) OR Left→Page_Up (extra paging)
-    let left_sends_up = contents.contains("accept: Left") && contents.contains("send: Up");
-    let left_sends_page = contents.contains("accept: Left") && contents.contains("send: Page_Up");
-    if left_sends_up || left_sends_page {
+    let bindings = binding_accept_send(contents);
+    if bindings
+        .iter()
+        .any(|(accept, send)| accept == "Left" && (send == "Up" || send == "Page_Up"))
+    {
         return "left_right".to_string();
     }
     "up_down".to_string()
@@ -49,7 +77,7 @@ pub(crate) fn get_quick_settings_sync() -> Result<QuickSettingsConfig, RimeError
     let navigation_keys = detect_navigation_keys(&default_custom);
 
     Ok(QuickSettingsConfig {
-        schema_id: parse_schema(&default_custom).unwrap_or_else(|| "rime_ice".to_string()),
+        schema_id: parse_schema(&default_custom).unwrap_or_default(),
         page_size: parse_u32_after_key(&default_custom, "menu/page_size")
             .unwrap_or(appearance.page_size),
         switch_key: switch_key.to_string(),
@@ -505,7 +533,7 @@ pub(crate) fn repair_config_health_sync() -> Result<ConfigHealthReport, RimeErro
 
     save_quick_settings_sync(quick)?;
     save_appearance_config_sync(appearance)?;
-    let _ = deploy_rime_internal();
+    let _ = deploy_rime_internal(None);
 
     inspect_config_health_sync()
 }
@@ -527,14 +555,14 @@ pub(crate) fn repair_config_health_item_sync(
             });
             save_quick_settings_sync(quick)?;
             if name == "候选数量合并" {
-                let _ = deploy_rime_internal();
+                let _ = deploy_rime_internal(None);
             }
         }
         "weasel.custom.yaml" | "主题配置" | "主题合并" => {
             let appearance = get_appearance_config_sync()?;
             save_appearance_config_sync(appearance)?;
             if name == "主题合并" {
-                let _ = deploy_rime_internal();
+                let _ = deploy_rime_internal(None);
             }
         }
         "雾凇组件配置" | "繁体预设" => {
@@ -764,11 +792,11 @@ pub(crate) fn list_backups_sync() -> Result<Vec<BackupEntry>, RimeError> {
     list_backup_dirs(&user_dir)
 }
 
-pub(crate) fn create_backup_sync() -> Result<BackupEntry, RimeError> {
+pub(crate) fn create_backup_with_note_sync(note: Option<String>) -> Result<BackupEntry, RimeError> {
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir)
         .map_err(|err| RimeError::SettingsError(format!("创建 Rime 目录失败: {err}")))?;
-    let backup_dir = backup_user_config(&user_dir, BackupKind::Manual)?;
+    let backup_dir = backup_user_config_with_note(&user_dir, BackupKind::Manual, note.as_deref())?;
     let backup_name = backup_dir
         .file_name()
         .and_then(OsStr::to_str)
@@ -786,28 +814,48 @@ pub(crate) fn open_rime_user_dir_sync() -> Result<(), RimeError> {
 }
 
 pub(crate) fn open_config_file_sync(name: String) -> Result<(), RimeError> {
-    let allowed = [
-        "default.custom.yaml",
-        "weasel.custom.yaml",
-        "rime_ice.custom.yaml",
-        "custom_phrase.txt",
-        "rime_ice.schema.yaml",
-        "rime_ice.dict.yaml",
-        "rime_ice_ext.dict.yaml",
-        "sogou_ext.dict.yaml",
-    ];
-    if !allowed.contains(&name.as_str()) {
-        return Err(RimeError::ConfigNotFound(
-            "不支持打开这个配置文件".to_string(),
-        ));
-    }
-
-    let path = rime_user_dir()?.join(name);
+    validate_config_relpath(&name)?;
+    let path = join_user_rel(&rime_user_dir()?, &name);
     if !path.exists() || !path.is_file() {
         return Err(RimeError::ConfigNotFound("配置文件不存在".to_string()));
     }
 
     reveal_in_explorer(&path)
+}
+
+pub(crate) fn open_sync_dir_sync() -> Result<(), RimeError> {
+    let path = rime_user_dir()?.join("sync");
+    if !path.exists() {
+        fs::create_dir_all(&path)
+            .map_err(|err| RimeError::FileOperationError(format!("创建同步目录失败: {err}")))?;
+    }
+    open_in_explorer(&path)
+}
+
+pub(crate) fn preview_backup_sync(backup_name: String) -> Result<ConfigPreview, RimeError> {
+    let user_dir = rime_user_dir()?;
+    let backup_dir = validated_backup_dir(&user_dir, &backup_name)?;
+    let mut files = Vec::new();
+    let entries = fs::read_dir(&backup_dir)
+        .map_err(|err| RimeError::BackupError(format!("读取备份失败: {err}")))?;
+    for entry in entries {
+        let entry =
+            entry.map_err(|err| RimeError::BackupError(format!("检查备份文件失败: {err}")))?;
+        let source = entry.path();
+        if !source.is_file() {
+            continue;
+        }
+        let Some(name) = source.file_name().and_then(OsStr::to_str) else {
+            continue;
+        };
+        if name == "backup-meta.json" {
+            continue;
+        }
+        let new_contents = fs::read_to_string(&source).unwrap_or_default();
+        files.push(preview_file(&user_dir, name, new_contents));
+    }
+    files.sort_by(|left, right| left.name.cmp(&right.name));
+    Ok(ConfigPreview { files })
 }
 
 pub(crate) fn open_plum_dir_sync() -> Result<(), RimeError> {

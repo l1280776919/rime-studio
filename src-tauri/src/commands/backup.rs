@@ -9,8 +9,13 @@ pub(crate) async fn list_backups() -> Result<Vec<BackupEntry>, RimeError> {
 }
 
 #[tauri::command]
-pub(crate) async fn create_backup() -> Result<BackupEntry, RimeError> {
-    run_blocking(create_backup_sync).await
+pub(crate) async fn create_backup(note: Option<String>) -> Result<BackupEntry, RimeError> {
+    run_blocking(move || create_backup_with_note_sync(note)).await
+}
+
+#[tauri::command]
+pub(crate) async fn preview_backup(backup_name: String) -> Result<ConfigPreview, RimeError> {
+    run_blocking(move || preview_backup_sync(backup_name)).await
 }
 
 #[tauri::command]

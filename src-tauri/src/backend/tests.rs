@@ -357,11 +357,13 @@ patch:
 
     #[test]
     fn rejects_yaml_filename_traversal() {
-        assert!(validate_yaml_filename("default.custom.yaml").is_ok());
-        assert!(validate_yaml_filename("../default.custom.yaml").is_err());
-        assert!(validate_yaml_filename("sub/default.custom.yaml").is_err());
-        assert!(validate_yaml_filename("default.custom.txt").is_err());
-        assert!(validate_yaml_filename("").is_err());
+        assert!(validate_config_relpath("default.custom.yaml").is_ok());
+        assert!(validate_config_relpath("../default.custom.yaml").is_err());
+        assert!(validate_config_relpath("sub/default.custom.yaml").is_ok());
+        assert!(validate_config_relpath("lua/date.lua").is_ok());
+        assert!(validate_config_relpath("custom_phrase.txt").is_ok());
+        assert!(validate_config_relpath("default.custom.json").is_err());
+        assert!(validate_config_relpath("").is_err());
     }
 
     #[test]
@@ -399,6 +401,18 @@ patch:
     fn backup_scope_describes_exclusions() {
         assert!(backup_scope_label("manual").contains("userdb"));
         assert!(backup_scope_label("before-save").contains("词库"));
+    }
+
+    #[test]
+    fn paging_keys_use_yaml_bindings() {
+        let contents = r#"
+patch:
+  key_binder/bindings:
+    - {when: paging, accept: Up, send: Page_Up}
+    - {when: has_menu, accept: Down, send: Page_Down}
+"#;
+        assert_eq!(detect_paging_keys(contents), "arrow_keys");
+        assert_eq!(detect_navigation_keys(contents), "up_down");
     }
 
     #[test]

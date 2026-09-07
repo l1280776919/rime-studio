@@ -53,11 +53,19 @@ fn create_http_agent() -> ureq::Agent {
 /// Convenience wrapper for GET requests with default headers.
 ///
 /// Returns a `ureq::Request` that can be further configured and called.
+fn is_github_url(url: &str) -> bool {
+    url.contains("://api.github.com/")
+        || url.contains("://github.com/")
+        || url.contains("://raw.githubusercontent.com/")
+}
+
 pub(crate) fn http_get(url: &str) -> ureq::Request {
-    http_agent()
-        .get(url)
-        .set("User-Agent", DEFAULT_USER_AGENT)
-        .set("Accept", "application/vnd.github+json")
+    let request = http_agent().get(url).set("User-Agent", DEFAULT_USER_AGENT);
+    if is_github_url(url) {
+        request.set("Accept", "application/vnd.github+json")
+    } else {
+        request.set("Accept", "*/*")
+    }
 }
 
 #[cfg(test)]

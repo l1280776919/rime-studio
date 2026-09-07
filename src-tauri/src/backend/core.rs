@@ -75,8 +75,19 @@ pub(crate) fn suppress_console_window(command: &mut Command) -> &mut Command {
     command
 }
 
+pub(crate) fn join_user_rel(user_dir: &Path, rel: &str) -> PathBuf {
+    let mut path = user_dir.to_path_buf();
+    for part in rel.split(['/', '\\']) {
+        if part.is_empty() || part == "." {
+            continue;
+        }
+        path.push(part);
+    }
+    path
+}
+
 pub(crate) fn file_status(user_dir: &Path, name: &str) -> FileStatus {
-    let path = user_dir.join(name);
+    let path = join_user_rel(user_dir, name);
     let metadata = fs::metadata(&path).ok();
 
     FileStatus {
@@ -106,114 +117,38 @@ pub(crate) fn parse_schema_list(default_custom: &str) -> Vec<String> {
             .filter_map(yaml_value_to_string)
             .filter(|schema| !schema.is_empty())
             .collect::<Vec<_>>();
-        if !schemas.is_empty() {
-            return schemas;
-        }
+        return schemas;
     }
 
-    default_custom
-        .lines()
-        .filter_map(|line| {
-            line.split("{schema:")
-                .nth(1)
-                .and_then(|rest| rest.split('}').next())
-                .map(|schema| schema.trim().to_string())
-                .filter(|schema| !schema.is_empty())
-        })
-        .collect()
+    Vec::new()
 }
 
 pub(crate) fn parse_u32_after_key(contents: &str, key: &str) -> Option<u32> {
-    if let Some(value) = yaml_lookup(contents, key)
+    yaml_lookup(contents, key)
         .and_then(|value| yaml_value_to_string(&value))
         .and_then(|value| value.parse::<u32>().ok())
-    {
-        return Some(value);
-    }
-
-    contents.lines().find_map(|line| {
-        if !line.contains(key) {
-            return None;
-        }
-
-        line.split(':')
-            .nth(1)
-            .and_then(|value| value.split('#').next())
-            .and_then(|value| value.trim().parse::<u32>().ok())
-    })
 }
 
 pub(crate) fn parse_quoted_value(contents: &str, key: &str) -> Option<String> {
-    if let Some(value) = yaml_lookup(contents, key).and_then(|value| yaml_value_to_string(&value)) {
-        return Some(value);
-    }
-
-    contents.lines().find_map(|line| {
-        if !line.contains(key) {
-            return None;
-        }
-
-        line.split(':')
-            .nth(1)
-            .map(str::trim)
-            .map(|value| value.trim_matches('"').to_string())
-    })
+    yaml_lookup(contents, key).and_then(|value| yaml_value_to_string(&value))
 }
 
 pub(crate) fn parse_bool_after_key(contents: &str, key: &str) -> Option<bool> {
-    if let Some(value) = yaml_lookup(contents, key) {
-        match value {
-            Value::Bool(value) => return Some(value),
-            Value::String(value) => match value.as_str() {
-                "true" | "True" | "yes" => return Some(true),
-                "false" | "False" | "no" => return Some(false),
-                _ => {}
-            },
-            _ => {}
-        }
+    match yaml_lookup(contents, key)? {
+        Value::Bool(value) => Some(value),
+        Value::String(value) => match value.as_str() {
+            "true" | "True" | "yes" => Some(true),
+            "false" | "False" | "no" => Some(false),
+            _ => None,
+        },
+        _ => None,
     }
-
-    contents.lines().find_map(|line| {
-        let trimmed = line.trim().trim_matches('"');
-        if !trimmed.starts_with(key) {
-            return None;
-        }
-
-        trimmed
-            .split(':')
-            .nth(1)
-            .and_then(|value| value.split('#').next())
-            .map(str::trim)
-            .and_then(|value| match value {
-                "true" | "True" | "yes" => Some(true),
-                "false" | "False" | "no" => Some(false),
-                _ => None,
-            })
-    })
 }
 
 pub(crate) fn parse_string_after_key(contents: &str, key: &str) -> Option<String> {
-    if let Some(value) = yaml_lookup(contents, key)
+    yaml_lookup(contents, key)
         .and_then(|value| yaml_value_to_string(&value))
         .filter(|value| !value.is_empty())
-    {
-        return Some(value);
-    }
-
-    contents.lines().find_map(|line| {
-        let trimmed = line.trim().trim_matches('"');
-        if !trimmed.starts_with(key) {
-            return None;
-        }
-
-        trimmed
-            .split(':')
-            .nth(1)
-            .map(str::trim)
-            .map(|value| value.split('#').next().unwrap_or(value).trim())
-            .map(|value| value.trim_matches('"').to_string())
-            .filter(|value| !value.is_empty())
-    })
 }
 
 pub(crate) fn normalize_color(value: Option<String>, fallback: &str) -> String {

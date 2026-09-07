@@ -9,8 +9,19 @@ pub(crate) async fn scan_rime_environment() -> Result<RimeEnvironment, RimeError
 }
 
 #[tauri::command]
-pub(crate) async fn deploy_rime() -> Result<DeployResult, RimeError> {
-    run_blocking(deploy_rime_sync).await
+pub(crate) async fn deploy_rime(app: tauri::AppHandle) -> Result<DeployResult, RimeError> {
+    run_blocking(move || deploy_rime_sync(Some(app))).await
+}
+
+#[tauri::command]
+pub(crate) async fn cancel_deploy() -> Result<(), RimeError> {
+    request_cancel_deploy();
+    Ok(())
+}
+
+#[tauri::command]
+pub(crate) async fn open_sync_dir() -> Result<(), RimeError> {
+    run_blocking(open_sync_dir_sync).await
 }
 
 #[tauri::command]

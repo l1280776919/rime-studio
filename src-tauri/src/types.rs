@@ -53,13 +53,37 @@ pub(crate) enum RimeError {
     EnvVarNotFound(String),
 }
 
-// 为 RimeError 实现 serde::Serialize 以便在 Tauri 命令中返回
+impl RimeError {
+    pub(crate) fn code(&self) -> &'static str {
+        match self {
+            Self::YamlParseError(_) => "yaml_parse",
+            Self::FileOperationError(_) => "file_operation",
+            Self::InvalidDictionaryPath(_) => "invalid_dictionary_path",
+            Self::DictionaryNotFound(_) => "dictionary_not_found",
+            Self::ConfigNotFound(_) => "config_not_found",
+            Self::DeployerNotFound(_) => "deployer_not_found",
+            Self::CommandExecutionFailed(_) => "command_failed",
+            Self::NetworkError(_) => "network",
+            Self::DownloadError(_) => "download",
+            Self::BackupError(_) => "backup",
+            Self::SchemaError(_) => "schema",
+            Self::SettingsError(_) => "settings",
+            Self::JsonSerializationError(_) => "json",
+            Self::EnvVarNotFound(_) => "env_var",
+        }
+    }
+}
+
 impl Serialize for RimeError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        serializer.serialize_str(&self.to_string())
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(Some(2))?;
+        map.serialize_entry("code", self.code())?;
+        map.serialize_entry("message", &self.to_string())?;
+        map.end()
     }
 }
 
@@ -167,6 +191,8 @@ pub(crate) struct RimeEnvironment {
     pub(crate) label_font_point: Option<u32>,
     pub(crate) custom_files: Vec<FileStatus>,
     pub(crate) sogou_health: Option<DictHealth>,
+    pub(crate) user_dicts: Vec<UserDictInfo>,
+    pub(crate) sync_dir: FileStatus,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -179,6 +205,13 @@ pub(crate) struct DeployResult {
     pub(crate) hints: Vec<String>,
     #[serde(default)]
     pub(crate) duration_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct DeployProgress {
+    pub(crate) stage: String,
+    pub(crate) log: String,
+    pub(crate) elapsed_ms: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -197,6 +230,15 @@ pub(crate) struct BackupEntry {
     pub(crate) modified: Option<u64>,
     pub(crate) files: usize,
     pub(crate) scope: String,
+    pub(crate) note: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct UserDictInfo {
+    pub(crate) name: String,
+    pub(crate) path: String,
+    pub(crate) size_bytes: u64,
+    pub(crate) modified: Option<u64>,
 }
 
 #[derive(Debug, Serialize)]

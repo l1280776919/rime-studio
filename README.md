@@ -26,11 +26,12 @@ Rime Studio 是 [小狼毫 (Weasel)](https://rime.im/) 输入法的桌面配置�
 | -------------------- | ------------------------------------------------------------------------------------- |
 | **概览与快速设置**   | 环境扫描、工具链检查、小狼毫/Git 安装引导，以及方案、按键、候选窗和雾凇组件的常用设置 |
 | **方案管理**         | 查看、启用、复制和定位本机输入方案，维护 Rime 方案菜单                                |
-| **配置中心与编辑器** | 集中查看关键文件；直接编辑 YAML，保存前校验语法、自动备份并保护未保存修改             |
+| **配置中心与编辑器** | 集中查看用户目录中的 YAML / TXT / Lua（含子目录）；保存前校验 YAML、自动备份并保护未保存修改 |
 | **外观**             | 6 套预设主题，实时预览，自定义方案写入 weasel.custom.yaml；支持系统字体和保存前 diff |
-| **短语**             | 自定义短语编辑器，表格增删改查、列排序、搜索过滤、剪贴板批量导入导出                  |
+| **短语**             | 自定义短语编辑器，表格增删改查、分页、列排序、搜索过滤、剪贴板批量导入导出            |
 | **词库**             | 本地与在线词库导入、预览、导出和健康分析，支持 URL、搜狗细胞词库与 LMDG 资源          |
-| **备份**             | 一键备份、浏览历史、恢复/删除；自动备份为配置快照，手动备份额外包含方案和 Lua         |
+| **备份**             | 一键备份（可写备注）、预览 diff、浏览历史、恢复/删除；自动备份为配置快照，手动备份额外包含方案和 Lua |
+| **用户词与同步**     | 概览页列出 `*.userdb` 并打开 `sync/` 目录；用户词不进入备份                          |
 | **应用更新**         | 从 GitHub Releases 检查新版本并下载安装包                                             |
 | **暗色模式**         | 亮/暗切换，跟随系统偏好，本地持久化                                                   |
 
@@ -129,7 +130,7 @@ rime-studio/
 │   │   ├── OverviewPage.vue      # 概览页
 │   │   ├── QuickSettingsPage.vue # 快速设置
 │   │   ├── SchemasPage.vue       # 方案管理
-│   │   ├── ConfigFilesPage.vue   # 配置文件
+│   │   ├── ConfigEditorPage.vue  # 配置中心
 │   │   ├── AppearancePage.vue    # 外观配置
 │   │   ├── PhrasesPage.vue       # 短语管理
 │   │   ├── DictionariesPage.vue  # 词库管理
@@ -137,10 +138,10 @@ rime-studio/
 │   │   └── AboutPage.vue         # 关于页
 │   ├── composables/
 │   │   ├── useTheme.ts           # 主题管理（亮/暗模式）
-│   │   ├── useBackup.ts          # 备份操作封装
-│   │   ├── useDeploy.ts          # 部署操作封装
 │   │   ├── useErrorHandler.ts    # 统一错误处理
 │   │   └── useDictionaries.ts    # 词库操作封装
+│   ├── router.ts                 # Hash 路由
+│   ├── stores/studio.ts          # 环境、部署、备份状态
 │   ├── components/
 │   │   ├── dictionaries/         # 在线词库、URL 导入和 LMDG 面板
 │   │   └── layout/
@@ -174,6 +175,8 @@ rime-studio/
 │   │       ├── settings.rs
 │   │       ├── phrases.rs
 │   │       ├── dictionaries.rs
+│   │       ├── dictionary_parse.rs
+│   │       ├── dictionary_online.rs
 │   │       ├── backup.rs
 │   │       ├── schemas.rs
 │   │       ├── config_editor.rs
@@ -204,7 +207,8 @@ rime-studio/
 | `preview_*_import` / `import_*` / `export_dictionary`                               | 词库预览、导入和导出           |
 | `list_backups` / `create_backup` / `restore_backup` / `delete_backup`               | 备份管理                       |
 | `list_schemas` / `copy_schema` / `set_active_schema`                                | 输入方案与方案菜单管理         |
-| `list_yaml_config_files` / `read_config_file_content` / `write_config_file_content` | 经过路径和 YAML 校验的配置编辑 |
+| `list_yaml_config_files` / `read_config_file_content` / `write_config_file_content` | 经过路径校验的 YAML/TXT/Lua 编辑（含子目录） |
+| `preview_backup` / `cancel_deploy` / `open_sync_dir` | 备份 diff、取消部署、打开同步目录 |
 | `preview_appearance_config` / `preview_rime_ice_settings`                           | 保存前 diff 预览               |
 | `list_system_fonts`                                                                 | 列出本机字体                   |
 | `scan_dictionary_health`                                                            | 后台加载搜狗词库健康           |
