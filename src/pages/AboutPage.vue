@@ -14,6 +14,7 @@ import {
   Warning,
 } from "@element-plus/icons-vue";
 import pkg from "../../package.json";
+import appLogo from "../assets/logo.png";
 import type { AppUpdateInfo } from "../types";
 import { useErrorHandler } from "../composables/useErrorHandler";
 
@@ -157,7 +158,7 @@ onMounted(() => {
         </template>
 
         <div class="about-intro">
-          <div class="brand-mark" style="margin-bottom: 16px">R</div>
+          <img :src="appLogo" alt="Rime Studio" class="brand-mark" style="margin-bottom: 16px" />
           <h3>Rime Studio</h3>
           <p>小狼毫输入法配置工作台 v{{ pkg.version }}</p>
           <p class="helper-text">

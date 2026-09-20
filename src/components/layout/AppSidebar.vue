@@ -14,6 +14,7 @@ import {
 } from "@element-plus/icons-vue";
 import type { RimeEnvironment } from "../../types";
 import { useTheme } from "../../composables/useTheme";
+import appLogo from "../../assets/logo.png";
 
 defineProps<{
   env?: RimeEnvironment;
@@ -30,7 +31,7 @@ const { isDark, toggleTheme } = useTheme();
 <template>
   <aside class="sidebar">
     <div class="brand">
-      <div class="brand-mark">R</div>
+      <img :src="appLogo" alt="Rime Studio" class="brand-mark" />
       <div>
         <h1>Rime Studio</h1>
         <p>小狼毫配置工作台</p>
@@ -117,23 +118,14 @@ const { isDark, toggleTheme } = useTheme();
 }
 
 .brand-mark {
-  display: flex;
-  align-items: center;
-  justify-content: center;
   width: 44px;
   height: 44px;
   flex-shrink: 0;
-  background: linear-gradient(145deg, #60a5fa, #2563eb);
-  border: 1px solid rgba(255, 255, 255, 0.4);
   border-radius: var(--radius-md);
+  object-fit: contain;
   box-shadow:
-    0 8px 20px rgba(37, 99, 235, 0.25),
-    0 2px 6px rgba(37, 99, 235, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.25);
-  color: #ffffff;
-  font-size: 19px;
-  font-weight: 850;
-  letter-spacing: -0.02em;
+    0 4px 14px rgba(15, 23, 42, 0.08),
+    0 1px 3px rgba(15, 23, 42, 0.04);
   transition:
     transform var(--transition-spring),
     box-shadow var(--transition-spring);
@@ -142,9 +134,8 @@ const { isDark, toggleTheme } = useTheme();
 .brand-mark:hover {
   transform: scale(1.06);
   box-shadow:
-    0 10px 24px rgba(37, 99, 235, 0.3),
-    0 3px 8px rgba(37, 99, 235, 0.18),
-    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    0 8px 20px rgba(15, 23, 42, 0.12),
+    0 2px 6px rgba(15, 23, 42, 0.06);
 }
 
 .brand h1,
