@@ -455,9 +455,7 @@ onMounted(() => {
 
         <TypingSandbox :appearance="form" />
 
-        <el-button :icon="Download" @click="openThemeExport">
-          导入 / 导出
-        </el-button>
+        <el-button :icon="Download" @click="openThemeExport"> 导入 / 导出 </el-button>
 
         <el-button :icon="View" :loading="previewing" @click="previewAppearance">
           配置 Diff
@@ -541,12 +539,13 @@ onMounted(() => {
           <!-- Realistic Weasel Floating Box -->
           <div class="stage-candidate-box" :style="previewStyle">
             <!-- Non-inline Preedit Header -->
-            <div
-              v-if="!form.inline_preedit"
-              class="stage-box-preedit"
-              :style="previewPreeditStyle"
-            >
-              <span :style="{ color: rimeToCssColor(form.text_color), fontSize: `${form.font_point}px` }">
+            <div v-if="!form.inline_preedit" class="stage-box-preedit" :style="previewPreeditStyle">
+              <span
+                :style="{
+                  color: rimeToCssColor(form.text_color),
+                  fontSize: `${form.font_point}px`,
+                }"
+              >
                 zhōngwén
               </span>
               <strong
@@ -803,12 +802,7 @@ onMounted(() => {
                 placeholder="系统默认"
                 :disabled="isLocked"
               >
-                <el-option
-                  v-for="font in systemFonts"
-                  :key="font"
-                  :label="font"
-                  :value="font"
-                />
+                <el-option v-for="font in systemFonts" :key="font" :label="font" :value="font" />
               </el-select>
             </div>
           </div>
@@ -829,12 +823,7 @@ onMounted(() => {
                 placeholder="跟随候选字体"
                 :disabled="isLocked"
               >
-                <el-option
-                  v-for="font in systemFonts"
-                  :key="font"
-                  :label="font"
-                  :value="font"
-                />
+                <el-option v-for="font in systemFonts" :key="font" :label="font" :value="font" />
               </el-select>
             </div>
           </div>
@@ -912,15 +901,13 @@ onMounted(() => {
       <!-- Tab 2: Color Palette Micro-tuning -->
       <div v-show="activeSettingTab === 'colors'" class="inspector-content">
         <div v-if="isLocked" class="color-locked-notice">
-          <span>当前预设主题处于只读保护状态。点击任意主题卡片右上角「复制」即可解锁自由调色。</span>
+          <span
+            >当前预设主题处于只读保护状态。点击任意主题卡片右上角「复制」即可解锁自由调色。</span
+          >
         </div>
 
         <div class="palette-grid">
-          <div
-            v-for="field in colorFields"
-            :key="field.key"
-            class="palette-field-card"
-          >
+          <div v-for="field in colorFields" :key="field.key" class="palette-field-card">
             <div class="palette-info">
               <span class="palette-label">{{ field.label }}</span>
               <code class="palette-hex">{{ form[field.key] }}</code>
@@ -962,7 +949,9 @@ onMounted(() => {
             </div>
             <div class="setting-control" style="max-width: 480px">
               <p class="helper-text" style="margin: 0">
-                保存时 Rime Studio 只更新由本面板维护的 <code>style/*</code> 及自定义配色键，您手动编写的其他高级 patch 配置将完整保留，绝不覆盖或遗失。
+                保存时 Rime Studio 只更新由本面板维护的
+                <code>style/*</code> 及自定义配色键，您手动编写的其他高级 patch
+                配置将完整保留，绝不覆盖或遗失。
               </p>
             </div>
           </div>
@@ -1234,7 +1223,8 @@ html[data-theme="dark"] .backdrop-pill.active {
 }
 
 .canvas-backdrop-mesh {
-  background: radial-gradient(at 15% 20%, rgba(99, 102, 241, 0.3) 0px, transparent 55%),
+  background:
+    radial-gradient(at 15% 20%, rgba(99, 102, 241, 0.3) 0px, transparent 55%),
     radial-gradient(at 85% 80%, rgba(236, 72, 153, 0.25) 0px, transparent 55%),
     linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%);
 }
@@ -1275,7 +1265,9 @@ html[data-theme="dark"] .stage-inline-preedit {
 }
 
 .stage-candidate-box {
-  box-shadow: 0 16px 36px -8px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  box-shadow:
+    0 16px 36px -8px rgba(0, 0, 0, 0.25),
+    0 0 0 1px rgba(0, 0, 0, 0.04);
   transition: all 0.2s ease;
 }
 
@@ -1419,7 +1411,9 @@ html[data-theme="dark"] .preset-readonly-tag {
 
 .theme-bento-card.active {
   border-color: var(--brand-500);
-  box-shadow: 0 0 0 1px var(--brand-500), 0 4px 14px rgba(37, 99, 235, 0.12);
+  box-shadow:
+    0 0 0 1px var(--brand-500),
+    0 4px 14px rgba(37, 99, 235, 0.12);
   background: linear-gradient(180deg, var(--brand-50, #f8fafc) 0%, var(--color-surface) 100%);
 }
 

@@ -3,13 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
 import { api } from "../api";
 import { useErrorHandler } from "../composables/useErrorHandler";
-import {
-  Check,
-  Connection,
-  FirstAidKit,
-  UploadFilled,
-  View,
-} from "@element-plus/icons-vue";
+import { Check, Connection, FirstAidKit, UploadFilled, View } from "@element-plus/icons-vue";
 import type {
   ConfigHealthCheck,
   ConfigHealthReport,
@@ -402,12 +396,7 @@ onBeforeUnmount(() => {
           一键安装雾凇
         </el-button>
 
-        <el-button
-          size="small"
-          :icon="View"
-          :loading="previewing"
-          @click="previewQuickSettings"
-        >
+        <el-button size="small" :icon="View" :loading="previewing" @click="previewQuickSettings">
           变更 Diff
         </el-button>
 
@@ -444,8 +433,8 @@ onBeforeUnmount(() => {
         </div>
         <div class="stage-chips">
           <span class="chip-item">{{ form.page_size }} 候选词</span>
-          <span class="chip-item">{{ form.horizontal ? '水平横排' : '垂直竖排' }}</span>
-          <span class="chip-item">{{ form.inline_preedit ? '光标内嵌' : '窗顶独立' }}</span>
+          <span class="chip-item">{{ form.horizontal ? "水平横排" : "垂直竖排" }}</span>
+          <span class="chip-item">{{ form.inline_preedit ? "光标内嵌" : "窗顶独立" }}</span>
         </div>
       </div>
 
@@ -475,7 +464,13 @@ onBeforeUnmount(() => {
       <div class="stage-knobs">
         <div class="knob-item">
           <span class="knob-label">候选词数 ({{ form.page_size }})</span>
-          <el-slider v-model="form.page_size" :min="3" :max="12" size="small" style="width: 140px" />
+          <el-slider
+            v-model="form.page_size"
+            :min="3"
+            :max="12"
+            size="small"
+            style="width: 140px"
+          />
         </div>
 
         <div class="knob-divider" />
@@ -511,9 +506,7 @@ onBeforeUnmount(() => {
     <!-- Scheme & Layout Settings (Grouped) -->
     <div class="setting-card">
       <div class="setting-card-header">
-        <span class="setting-card-title">
-          <span>⌨️</span> 输入行为与按键映射规则
-        </span>
+        <span class="setting-card-title"> <span>⌨️</span> 输入行为与按键映射规则 </span>
         <span class="panel-caption">直接控制 Weasel 输入法底层的键位响应</span>
       </div>
 
@@ -563,9 +556,7 @@ onBeforeUnmount(() => {
     <!-- Active Schema Chooser -->
     <div class="setting-card">
       <div class="setting-card-header">
-        <span class="setting-card-title">
-          <span>📚</span> 快速切换输入方案
-        </span>
+        <span class="setting-card-title"> <span>📚</span> 快速切换输入方案 </span>
         <span class="panel-caption">共 {{ schemas.length }} 个本机已安装方案</span>
       </div>
 
@@ -719,9 +710,7 @@ onBeforeUnmount(() => {
             <el-button link type="primary" size="small" @click="selectAllFuzzyPairs">
               全选
             </el-button>
-            <el-button link type="info" size="small" @click="clearAllFuzzyPairs">
-              清空
-            </el-button>
+            <el-button link type="info" size="small" @click="clearAllFuzzyPairs"> 清空 </el-button>
           </div>
         </div>
 
@@ -751,16 +740,16 @@ onBeforeUnmount(() => {
     <LuaPluginManager @change="emit('saved')" @deploy="emit('deploy')" />
 
     <!-- Health Dialog -->
-    <el-dialog v-model="showHealthDialog" title="Rime 配置健康体检报告" width="650px" append-to-body>
+    <el-dialog
+      v-model="showHealthDialog"
+      title="Rime 配置健康体检报告"
+      width="650px"
+      append-to-body
+    >
       <div v-if="healthReport" class="health-dialog-body">
         <div class="health-summary-banner">
           <span>共执行 {{ healthReport.checks.length }} 项配置兼容性检查</span>
-          <el-button
-            type="warning"
-            size="small"
-            :loading="repairingHealth"
-            @click="repairHealth"
-          >
+          <el-button type="warning" size="small" :loading="repairingHealth" @click="repairHealth">
             一键修复全部
           </el-button>
         </div>
@@ -775,10 +764,16 @@ onBeforeUnmount(() => {
             <div class="check-left">
               <el-tag
                 size="small"
-                :type="check.status === 'ok' ? 'success' : check.status === 'warning' ? 'warning' : 'danger'"
+                :type="
+                  check.status === 'ok'
+                    ? 'success'
+                    : check.status === 'warning'
+                      ? 'warning'
+                      : 'danger'
+                "
                 effect="light"
               >
-                {{ check.status === 'ok' ? '正常' : check.status === 'warning' ? '提醒' : '错误' }}
+                {{ check.status === "ok" ? "正常" : check.status === "warning" ? "提醒" : "错误" }}
               </el-tag>
               <strong>{{ check.name }}</strong>
               <span class="check-message">{{ check.detail }}</span>
@@ -800,7 +795,12 @@ onBeforeUnmount(() => {
     </el-dialog>
 
     <!-- Diff Dialog -->
-    <el-dialog v-model="showPreviewDialog" title="快速设置配置变更预览" width="760px" append-to-body>
+    <el-dialog
+      v-model="showPreviewDialog"
+      title="快速设置配置变更预览"
+      width="760px"
+      append-to-body
+    >
       <p class="helper-text" style="margin-top: 0">
         确认将写入配置文件的 patch 差异，未知手写键始终安全保留。
       </p>

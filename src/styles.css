@@ -256,8 +256,7 @@ button:active {
   background:
     radial-gradient(ellipse 70% 50% at 90% 5%, rgba(59, 130, 246, 0.08), transparent 60%),
     radial-gradient(ellipse 60% 40% at 20% 95%, rgba(99, 102, 241, 0.05), transparent 50%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.6) 0%, transparent 30%),
-    var(--color-bg);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.6) 0%, transparent 30%), var(--color-bg);
 }
 
 html[data-theme="dark"] .studio-shell {
@@ -747,7 +746,9 @@ html[data-theme="dark"] .studio-shell {
   box-shadow: var(--shadow-xs);
   overflow: hidden;
   margin-bottom: 16px;
-  transition: border-color var(--transition-base), box-shadow var(--transition-base);
+  transition:
+    border-color var(--transition-base),
+    box-shadow var(--transition-base);
 }
 
 .setting-card:hover {
@@ -868,7 +869,9 @@ html[data-theme="dark"] .sandbox-island-title {
   border: 1px solid rgba(37, 99, 235, 0.25);
   border-radius: 10px;
   padding: 8px 14px;
-  box-shadow: 0 10px 25px -4px rgba(15, 23, 42, 0.12), 0 2px 6px -1px rgba(15, 23, 42, 0.06);
+  box-shadow:
+    0 10px 25px -4px rgba(15, 23, 42, 0.12),
+    0 2px 6px -1px rgba(15, 23, 42, 0.06);
   display: inline-flex;
   align-items: center;
   gap: 12px;
@@ -1852,7 +1855,11 @@ html[data-theme="dark"] .status-cell.primary {
   background-color: rgba(241, 245, 249, 0.5);
 }
 
-html[data-theme="dark"] .el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
+html[data-theme="dark"]
+  .el-table--striped
+  .el-table__body
+  tr.el-table__row--striped
+  td.el-table__cell {
   background-color: rgba(22, 34, 59, 0.4);
 }
 
@@ -5088,7 +5095,9 @@ html[data-theme="dark"] .slider-val-badge {
   border: 1px solid rgba(191, 219, 254, 0.8);
   border-radius: var(--radius-xl);
   padding: 20px 24px;
-  box-shadow: 0 10px 30px -8px rgba(37, 99, 235, 0.08), 0 1px 3px rgba(15, 23, 42, 0.04);
+  box-shadow:
+    0 10px 30px -8px rgba(37, 99, 235, 0.08),
+    0 1px 3px rgba(15, 23, 42, 0.04);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   display: flex;
@@ -5282,7 +5291,9 @@ html[data-theme="dark"] .cockpit-hero {
   border: 1px solid rgba(37, 99, 235, 0.3);
   border-radius: 10px;
   padding: 10px 18px;
-  box-shadow: 0 16px 36px -6px rgba(15, 23, 42, 0.14), 0 4px 10px -2px rgba(15, 23, 42, 0.06);
+  box-shadow:
+    0 16px 36px -6px rgba(15, 23, 42, 0.14),
+    0 4px 10px -2px rgba(15, 23, 42, 0.06);
   display: inline-flex;
   align-items: center;
   gap: 14px;
@@ -5437,4 +5448,3 @@ html[data-theme="dark"] .bento-tile-icon {
   flex-wrap: wrap;
   gap: 6px 12px;
 }
-

@@ -284,7 +284,9 @@ html[data-theme="dark"] .nav-pill.active {
 .nav-icon {
   font-size: 16px;
   color: var(--ink-500);
-  transition: transform var(--transition-fast), color var(--transition-fast);
+  transition:
+    transform var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .nav-pill:hover .nav-icon {
@@ -328,7 +330,9 @@ html[data-theme="dark"] .nav-pill.active .nav-icon {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  transition: border-color var(--transition-base), box-shadow var(--transition-base);
+  transition:
+    border-color var(--transition-base),
+    box-shadow var(--transition-base);
 }
 
 .sidebar-dock:hover {

@@ -286,9 +286,13 @@ onMounted(loadPhrases);
 
       <div class="hero-actions">
         <div class="stat-pill">
-          <span>总计 <strong>{{ entries.length }}</strong> 条</span>
+          <span
+            >总计 <strong>{{ entries.length }}</strong> 条</span
+          >
           <span class="pill-divider">·</span>
-          <span>有编码 <strong>{{ entries.filter((e) => e.code).length }}</strong></span>
+          <span
+            >有编码 <strong>{{ entries.filter((e) => e.code).length }}</strong></span
+          >
         </div>
 
         <el-button
@@ -301,13 +305,7 @@ onMounted(loadPhrases);
           去重 ({{ duplicateCount }})
         </el-button>
 
-        <el-button
-          type="primary"
-          :icon="Plus"
-          @click="showAddDialog = true"
-        >
-          添加短语
-        </el-button>
+        <el-button type="primary" :icon="Plus" @click="showAddDialog = true"> 添加短语 </el-button>
 
         <el-button
           type="primary"
@@ -351,15 +349,9 @@ onMounted(loadPhrases);
               匹配 <strong>{{ filteredEntries.length }}</strong> / {{ entries.length }}
             </span>
 
-            <el-button :icon="Download" @click="showImportDialog = true">
-              批量导入
-            </el-button>
-            <el-button :icon="CopyDocument" @click="copyAllAsTSV">
-              复制全部 TSV
-            </el-button>
-            <el-button :icon="Refresh" :loading="loading" @click="loadPhrases">
-              刷新
-            </el-button>
+            <el-button :icon="Download" @click="showImportDialog = true"> 批量导入 </el-button>
+            <el-button :icon="CopyDocument" @click="copyAllAsTSV"> 复制全部 TSV </el-button>
+            <el-button :icon="Refresh" :loading="loading" @click="loadPhrases"> 刷新 </el-button>
           </div>
         </div>
 
@@ -417,7 +409,13 @@ onMounted(loadPhrases);
               </template>
             </el-table-column>
 
-            <el-table-column label="权重" width="120" align="center" prop="weight" sortable="custom">
+            <el-table-column
+              label="权重"
+              width="120"
+              align="center"
+              prop="weight"
+              sortable="custom"
+            >
               <template #default="{ row }: { row: PhraseEntry }">
                 <el-input-number
                   v-if="editingEntry === row"
@@ -437,9 +435,7 @@ onMounted(loadPhrases);
                   <el-button link type="primary" size="small" @click="confirmEdit(row)">
                     完成
                   </el-button>
-                  <el-button link type="info" size="small" @click="cancelEdit">
-                    取消
-                  </el-button>
+                  <el-button link type="info" size="small" @click="cancelEdit"> 取消 </el-button>
                 </template>
                 <template v-else>
                   <el-button
@@ -487,7 +483,8 @@ onMounted(loadPhrases);
             <span>{{ userDir }}\custom_phrase.txt</span>
           </div>
           <p class="side-card-text">
-            文件每行存储一条记录：格式为 <code>短语 [Tab] 编码 [Tab] 权重</code>。保存时会自动保持当前顺序，保证编码映射稳定。
+            文件每行存储一条记录：格式为
+            <code>短语 [Tab] 编码 [Tab] 权重</code>。保存时会自动保持当前顺序，保证编码映射稳定。
           </p>
         </div>
 

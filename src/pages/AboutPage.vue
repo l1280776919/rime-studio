@@ -167,16 +167,14 @@ onMounted(() => {
             专为中州韵 / 小狼毫 (Weasel) 打造的下一代现代化桌面级输入法控制工作台
           </p>
           <p class="brand-description">
-            基于 Tauri 2 + Rust + Vue 3 深度构建。提供视网膜级实景候选窗预览、方案库调度、词库语料管理、智能无损 Patch 合并引擎与时光机自动快照备份。
+            基于 Tauri 2 + Rust + Vue 3
+            深度构建。提供视网膜级实景候选窗预览、方案库调度、词库语料管理、智能无损 Patch
+            合并引擎与时光机自动快照备份。
           </p>
 
           <div class="brand-quick-actions">
-            <el-button :icon="FolderOpened" @click="openLogDir">
-              打开应用运行日志
-            </el-button>
-            <el-button :icon="Link" @click="openReleasePage">
-              GitHub 源码仓库
-            </el-button>
+            <el-button :icon="FolderOpened" @click="openLogDir"> 打开应用运行日志 </el-button>
+            <el-button :icon="Link" @click="openReleasePage"> GitHub 源码仓库 </el-button>
           </div>
         </div>
       </div>
@@ -206,7 +204,9 @@ onMounted(() => {
         <div class="update-action-btn-wrap">
           <el-button
             type="primary"
-            :icon="downloadingUpdate ? Refresh : updateInfo?.update_available ? UploadFilled : Refresh"
+            :icon="
+              downloadingUpdate ? Refresh : updateInfo?.update_available ? UploadFilled : Refresh
+            "
             :loading="checkingUpdate || downloadingUpdate"
             :disabled="downloadingUpdate"
             @click="handleUpdateAction"
@@ -228,7 +228,11 @@ onMounted(() => {
           <span class="v-label">GitHub 最新发布</span>
           <strong class="v-val">{{ updateInfo?.latest_version ?? "尚未获取" }}</strong>
           <small class="v-sub">
-            {{ updateInfo ? `发布于 ${formatPublishedAt(updateInfo.published_at)}` : "点击右侧按钮获取" }}
+            {{
+              updateInfo
+                ? `发布于 ${formatPublishedAt(updateInfo.published_at)}`
+                : "点击右侧按钮获取"
+            }}
           </small>
         </div>
       </div>
@@ -280,11 +284,7 @@ onMounted(() => {
             <el-icon class="eco-arrow"><Link /></el-icon>
           </a>
 
-          <a
-            href="https://github.com/rime/home"
-            target="_blank"
-            class="ecosystem-card"
-          >
+          <a href="https://github.com/rime/home" target="_blank" class="ecosystem-card">
             <div class="eco-icon-box">
               <el-icon><Connection /></el-icon>
             </div>
@@ -295,11 +295,7 @@ onMounted(() => {
             <el-icon class="eco-arrow"><Link /></el-icon>
           </a>
 
-          <a
-            href="https://github.com/iDvel/rime-ice"
-            target="_blank"
-            class="ecosystem-card"
-          >
+          <a href="https://github.com/iDvel/rime-ice" target="_blank" class="ecosystem-card">
             <div class="eco-icon-box">
               <el-icon><Connection /></el-icon>
             </div>

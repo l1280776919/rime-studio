@@ -251,22 +251,31 @@ onMounted(loadSchemas);
             <span v-else-if="currentSchema" class="tag-pill custom">用户方案</span>
           </div>
           <h2 class="hero-schema-name">
-            {{ currentSchema?.name ?? currentConfig?.schema_id ?? env?.active_schema ?? "未识别方案" }}
+            {{
+              currentSchema?.name ?? currentConfig?.schema_id ?? env?.active_schema ?? "未识别方案"
+            }}
           </h2>
           <div class="hero-subline">
             <code class="schema-code-id">{{
               currentSchema?.id ?? currentConfig?.schema_id ?? env?.active_schema ?? "default"
             }}</code>
-            <span class="hero-desc-trunc">{{ currentSchema?.description || "当前系统直接采用的输入方案" }}</span>
+            <span class="hero-desc-trunc">{{
+              currentSchema?.description || "当前系统直接采用的输入方案"
+            }}</span>
           </div>
         </div>
       </div>
 
       <div class="hero-actions">
         <div class="stats-capsule">
-          <span class="stats-item"><strong>{{ schemas.length }}</strong> 方案 ({{ systemSchemas }} 系统 / {{ customSchemas }} 用户)</span>
+          <span class="stats-item"
+            ><strong>{{ schemas.length }}</strong> 方案 ({{ systemSchemas }} 系统 /
+            {{ customSchemas }} 用户)</span
+          >
           <span class="stats-divider">/</span>
-          <span class="stats-item"><strong>{{ menuIds.length }}</strong> 菜单启用</span>
+          <span class="stats-item"
+            ><strong>{{ menuIds.length }}</strong> 菜单启用</span
+          >
         </div>
 
         <el-button
@@ -328,7 +337,9 @@ onMounted(loadSchemas);
             </div>
 
             <div class="toolbar-right">
-              <span class="match-count">匹配 <strong>{{ filteredSchemas.length }}</strong> / {{ schemas.length }}</span>
+              <span class="match-count"
+                >匹配 <strong>{{ filteredSchemas.length }}</strong> / {{ schemas.length }}</span
+              >
               <el-button :icon="Refresh" :loading="loading" @click="loadSchemas">
                 刷新列表
               </el-button>
@@ -384,7 +395,10 @@ onMounted(loadSchemas);
                 <div class="menu-membership-pill" @click.stop>
                   <el-checkbox
                     :model-value="menuIds.includes(schema.id)"
-                    @change="(value: boolean | string | number) => setMenuMembership(schema, Boolean(value))"
+                    @change="
+                      (value: boolean | string | number) =>
+                        setMenuMembership(schema, Boolean(value))
+                    "
                   >
                     <span>在切换菜单</span>
                   </el-checkbox>
@@ -441,7 +455,8 @@ onMounted(loadSchemas);
             </div>
 
             <p class="dock-note">
-              勾选放入此列表的方案将在按下输入法快捷键 <code>Ctrl+`</code> 或 <code>F4</code> 时依次提供切换。
+              勾选放入此列表的方案将在按下输入法快捷键 <code>Ctrl+`</code> 或
+              <code>F4</code> 时依次提供切换。
             </p>
 
             <div class="dock-list">
@@ -527,7 +542,8 @@ onMounted(loadSchemas);
           <div>
             <h3 class="hub-title">社区热门输入方案市场</h3>
             <p class="hub-subtitle">
-              一键通过 Rime 官方生态包管理工具 plum 同步及安装全网高星输入方案（全拼、双拼、形码等）。
+              一键通过 Rime 官方生态包管理工具 plum
+              同步及安装全网高星输入方案（全拼、双拼、形码等）。
             </p>
           </div>
           <el-button :icon="Refresh" :loading="loading" @click="loadSchemas">刷新生态库</el-button>
@@ -831,7 +847,9 @@ onMounted(loadSchemas);
 
 .schema-tile.is-active {
   border-color: var(--brand-500);
-  box-shadow: 0 0 0 1px var(--brand-500), 0 4px 14px rgba(37, 99, 235, 0.12);
+  box-shadow:
+    0 0 0 1px var(--brand-500),
+    0 4px 14px rgba(37, 99, 235, 0.12);
   background: linear-gradient(180deg, var(--brand-50, #f8fafc) 0%, var(--color-surface) 100%);
 }
 

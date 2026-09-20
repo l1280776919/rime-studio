@@ -109,7 +109,10 @@ const pagedAvailable = computed(() =>
         </div>
         <div class="metric-body">
           <span class="metric-label">启用词库 / 总词库</span>
-          <strong class="metric-value">{{ enabledCount }} <span class="metric-total">/ {{ dictionaries.length }}</span></strong>
+          <strong class="metric-value"
+            >{{ enabledCount }}
+            <span class="metric-total">/ {{ dictionaries.length }}</span></strong
+          >
         </div>
       </div>
 
@@ -139,7 +142,10 @@ const pagedAvailable = computed(() =>
         </div>
         <div class="metric-body">
           <span class="metric-label">当前方案</span>
-          <strong class="metric-value truncate" :title="dictConfig?.schema_name ?? dictConfig?.schema_id">
+          <strong
+            class="metric-value truncate"
+            :title="dictConfig?.schema_name ?? dictConfig?.schema_id"
+          >
             {{ dictConfig?.schema_name ?? dictConfig?.schema_id ?? "未识别" }}
           </strong>
         </div>
@@ -151,7 +157,12 @@ const pagedAvailable = computed(() =>
         </div>
         <div class="metric-body">
           <span class="metric-label">主词库文件</span>
-          <strong class="metric-value truncate" :title="dictConfig?.main_dictionary ? `${dictConfig.main_dictionary}.dict.yaml` : '未配置'">
+          <strong
+            class="metric-value truncate"
+            :title="
+              dictConfig?.main_dictionary ? `${dictConfig.main_dictionary}.dict.yaml` : '未配置'
+            "
+          >
             {{ dictConfig?.main_dictionary ? `${dictConfig.main_dictionary}.dict.yaml` : "未配置" }}
           </strong>
         </div>
@@ -178,28 +189,17 @@ const pagedAvailable = computed(() =>
           导入词库文件
         </el-button>
 
-        <el-button
-          type="success"
-          plain
-          :icon="Download"
-          @click="showOnlineDictionaryDialog = true"
-        >
+        <el-button type="success" plain :icon="Download" @click="showOnlineDictionaryDialog = true">
           社区在线词库市场
         </el-button>
 
-        <el-button
-          :icon="Link"
-          :loading="importing"
-          @click="showUrlImportDialog = true"
-        >
+        <el-button :icon="Link" :loading="importing" @click="showUrlImportDialog = true">
           URL 在线导入
         </el-button>
       </div>
 
       <div class="action-bar-right">
-        <el-button :icon="Refresh" :loading="loading" @click="loadAllStats">
-          刷新统计
-        </el-button>
+        <el-button :icon="Refresh" :loading="loading" @click="loadAllStats"> 刷新统计 </el-button>
         <el-button :icon="FolderOpened" @click="emit('openPath', 'open_rime_user_dir')">
           打开词库目录
         </el-button>
@@ -222,7 +222,11 @@ const pagedAvailable = computed(() =>
               </div>
               <div class="header-tags">
                 <span class="tag-pill-accent">
-                  主词库：{{ dictConfig?.main_dictionary ? `${dictConfig.main_dictionary}.dict.yaml` : "未识别" }}
+                  主词库：{{
+                    dictConfig?.main_dictionary
+                      ? `${dictConfig.main_dictionary}.dict.yaml`
+                      : "未识别"
+                  }}
                 </span>
                 <span class="count-capsule">{{ enabledCount }} 项启用</span>
               </div>
@@ -462,17 +466,26 @@ const pagedAvailable = computed(() =>
                 <div class="health-metrics-row">
                   <div class="health-pill">
                     <span class="health-pill-label">分析词条</span>
-                    <strong class="health-pill-val">{{ dictHealth.entries.toLocaleString() }}</strong>
+                    <strong class="health-pill-val">{{
+                      dictHealth.entries.toLocaleString()
+                    }}</strong>
                   </div>
 
                   <div class="health-pill" :class="{ warn: dictHealth.duplicate_exact_lines > 0 }">
                     <span class="health-pill-label">完全重复行</span>
-                    <strong class="health-pill-val">{{ dictHealth.duplicate_exact_lines.toLocaleString() }}</strong>
+                    <strong class="health-pill-val">{{
+                      dictHealth.duplicate_exact_lines.toLocaleString()
+                    }}</strong>
                   </div>
 
-                  <div class="health-pill" :class="{ warn: dictHealth.long_low_weight_entries > 0 }">
+                  <div
+                    class="health-pill"
+                    :class="{ warn: dictHealth.long_low_weight_entries > 0 }"
+                  >
                     <span class="health-pill-label">长低权生僻项</span>
-                    <strong class="health-pill-val">{{ dictHealth.long_low_weight_entries.toLocaleString() }}</strong>
+                    <strong class="health-pill-val">{{
+                      dictHealth.long_low_weight_entries.toLocaleString()
+                    }}</strong>
                   </div>
                 </div>
               </div>
@@ -493,7 +506,8 @@ const pagedAvailable = computed(() =>
             <strong>词库格式与生态规范</strong>
           </div>
           <p class="side-card-text">
-            Rime 规范词库文件名必须以 <code>.dict.yaml</code> 结尾，文件内部包含 YAML 元数据头部与 Tab 分隔的数据行（词汇 → 编码 → 权重）。
+            Rime 规范词库文件名必须以 <code>.dict.yaml</code> 结尾，文件内部包含 YAML 元数据头部与
+            Tab 分隔的数据行（词汇 → 编码 → 权重）。
           </p>
 
           <div class="format-badges-list">

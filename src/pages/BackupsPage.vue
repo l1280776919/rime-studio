@@ -80,7 +80,9 @@ function diffLineClass(line: string) {
           <div class="vault-kicker-row">
             <span class="vault-kicker">TIME MACHINE VAULT</span>
             <span class="vault-pill">
-              {{ latestBackup ? `最近快照：${formatTime(latestBackup.modified)}` : "尚未创建任何备份" }}
+              {{
+                latestBackup ? `最近快照：${formatTime(latestBackup.modified)}` : "尚未创建任何备份"
+              }}
             </span>
           </div>
           <h2 class="vault-title">配置时光机与备份档案</h2>
@@ -174,12 +176,7 @@ function diffLineClass(line: string) {
         </div>
         <strong>尚未创建任何配置备份</strong>
         <p>创建备份后，当前 Rime 用户配置、自定义外观与词库将被封装至时光机归档。</p>
-        <el-button
-          type="primary"
-          :icon="Plus"
-          :loading="backingUp"
-          @click="emit('createBackup')"
-        >
+        <el-button type="primary" :icon="Plus" :loading="backingUp" @click="emit('createBackup')">
           立即创建第一份备份
         </el-button>
       </div>
@@ -192,11 +189,7 @@ function diffLineClass(line: string) {
 
       <!-- Timeline Cards -->
       <div v-else class="vault-timeline-list">
-        <article
-          v-for="backup in visibleBackups"
-          :key="backup.path"
-          class="timeline-card"
-        >
+        <article v-for="backup in visibleBackups" :key="backup.path" class="timeline-card">
           <div class="card-lead">
             <div class="card-badge-row">
               <el-tag size="small" :type="backupKindType(backup.kind)" effect="light">
@@ -234,11 +227,7 @@ function diffLineClass(line: string) {
             >
               差异对比
             </el-button>
-            <el-button
-              size="small"
-              :icon="Open"
-              @click="emit('openBackup', backup)"
-            >
+            <el-button size="small" :icon="Open" @click="emit('openBackup', backup)">
               定位归档
             </el-button>
             <el-button
@@ -278,11 +267,7 @@ function diffLineClass(line: string) {
       />
 
       <div v-else class="preview-diff-container">
-        <div
-          v-for="file in backupPreview.files"
-          :key="file.path"
-          class="preview-diff-block"
-        >
+        <div v-for="file in backupPreview.files" :key="file.path" class="preview-diff-block">
           <header class="diff-block-header">
             <strong class="diff-filename">{{ file.name }}</strong>
             <el-tag :type="file.changed ? 'warning' : 'success'" size="small" effect="light">

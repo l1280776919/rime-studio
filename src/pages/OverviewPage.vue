@@ -371,7 +371,11 @@ watch(
             <div class="cockpit-meta-row">
               <span>{{ quickConfig.schema_id || "rime_ice" }}</span>
               <span>·</span>
-              <span>{{ quickConfig.page_size }} 项候选 ({{ quickConfig.horizontal ? "横排" : "竖排" }})</span>
+              <span
+                >{{ quickConfig.page_size }} 项候选 ({{
+                  quickConfig.horizontal ? "横排" : "竖排"
+                }})</span
+              >
               <span>·</span>
               <span>主题: {{ env?.theme_name ?? "明快蓝调" }}</span>
               <span>·</span>
@@ -485,7 +489,10 @@ watch(
                   type="button"
                   class="knob-pill-btn"
                   :class="{ active: quickConfig.page_size === n }"
-                  @click="quickConfig.page_size = n; onTileToggle()"
+                  @click="
+                    quickConfig.page_size = n;
+                    onTileToggle();
+                  "
                 >
                   {{ n }}
                 </button>
@@ -500,7 +507,10 @@ watch(
                   type="button"
                   class="knob-pill-btn"
                   :class="{ active: quickConfig.horizontal }"
-                  @click="quickConfig.horizontal = true; onTileToggle()"
+                  @click="
+                    quickConfig.horizontal = true;
+                    onTileToggle();
+                  "
                 >
                   横排
                 </button>
@@ -508,7 +518,10 @@ watch(
                   type="button"
                   class="knob-pill-btn"
                   :class="{ active: !quickConfig.horizontal }"
-                  @click="quickConfig.horizontal = false; onTileToggle()"
+                  @click="
+                    quickConfig.horizontal = false;
+                    onTileToggle();
+                  "
                 >
                   竖排
                 </button>
@@ -523,7 +536,10 @@ watch(
                   type="button"
                   class="knob-pill-btn"
                   :class="{ active: quickConfig.inline_preedit }"
-                  @click="quickConfig.inline_preedit = true; onTileToggle()"
+                  @click="
+                    quickConfig.inline_preedit = true;
+                    onTileToggle();
+                  "
                 >
                   内嵌光标
                 </button>
@@ -531,7 +547,10 @@ watch(
                   type="button"
                   class="knob-pill-btn"
                   :class="{ active: !quickConfig.inline_preedit }"
-                  @click="quickConfig.inline_preedit = false; onTileToggle()"
+                  @click="
+                    quickConfig.inline_preedit = false;
+                    onTileToggle();
+                  "
                 >
                   窗口顶端
                 </button>
@@ -554,9 +573,7 @@ watch(
                 :value="schema.id"
               />
             </el-select>
-            <el-button size="small" @click="emit('navigate', 'quick')">
-              完整参数 →
-            </el-button>
+            <el-button size="small" @click="emit('navigate', 'quick')"> 完整参数 → </el-button>
           </div>
         </div>
       </section>
@@ -564,9 +581,7 @@ watch(
       <!-- 3. Modern Bento Feature Tiles Matrix (现代化特性磁贴矩阵) -->
       <section class="bento-section-wrap">
         <div class="bento-header-line">
-          <span class="bento-section-kicker">
-            输入法特性磁贴 (Feature Tiles)
-          </span>
+          <span class="bento-section-kicker"> 输入法特性磁贴 (Feature Tiles) </span>
           <span class="bento-more-link" @click="emit('navigate', 'quick')">
             查看更多组件设置 →
           </span>
@@ -649,7 +664,9 @@ watch(
               <span class="bento-tile-icon">🔄</span>
               <div class="bento-tile-texts">
                 <span class="bento-tile-title">用户词库多端同步</span>
-                <span class="bento-tile-desc">{{ syncConfig?.installation_id || "未设置设备ID" }}</span>
+                <span class="bento-tile-desc">{{
+                  syncConfig?.installation_id || "未设置设备ID"
+                }}</span>
               </div>
             </div>
             <div class="bento-tile-action">
@@ -704,7 +721,12 @@ watch(
         <div v-if="telemetryTab === 'files'" class="drawer-section-flow">
           <div class="drawer-meta-line">
             <span class="drawer-meta-text">用户配置目录: {{ env?.user_dir }}</span>
-            <el-button link type="primary" size="small" @click="emit('openPath', 'open_rime_user_dir')">
+            <el-button
+              link
+              type="primary"
+              size="small"
+              @click="emit('openPath', 'open_rime_user_dir')"
+            >
               打开文件夹
             </el-button>
           </div>
@@ -736,16 +758,22 @@ watch(
             <span class="drawer-title-text">活动词库 (*.userdb)</span>
             <div class="drawer-actions-row">
               <el-button size="small" :icon="Setting" @click="openSyncSettings">同步设置</el-button>
-              <el-button size="small" type="primary" :loading="syncingUserdb" @click="triggerSync">立即同步</el-button>
+              <el-button size="small" type="primary" :loading="syncingUserdb" @click="triggerSync"
+                >立即同步</el-button
+              >
             </div>
           </div>
           <el-table :data="env?.user_dicts ?? []" stripe size="small" max-height="200">
             <el-table-column label="名称" prop="name" />
             <el-table-column label="大小">
-              <template #default="{ row }: { row: UserDictInfo }">{{ formatBytes(row.size_bytes) }}</template>
+              <template #default="{ row }: { row: UserDictInfo }">{{
+                formatBytes(row.size_bytes)
+              }}</template>
             </el-table-column>
             <el-table-column label="修改时间">
-              <template #default="{ row }: { row: UserDictInfo }">{{ formatTime(row.modified) }}</template>
+              <template #default="{ row }: { row: UserDictInfo }">{{
+                formatTime(row.modified)
+              }}</template>
             </el-table-column>
           </el-table>
 
@@ -753,11 +781,15 @@ watch(
           <el-table :data="syncConfig?.snapshot_files ?? []" stripe size="small" max-height="200">
             <el-table-column label="快照" prop="name" min-width="140" />
             <el-table-column label="词条估算" width="100">
-              <template #default="{ row }: { row: UserdbSnapshotInfo }">{{ row.entry_count }} 条</template>
+              <template #default="{ row }: { row: UserdbSnapshotInfo }"
+                >{{ row.entry_count }} 条</template
+              >
             </el-table-column>
             <el-table-column label="操作" width="90">
               <template #default="{ row }: { row: UserdbSnapshotInfo }">
-                <el-button link type="primary" size="small" @click="inspectSnapshotEntries(row)">查看词条</el-button>
+                <el-button link type="primary" size="small" @click="inspectSnapshotEntries(row)"
+                  >查看词条</el-button
+                >
               </template>
             </el-table-column>
           </el-table>
@@ -767,16 +799,33 @@ watch(
         <div v-else class="drawer-section-flow">
           <div class="drawer-meta-line">
             <span class="drawer-meta-text">共 {{ backups.length }} 份备份</span>
-            <el-button type="primary" size="small" :loading="backingUp" @click="emit('createBackup')">创建新备份</el-button>
+            <el-button
+              type="primary"
+              size="small"
+              :loading="backingUp"
+              @click="emit('createBackup')"
+              >创建新备份</el-button
+            >
           </div>
           <div v-for="b in backups.slice(0, 10)" :key="b.path" class="drawer-backup-item">
             <div class="drawer-backup-info">
               <strong class="drawer-backup-title">{{ backupLabel(b) }}</strong>
-              <span class="drawer-backup-meta">{{ formatTime(b.modified) }} · {{ b.files }} 个文件</span>
+              <span class="drawer-backup-meta"
+                >{{ formatTime(b.modified) }} · {{ b.files }} 个文件</span
+              >
             </div>
             <div class="drawer-actions-row">
-              <el-button link type="primary" size="small" @click="emit('openBackup', b)">打开</el-button>
-              <el-button link type="warning" size="small" :loading="restoringBackup === b.name" @click="emit('restoreBackup', b)">恢复</el-button>
+              <el-button link type="primary" size="small" @click="emit('openBackup', b)"
+                >打开</el-button
+              >
+              <el-button
+                link
+                type="warning"
+                size="small"
+                :loading="restoringBackup === b.name"
+                @click="emit('restoreBackup', b)"
+                >恢复</el-button
+              >
             </div>
           </div>
         </div>
@@ -795,22 +844,48 @@ watch(
       </el-form>
       <template #footer>
         <el-button @click="showSyncDialog = false">取消</el-button>
-        <el-button type="primary" :loading="savingSyncConfig" @click="saveSyncSettings">保存配置</el-button>
+        <el-button type="primary" :loading="savingSyncConfig" @click="saveSyncSettings"
+          >保存配置</el-button
+        >
       </template>
     </el-dialog>
 
-    <el-dialog v-model="showEntriesDialog" :title="`词库快照: ${currentSnapshot?.name}`" width="680px">
+    <el-dialog
+      v-model="showEntriesDialog"
+      :title="`词库快照: ${currentSnapshot?.name}`"
+      width="680px"
+    >
       <div class="entries-viewer-header">
-        <el-input v-model="entriesSearchQuery" placeholder="搜索编码或词条..." clearable size="small" style="width: 240px" @input="onEntriesSearch" />
+        <el-input
+          v-model="entriesSearchQuery"
+          placeholder="搜索编码或词条..."
+          clearable
+          size="small"
+          style="width: 240px"
+          @input="onEntriesSearch"
+        />
         <span class="entries-total-badge">共 {{ entriesTotal }} 个词条</span>
       </div>
-      <el-table :data="snapshotEntries" v-loading="loadingEntries" stripe size="small" max-height="360">
+      <el-table
+        v-loading="loadingEntries"
+        :data="snapshotEntries"
+        stripe
+        size="small"
+        max-height="360"
+      >
         <el-table-column label="编码 (Code)" prop="code" width="160" />
         <el-table-column label="词条 (Text)" prop="text" min-width="180" />
         <el-table-column label="词频权重" prop="weight" width="110" />
       </el-table>
       <div class="entries-viewer-footer">
-        <el-pagination v-model:current-page="entriesPage" :page-size="entriesPageSize" :total="entriesTotal" layout="prev, pager, next" size="small" @current-change="fetchEntries" />
+        <el-pagination
+          v-model:current-page="entriesPage"
+          :page-size="entriesPageSize"
+          :total="entriesTotal"
+          layout="prev, pager, next"
+          size="small"
+          @current-change="fetchEntries"
+        />
       </div>
     </el-dialog>
   </div>

@@ -318,10 +318,7 @@ onBeforeUnmount(() => {
 
           <!-- Results Stream -->
           <div class="palette-results-list custom-scrollbar">
-            <div
-              v-if="filteredCommands.length === 0"
-              class="palette-empty"
-            >
+            <div v-if="filteredCommands.length === 0" class="palette-empty">
               未找到与「{{ query }}」相关的快捷命令
             </div>
 
@@ -344,7 +341,11 @@ onBeforeUnmount(() => {
 
               <div class="item-trailing">
                 <span class="category-tag">{{
-                  item.category === 'navigation' ? '页面' : item.category === 'action' ? '动作' : '主题'
+                  item.category === "navigation"
+                    ? "页面"
+                    : item.category === "action"
+                      ? "动作"
+                      : "主题"
                 }}</span>
                 <kbd v-if="item.shortcut" class="item-shortcut">{{ item.shortcut }}</kbd>
               </div>
@@ -386,7 +387,9 @@ onBeforeUnmount(() => {
   background: var(--color-surface);
   border: 1px solid var(--color-line-soft);
   border-radius: var(--radius-lg);
-  box-shadow: 0 24px 64px -12px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.1);
+  box-shadow:
+    0 24px 64px -12px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
   overflow: hidden;
   display: flex;
   flex-direction: column;
