@@ -237,9 +237,20 @@ async function loadQuickSettings() {
 async function saveQuickSettings(shouldDeploy = false) {
   saving.value = !shouldDeploy;
   deploying.value = shouldDeploy;
-  const config = await withErrorHandling(() => api.saveQuickSettings({ ...form }));
-  if (config) {
-    applyConfig(config);
+  const results = await withErrorHandling(() =>
+    Promise.all([
+      api.saveQuickSettings({ ...form }),
+      hasRimeIce.value ? api.saveRimeIceSettings({ ...iceSettings }) : Promise.resolve(null),
+    ]),
+  );
+  if (results) {
+    const [config, iceResult] = results;
+    if (config) {
+      applyConfig(config);
+    }
+    if (iceResult) {
+      Object.assign(iceSettings, iceResult);
+    }
     emit("saved");
     ElMessage.success(shouldDeploy ? "快速设置已保存，开始部署" : "快速设置已保存");
     if (shouldDeploy) {
@@ -253,9 +264,19 @@ async function saveQuickSettings(shouldDeploy = false) {
 
 async function previewQuickSettings() {
   previewing.value = true;
-  const preview = await withErrorHandling(() => api.previewQuickSettings({ ...form }));
-  if (preview) {
-    configPreview.value = preview;
+  const results = await withErrorHandling(() =>
+    Promise.all([
+      api.previewQuickSettings({ ...form }),
+      hasRimeIce.value ? api.previewRimeIceSettings({ ...iceSettings }) : Promise.resolve(null),
+    ]),
+  );
+  if (results) {
+    const [preview, icePreview] = results;
+    const combinedFiles = [
+      ...(preview?.files ?? []),
+      ...(icePreview?.files ?? []),
+    ];
+    configPreview.value = { files: combinedFiles };
     showPreviewDialog.value = true;
   }
   previewing.value = false;
@@ -314,9 +335,20 @@ async function previewIceSettings() {
 
 async function saveIceSettings() {
   savingIceSettings.value = true;
-  const settings = await withErrorHandling(() => api.saveRimeIceSettings({ ...iceSettings }));
-  if (settings) {
-    Object.assign(iceSettings, settings);
+  const results = await withErrorHandling(() =>
+    Promise.all([
+      api.saveQuickSettings({ ...form }),
+      api.saveRimeIceSettings({ ...iceSettings }),
+    ]),
+  );
+  if (results) {
+    const [config, settings] = results;
+    if (config) {
+      applyConfig(config);
+    }
+    if (settings) {
+      Object.assign(iceSettings, settings);
+    }
     emit("saved");
     emit("deploy");
     schedulePostDeployCheck();

@@ -621,15 +621,26 @@ pub(crate) fn has_fuzzy_pinyin_patch(contents: &str) -> bool {
 
 pub(crate) fn detect_fuzzy_pinyin_pairs(contents: &str) -> Vec<String> {
     let mut pairs = Vec::new();
-    if contents.contains("derive/^([zcs])h/$1/")
-        || (contents.contains("derive/^zh/z/") && contents.contains("derive/^z/zh/"))
+    let has_zcs = contents.contains("derive/^([zcs])h/$1/");
+    if has_zcs
+        || contents.contains("derive/^z([^h])/zh$1/")
+        || contents.contains("derive/^zh/z/")
+        || contents.contains("derive/^z/zh/")
     {
         pairs.push("z_zh".to_string());
     }
-    if contents.contains("derive/^c([^h])/ch$1/") || contents.contains("derive/^ch/c/") {
+    if has_zcs
+        || contents.contains("derive/^c([^h])/ch$1/")
+        || contents.contains("derive/^ch/c/")
+        || contents.contains("derive/^c/ch/")
+    {
         pairs.push("c_ch".to_string());
     }
-    if contents.contains("derive/^s([^h])/sh$1/") || contents.contains("derive/^sh/s/") {
+    if has_zcs
+        || contents.contains("derive/^s([^h])/sh$1/")
+        || contents.contains("derive/^sh/s/")
+        || contents.contains("derive/^s/sh/")
+    {
         pairs.push("s_sh".to_string());
     }
     if contents.contains("derive/^l/n/") || contents.contains("derive/^n/l/") {
@@ -673,8 +684,8 @@ pub(crate) fn rules_for_fuzzy_pairs(pairs: &[String]) -> Vec<&'static str> {
     for pair in pairs {
         match pair.as_str() {
             "z_zh" => {
-                rules.push("derive/^([zcs])h/$1/");
-                rules.push("derive/^([zcs])([^h])/$1h$2/");
+                rules.push("derive/^z([^h])/zh$1/");
+                rules.push("derive/^zh/z/");
             }
             "c_ch" => {
                 rules.push("derive/^c([^h])/ch$1/");

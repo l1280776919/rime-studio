@@ -285,6 +285,84 @@ patch:
         assert!(!rules.contains(&"derive/^k/g/"));
     }
 
+    #[test]
+    fn rules_for_fuzzy_pairs_generates_independent_rules() {
+        let z_only = rules_for_fuzzy_pairs(&["z_zh".to_string()]);
+        assert!(z_only.contains(&"derive/^z([^h])/zh$1/"));
+        assert!(z_only.contains(&"derive/^zh/z/"));
+        assert!(!z_only.iter().any(|r| r.contains("[zcs]")));
+        assert!(!z_only.iter().any(|r| r.contains("^c") || r.contains("/c")));
+        assert!(!z_only.iter().any(|r| r.contains("^s") || r.contains("/s")));
+
+        let c_only = rules_for_fuzzy_pairs(&["c_ch".to_string()]);
+        assert!(c_only.contains(&"derive/^c([^h])/ch$1/"));
+        assert!(c_only.contains(&"derive/^ch/c/"));
+        assert!(!c_only.iter().any(|r| r.contains("^z") || r.contains("/z")));
+
+        let s_only = rules_for_fuzzy_pairs(&["s_sh".to_string()]);
+        assert!(s_only.contains(&"derive/^s([^h])/sh$1/"));
+        assert!(s_only.contains(&"derive/^sh/s/"));
+        assert!(!s_only.iter().any(|r| r.contains("^z") || r.contains("/z")));
+    }
+
+    #[test]
+    fn detect_fuzzy_pinyin_pairs_handles_legacy_and_granular_rules() {
+        let legacy_yaml = r#"
+patch:
+  speller/algebra/+:
+    - derive/^([zcs])h/$1/
+    - derive/^([zcs])([^h])/$1h$2/
+    - derive/^l/n/
+    - derive/^n/l/
+"#;
+        let detected = detect_fuzzy_pinyin_pairs(legacy_yaml);
+        assert!(detected.contains(&"z_zh".to_string()));
+        assert!(detected.contains(&"c_ch".to_string()));
+        assert!(detected.contains(&"s_sh".to_string()));
+        assert!(detected.contains(&"l_n".to_string()));
+        assert!(!detected.contains(&"f_h".to_string()));
+
+        let granular_yaml = r#"
+patch:
+  speller/algebra/+:
+    - derive/^z([^h])/zh$1/
+    - derive/^zh/z/
+"#;
+        let detected_granular = detect_fuzzy_pinyin_pairs(granular_yaml);
+        assert!(detected_granular.contains(&"z_zh".to_string()));
+        assert!(!detected_granular.contains(&"c_ch".to_string()));
+        assert!(!detected_granular.contains(&"s_sh".to_string()));
+    }
+
+    #[test]
+    fn ice_settings_merge_updates_fuzzy_pairs_cleanly() {
+        let existing = r#"# Managed by Rime Studio.
+patch:
+  grammar:
+    language: wanxiang-lts-zh-hans
+  speller/algebra/+:
+    - derive/^([zcs])h/$1/
+"#;
+        let settings = RimeIceSettings {
+            emoji: true,
+            traditionalization: false,
+            ascii_punct: false,
+            full_shape: false,
+            search_single_char: false,
+            fuzzy_pinyin: true,
+            fuzzy_pairs: Some(vec!["c_ch".to_string(), "an_ang".to_string()]),
+            traditional_preset: "s2t.json".to_string(),
+        };
+        let merged = merge_rime_ice_custom(existing, &settings, LmdgPatchAction::Keep).expect("merge");
+        assert!(merged.contains("wanxiang-lts-zh-hans"));
+        assert!(merged.contains("derive/^c([^h])/ch$1/"));
+        assert!(merged.contains("derive/ang$/an/"));
+        assert!(!merged.contains("derive/^([zcs])h/$1/"));
+
+        let detected = detect_fuzzy_pinyin_pairs(&merged);
+        assert_eq!(detected, vec!["c_ch", "an_ang"]);
+    }
+
     fn sample_appearance() -> AppearanceConfig {
         AppearanceConfig {
             theme_name: "rime_studio_blue".to_string(),
