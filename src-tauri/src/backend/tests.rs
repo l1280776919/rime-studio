@@ -353,7 +353,8 @@ patch:
             fuzzy_pairs: Some(vec!["c_ch".to_string(), "an_ang".to_string()]),
             traditional_preset: "s2t.json".to_string(),
         };
-        let merged = merge_rime_ice_custom(existing, &settings, LmdgPatchAction::Keep).expect("merge");
+        let merged =
+            merge_rime_ice_custom(existing, &settings, LmdgPatchAction::Keep).expect("merge");
         assert!(merged.contains("wanxiang-lts-zh-hans"));
         assert!(merged.contains("derive/^c([^h])/ch$1/"));
         assert!(merged.contains("derive/ang$/an/"));

@@ -272,10 +272,7 @@ async function previewQuickSettings() {
   );
   if (results) {
     const [preview, icePreview] = results;
-    const combinedFiles = [
-      ...(preview?.files ?? []),
-      ...(icePreview?.files ?? []),
-    ];
+    const combinedFiles = [...(preview?.files ?? []), ...(icePreview?.files ?? [])];
     configPreview.value = { files: combinedFiles };
     showPreviewDialog.value = true;
   }
@@ -336,10 +333,7 @@ async function previewIceSettings() {
 async function saveIceSettings() {
   savingIceSettings.value = true;
   const results = await withErrorHandling(() =>
-    Promise.all([
-      api.saveQuickSettings({ ...form }),
-      api.saveRimeIceSettings({ ...iceSettings }),
-    ]),
+    Promise.all([api.saveQuickSettings({ ...form }), api.saveRimeIceSettings({ ...iceSettings })]),
   );
   if (results) {
     const [config, settings] = results;
