@@ -3,13 +3,16 @@ import { computed, onMounted, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { api } from "../api";
 import {
+  CircleCheckFilled,
   CopyDocument,
   Download,
   Files,
   FolderOpened,
   Grid,
   Key,
+  Menu,
   MoreFilled,
+  Operation,
   Refresh,
   Search,
   UploadFilled,
@@ -71,6 +74,17 @@ const filteredSchemas = computed(() => {
 
 function selectSchema(schema: SchemaInfo) {
   selectedId.value = schema.id;
+}
+
+function getSchemaBadgeLetter(schema: SchemaInfo): string {
+  const name = schema.name || schema.id;
+  if (name.includes("五笔")) return "五";
+  if (name.includes("仓颉")) return "仓";
+  if (name.includes("双拼") || name.includes("小鹤")) return "鹤";
+  if (name.includes("自然码")) return "自";
+  if (name.includes("拼音") || name.includes("雾凇")) return "拼";
+  if (name.includes("粤")) return "粤";
+  return name.slice(0, 1).toUpperCase();
 }
 
 async function loadSchemas() {
@@ -222,127 +236,174 @@ onMounted(loadSchemas);
 </script>
 
 <template>
-  <section class="content-grid schemas-grid schema-workbench">
-    <section class="main-column">
-      <!-- Active schema summary strip -->
-      <div class="schema-current-strip panel">
-        <div class="schema-current-main">
-          <span class="schema-kicker">当前激活输入方案</span>
-          <strong>{{
-            currentSchema?.name ?? currentConfig?.schema_id ?? env?.active_schema ?? "未设置"
-          }}</strong>
-          <small>{{
-            currentSchema?.id ?? currentConfig?.schema_id ?? env?.active_schema ?? "等待扫描"
-          }}</small>
+  <div class="schemas-hub-container">
+    <!-- Hero Spotlight Strip -->
+    <header class="schema-hero panel">
+      <div class="hero-main-meta">
+        <div class="schema-avatar-badge">
+          <span>{{ currentSchema ? getSchemaBadgeLetter(currentSchema) : "R" }}</span>
         </div>
-        <div class="schema-current-meta">
-          <span>当前方案是当前系统输入法直接生效的方案。</span>
-          <el-button
-            link
-            type="primary"
-            :icon="UploadFilled"
-            :disabled="!currentSchema"
-            @click="currentSchema && activateSchema(currentSchema, true)"
-          >
-            部署生效
-          </el-button>
-        </div>
-      </div>
-
-      <!-- Top Nav Tabs -->
-      <div class="schema-nav-tabs">
-        <el-radio-group v-model="activeTab" size="default">
-          <el-radio-button value="local">
-            <el-icon><Files /></el-icon> 本地方案库 ({{ schemas.length }})
-          </el-radio-button>
-          <el-radio-button value="community">
-            <el-icon><Grid /></el-icon> 社区方案市场
-          </el-radio-button>
-          <el-radio-button value="keymap">
-            <el-icon><Key /></el-icon> 双拼键位图
-          </el-radio-button>
-        </el-radio-group>
-      </div>
-
-      <!-- Tab 1: Local Schemas -->
-      <template v-if="activeTab === 'local'">
-        <div class="schema-toolbar panel">
-          <div>
-            <strong>方案库列表</strong>
-            <span>选择一个方案设为当前，或把方案加入 Rime 的切换菜单。</span>
+        <div class="hero-info">
+          <div class="hero-kicker-row">
+            <span class="pulse-dot" />
+            <span class="hero-kicker">当前激活输入方案</span>
+            <span v-if="currentSchema?.is_system" class="tag-pill system">系统预设</span>
+            <span v-else-if="currentSchema" class="tag-pill custom">用户方案</span>
           </div>
-          <el-input
-            v-model="query"
-            :prefix-icon="Search"
-            clearable
-            placeholder="搜索名称、ID 或路径"
-            style="max-width: 260px"
-          />
-          <el-button :icon="Refresh" :loading="loading" @click="loadSchemas">刷新</el-button>
+          <h2 class="hero-schema-name">
+            {{ currentSchema?.name ?? currentConfig?.schema_id ?? env?.active_schema ?? "未识别方案" }}
+          </h2>
+          <div class="hero-subline">
+            <code class="schema-code-id">{{
+              currentSchema?.id ?? currentConfig?.schema_id ?? env?.active_schema ?? "default"
+            }}</code>
+            <span class="hero-desc-trunc">{{ currentSchema?.description || "当前系统直接采用的输入方案" }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero-actions">
+        <div class="stats-capsule">
+          <span class="stats-item"><strong>{{ schemas.length }}</strong> 方案 ({{ systemSchemas }} 系统 / {{ customSchemas }} 用户)</span>
+          <span class="stats-divider">/</span>
+          <span class="stats-item"><strong>{{ menuIds.length }}</strong> 菜单启用</span>
         </div>
 
-        <el-card class="panel schema-library-panel" shadow="never">
-          <template #header>
-            <div class="panel-title">
-              <span>可用方案</span>
-              <span class="schema-count">{{ filteredSchemas.length }} / {{ schemas.length }}</span>
+        <el-button
+          type="primary"
+          class="deploy-btn"
+          :icon="UploadFilled"
+          :disabled="!currentSchema"
+          @click="currentSchema && activateSchema(currentSchema, true)"
+        >
+          一键部署生效
+        </el-button>
+      </div>
+    </header>
+
+    <!-- Segmented Island Tab Navigation -->
+    <div class="schema-nav-island">
+      <div class="nav-pills">
+        <button
+          type="button"
+          class="nav-pill"
+          :class="{ active: activeTab === 'local' }"
+          @click="activeTab = 'local'"
+        >
+          <el-icon><Files /></el-icon> 本地方案库 ({{ schemas.length }})
+        </button>
+        <button
+          type="button"
+          class="nav-pill"
+          :class="{ active: activeTab === 'community' }"
+          @click="activeTab = 'community'"
+        >
+          <el-icon><Grid /></el-icon> 社区生态市场
+        </button>
+        <button
+          type="button"
+          class="nav-pill"
+          :class="{ active: activeTab === 'keymap' }"
+          @click="activeTab = 'keymap'"
+        >
+          <el-icon><Key /></el-icon> 双拼键位实验室
+        </button>
+      </div>
+    </div>
+
+    <!-- TAB 1: Local Schemas -->
+    <template v-if="activeTab === 'local'">
+      <div class="local-workbench-grid">
+        <div class="schemas-main-stream">
+          <!-- Filter & Search Toolbar -->
+          <div class="schemas-toolbar panel">
+            <div class="toolbar-search">
+              <el-input
+                v-model="query"
+                :prefix-icon="Search"
+                clearable
+                placeholder="搜索方案名称、ID 或描述..."
+                size="default"
+              />
             </div>
-          </template>
 
-          <div v-if="filteredSchemas.length === 0" class="schema-empty">
-            <span>未找到匹配方案。</span>
+            <div class="toolbar-right">
+              <span class="match-count">匹配 <strong>{{ filteredSchemas.length }}</strong> / {{ schemas.length }}</span>
+              <el-button :icon="Refresh" :loading="loading" @click="loadSchemas">
+                刷新列表
+              </el-button>
+            </div>
           </div>
 
-          <div v-else class="schema-card-grid">
+          <!-- Empty State -->
+          <div v-if="filteredSchemas.length === 0" class="schemas-empty panel">
+            <el-icon class="empty-icon"><Search /></el-icon>
+            <strong>未找到匹配的方案</strong>
+            <p>可尝试更换关键词或在社区方案市场搜索新方案。</p>
+          </div>
+
+          <!-- Bento Grid of Local Schemas -->
+          <div v-else class="schemas-bento-grid">
             <article
               v-for="schema in filteredSchemas"
               :key="schema.id"
-              class="schema-card"
+              class="schema-tile"
               :class="{
-                active: schema.is_active,
-                selected: selectedSchema?.id === schema.id,
+                'is-active': schema.is_active,
+                'is-selected': selectedSchema?.id === schema.id,
               }"
               @click="selectSchema(schema)"
             >
-              <div class="schema-card-header">
-                <div>
-                  <strong>{{ schema.name || schema.id }}</strong>
-                  <small>{{ schema.id }}</small>
+              <div class="tile-header">
+                <div class="tile-icon-box">
+                  <span>{{ getSchemaBadgeLetter(schema) }}</span>
                 </div>
-                <div class="schema-badges">
-                  <span v-if="schema.is_active" class="schema-state current">当前</span>
-                  <span class="schema-state">{{ schema.is_system ? "系统" : "自定义" }}</span>
+
+                <div class="tile-title-box">
+                  <div class="tile-name-row">
+                    <strong class="tile-name">{{ schema.name || schema.id }}</strong>
+                    <span v-if="schema.is_active" class="active-pill">
+                      <el-icon><CircleCheckFilled /></el-icon> 当前生效
+                    </span>
+                  </div>
+                  <code class="tile-id">{{ schema.id }}</code>
+                </div>
+
+                <div class="tile-kind-badge">
+                  <span class="tag-pill" :class="schema.is_system ? 'system' : 'custom'">
+                    {{ schema.is_system ? "系统" : "自定义" }}
+                  </span>
                 </div>
               </div>
 
-              <p class="schema-description">
-                {{ schema.description || "暂无方案描述。" }}
+              <p class="tile-desc">
+                {{ schema.description || "暂无该输入方案的描述信息。" }}
               </p>
 
-              <div class="schema-card-footer">
-                <el-checkbox
-                  :model-value="menuIds.includes(schema.id)"
-                  @click.stop
-                  @change="
-                    (value: boolean | string | number) => setMenuMembership(schema, Boolean(value))
-                  "
-                >
-                  显示在菜单
-                </el-checkbox>
+              <div class="tile-footer">
+                <div class="menu-membership-pill" @click.stop>
+                  <el-checkbox
+                    :model-value="menuIds.includes(schema.id)"
+                    @change="(value: boolean | string | number) => setMenuMembership(schema, Boolean(value))"
+                  >
+                    <span>在切换菜单</span>
+                  </el-checkbox>
+                </div>
 
-                <div class="schema-card-actions" @click.stop>
+                <div class="tile-actions" @click.stop>
                   <el-button
                     size="small"
-                    type="primary"
-                    plain
+                    :type="schema.is_active ? 'default' : 'primary'"
+                    :plain="!schema.is_active"
                     :disabled="schema.is_active"
                     :loading="activating === schema.id"
                     @click="activateSchema(schema, false)"
                   >
-                    设为当前
+                    {{ schema.is_active ? "使用中" : "设为当前" }}
                   </el-button>
+
                   <el-dropdown trigger="click">
-                    <el-button link :icon="MoreFilled">更多</el-button>
+                    <el-button link :icon="MoreFilled" class="btn-more-dots" />
                     <template #dropdown>
                       <el-dropdown-menu>
                         <el-dropdown-item
@@ -350,10 +411,13 @@ onMounted(loadSchemas);
                           :disabled="copying === schema.id"
                           @click="confirmCopy(schema)"
                         >
-                          复制为自定义
+                          复制为自定义方案
                         </el-dropdown-item>
                         <el-dropdown-item :icon="FolderOpened" @click="openSchemaFile(schema)">
-                          定位文件
+                          定位 YAML 文件
+                        </el-dropdown-item>
+                        <el-dropdown-item :icon="FolderOpened" @click="openSchemaDir(schema)">
+                          打开所在文件夹
                         </el-dropdown-item>
                       </el-dropdown-menu>
                     </template>
@@ -362,170 +426,655 @@ onMounted(loadSchemas);
               </div>
             </article>
           </div>
-        </el-card>
-      </template>
+        </div>
 
-      <!-- Tab 2: Community Schemas Hub -->
-      <template v-else-if="activeTab === 'community'">
-        <div class="community-schema-hub panel">
-          <div class="hub-header">
-            <div>
-              <h3>社区热门输入方案</h3>
-              <p>一键通过 plum 安装或同步社区高分输入方案（全拼、双拼、形码等）。</p>
+        <!-- Right Side: Menu Dock & Detail Inspector -->
+        <aside class="schemas-side-column">
+          <!-- Switcher Menu Card -->
+          <div class="panel side-menu-dock">
+            <div class="dock-header">
+              <div class="dock-title-group">
+                <el-icon><Menu /></el-icon>
+                <strong>切换菜单列表 (Ctrl+`)</strong>
+              </div>
+              <span class="dock-count-badge">{{ menuSchemas.length }} 项</span>
             </div>
-            <el-button :icon="Refresh" circle size="small" @click="loadSchemas" />
-          </div>
 
-          <div class="community-grid">
-            <div
-              v-for="item in communitySchemas"
-              :key="item.id"
-              class="community-card"
-              :class="{ installed: item.installed }"
-            >
-              <div class="community-card-top">
-                <div>
-                  <h4 class="schema-hub-name">{{ item.name }}</h4>
-                  <span class="schema-hub-author">作者：{{ item.author }}</span>
+            <p class="dock-note">
+              勾选放入此列表的方案将在按下输入法快捷键 <code>Ctrl+`</code> 或 <code>F4</code> 时依次提供切换。
+            </p>
+
+            <div class="dock-list">
+              <div
+                v-for="(schema, index) in menuSchemas"
+                :key="schema.id"
+                class="dock-item"
+                :class="{ 'dock-item-active': schema.is_active }"
+              >
+                <span class="dock-num">{{ index + 1 }}</span>
+                <div class="dock-item-info">
+                  <span class="dock-item-name">{{ schema.name || schema.id }}</span>
+                  <code class="dock-item-id">{{ schema.id }}</code>
                 </div>
-                <el-tag size="small" :type="item.installed ? 'success' : 'info'">
-                  {{ item.installed ? "已安装" : "未安装" }}
-                </el-tag>
+                <span v-if="schema.is_active" class="dock-active-dot" title="当前激活方案" />
               </div>
 
-              <p class="community-card-desc">{{ item.description }}</p>
-
-              <div class="community-card-tags">
-                <el-tag
-                  v-for="tag in item.tags"
-                  :key="tag"
-                  size="small"
-                  effect="plain"
-                  class="tag-pill"
-                >
-                  {{ tag }}
-                </el-tag>
-              </div>
-
-              <div class="community-card-bottom">
-                <code class="recipe-code">{{ item.recipe }}</code>
-                <el-button
-                  size="small"
-                  :type="item.installed ? 'default' : 'primary'"
-                  :icon="item.installed ? Refresh : Download"
-                  :loading="installingRecipe === item.recipe"
-                  @click="installCommunity(item)"
-                >
-                  {{ item.installed ? "更新/修复" : "一键安装" }}
-                </el-button>
+              <div v-if="menuSchemas.length === 0" class="dock-empty">
+                <span>暂无菜单项，请在左侧勾选「在切换菜单」。</span>
               </div>
             </div>
-          </div>
-        </div>
-      </template>
 
-      <!-- Tab 3: Double Pinyin Keymap Visualizer -->
-      <template v-else-if="activeTab === 'keymap'">
-        <DoublePinyinVisualizer />
-      </template>
-    </section>
-
-    <!-- Sidebar menu panel -->
-    <aside class="side-column">
-      <el-card class="panel schema-menu-panel" shadow="never">
-        <template #header>
-          <div class="panel-title">
-            <span>Rime 方案菜单 (Ctrl+`)</span>
-            <span class="schema-count">{{ menuSchemas.length }} 项</span>
-          </div>
-        </template>
-
-        <p class="schema-menu-note">
-          这里控制输入法菜单里能切换哪些方案。真正生效的当前方案始终只有一个。
-        </p>
-
-        <div class="schema-menu-list">
-          <div
-            v-for="(schema, index) in menuSchemas"
-            :key="schema.id"
-            class="schema-menu-entry"
-            :class="{ active: schema.is_active }"
-          >
-            <span class="schema-menu-index">{{ index + 1 }}</span>
-            <div>
-              <strong>{{ schema.name || schema.id }}</strong>
-              <small>{{ schema.id }}</small>
+            <div class="dock-actions">
+              <el-button size="small" :loading="savingMenu" @click="saveSchemaMenu(false)">
+                保存菜单
+              </el-button>
+              <el-button
+                size="small"
+                type="primary"
+                plain
+                :loading="savingMenu"
+                @click="saveSchemaMenu(true)"
+              >
+                保存并部署
+              </el-button>
             </div>
-            <span v-if="schema.is_active" class="schema-state current">当前</span>
           </div>
-        </div>
 
-        <div v-if="menuSchemas.length === 0" class="schema-empty compact">
-          <span>还没有菜单项。请在方案库里打开“显示在菜单”。</span>
-        </div>
+          <!-- Selected Schema Detail Capsule -->
+          <div v-if="selectedSchema" class="panel side-detail-dock">
+            <div class="detail-header">
+              <div class="detail-title-wrap">
+                <el-icon><Operation /></el-icon>
+                <strong>{{ selectedSchema.name || selectedSchema.id }}</strong>
+              </div>
+              <span class="tag-pill" :class="selectedSchema.is_system ? 'system' : 'custom'">
+                {{ selectedSchema.is_system ? "系统文件" : "用户定制" }}
+              </span>
+            </div>
 
-        <div class="schema-side-actions">
-          <el-button :loading="savingMenu" @click="saveSchemaMenu(false)"> 保存菜单 </el-button>
-          <el-button type="primary" plain :loading="savingMenu" @click="saveSchemaMenu(true)">
-            保存并部署
-          </el-button>
-        </div>
-      </el-card>
+            <p class="detail-desc">
+              {{ selectedSchema.description || "未提供详细描述信息。" }}
+            </p>
 
-      <el-card v-if="selectedSchema" class="panel schema-selected-panel quiet-panel" shadow="never">
-        <template #header>
-          <span>选中方案详情</span>
-        </template>
-        <div class="schema-detail">
-          <strong>{{ selectedSchema.name || selectedSchema.id }}</strong>
-          <div class="schema-detail-tags">
-            <span v-if="selectedSchema.is_active" class="schema-state current">当前</span>
-            <span class="schema-state">{{
-              selectedSchema.is_system ? "系统方案" : "用户方案"
-            }}</span>
+            <div class="path-chip">
+              <el-icon><FolderOpened /></el-icon>
+              <span>{{ selectedSchema.path }}</span>
+            </div>
+
+            <div class="detail-actions">
+              <el-button size="small" @click="openSchemaFile(selectedSchema)">打开文件</el-button>
+              <el-button size="small" @click="openSchemaDir(selectedSchema)">所在目录</el-button>
+              <el-button
+                v-if="!selectedSchema.is_active"
+                size="small"
+                type="primary"
+                plain
+                :loading="activating === selectedSchema.id"
+                @click="activateSchema(selectedSchema, true)"
+              >
+                设为当前并部署
+              </el-button>
+            </div>
           </div>
-          <p>{{ selectedSchema.description || "这个方案没有写描述。" }}</p>
-        </div>
-        <div class="path-chip schema-path-chip">
-          <el-icon><FolderOpened /></el-icon>
-          <span>{{ selectedSchema.path }}</span>
-        </div>
-        <div class="schema-side-actions compact">
-          <el-button @click="openSchemaFile(selectedSchema)">定位文件</el-button>
-          <el-button @click="openSchemaDir(selectedSchema)">打开目录</el-button>
-          <el-button
-            type="primary"
-            plain
-            :disabled="selectedSchema.is_active"
-            :loading="activating === selectedSchema.id"
-            @click="activateSchema(selectedSchema, true)"
-          >
-            设为当前并部署
-          </el-button>
-        </div>
-      </el-card>
-
-      <div class="schema-scan-summary">
-        <span>{{ schemas.length }} 个方案</span>
-        <span>{{ systemSchemas }} 系统</span>
-        <span>{{ customSchemas }} 用户</span>
+        </aside>
       </div>
-    </aside>
-  </section>
+    </template>
+
+    <!-- TAB 2: Community Hub -->
+    <template v-else-if="activeTab === 'community'">
+      <div class="community-schema-hub panel">
+        <div class="hub-header">
+          <div>
+            <h3 class="hub-title">社区热门输入方案市场</h3>
+            <p class="hub-subtitle">
+              一键通过 Rime 官方生态包管理工具 plum 同步及安装全网高星输入方案（全拼、双拼、形码等）。
+            </p>
+          </div>
+          <el-button :icon="Refresh" :loading="loading" @click="loadSchemas">刷新生态库</el-button>
+        </div>
+
+        <div class="community-grid">
+          <div
+            v-for="item in communitySchemas"
+            :key="item.id"
+            class="community-card"
+            :class="{ installed: item.installed }"
+          >
+            <div class="community-card-top">
+              <div class="community-title-group">
+                <h4 class="schema-hub-name">{{ item.name }}</h4>
+                <span class="schema-hub-author">贡献者：{{ item.author }}</span>
+              </div>
+              <el-tag size="small" :type="item.installed ? 'success' : 'info'" effect="light">
+                {{ item.installed ? "已安装" : "未安装" }}
+              </el-tag>
+            </div>
+
+            <p class="community-card-desc">{{ item.description }}</p>
+
+            <div class="community-card-tags">
+              <span v-for="tag in item.tags" :key="tag" class="comm-tag-pill">
+                {{ tag }}
+              </span>
+            </div>
+
+            <div class="community-card-bottom">
+              <code class="recipe-code" :title="item.recipe">{{ item.recipe }}</code>
+              <el-button
+                size="small"
+                :type="item.installed ? 'default' : 'primary'"
+                :icon="item.installed ? Refresh : Download"
+                :loading="installingRecipe === item.recipe"
+                @click="installCommunity(item)"
+              >
+                {{ item.installed ? "更新/修复" : "一键安装" }}
+              </el-button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <!-- TAB 3: Double Pinyin Visualizer -->
+    <template v-else-if="activeTab === 'keymap'">
+      <DoublePinyinVisualizer />
+    </template>
+  </div>
 </template>
 
 <style scoped>
-.schema-nav-tabs {
-  margin-bottom: 16px;
+.schemas-hub-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
-.schema-nav-tabs :deep(.el-radio-button__inner) {
-  display: inline-flex;
+/* Hero Spotlight Strip */
+.schema-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 16px 20px;
+}
+
+.hero-main-meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.schema-avatar-badge {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, var(--brand-600) 0%, var(--indigo-600, #4f46e5) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 20px;
+  font-weight: 800;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+  flex-shrink: 0;
+}
+
+.hero-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hero-kicker-row {
+  display: flex;
   align-items: center;
   gap: 6px;
 }
 
+.hero-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-500);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.hero-schema-name {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--ink-900);
+  letter-spacing: -0.02em;
+}
+
+.hero-subline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.schema-code-id {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  background: var(--color-surface-soft);
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: var(--ink-700);
+  border: 1px solid var(--color-line-soft);
+}
+
+.hero-desc-trunc {
+  font-size: 12px;
+  color: var(--color-muted);
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.stats-capsule {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  color: var(--ink-600);
+}
+
+.stats-item strong {
+  color: var(--ink-900);
+  font-weight: 750;
+}
+
+.stats-divider {
+  color: var(--color-line-soft);
+}
+
+.deploy-btn {
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.25);
+}
+
+/* Segmented Island Navigation */
+.schema-nav-island {
+  display: flex;
+}
+
+.nav-pills {
+  display: inline-flex;
+  padding: 3px;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-full);
+  gap: 2px;
+}
+
+.nav-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--ink-600);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.nav-pill:hover {
+  color: var(--ink-900);
+}
+
+.nav-pill.active {
+  background: var(--color-surface);
+  color: var(--brand-600);
+  font-weight: 750;
+  box-shadow: var(--shadow-xs);
+}
+
+/* Local Workbench Grid */
+.local-workbench-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 16px;
+  align-items: start;
+}
+
+.schemas-main-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Toolbar */
+.schemas-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  gap: 12px;
+}
+
+.toolbar-search {
+  flex: 1;
+  max-width: 320px;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.match-count {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.match-count strong {
+  color: var(--ink-800);
+}
+
+/* Empty State */
+.schemas-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 20px;
+  text-align: center;
+  gap: 8px;
+}
+
+.empty-icon {
+  font-size: 32px;
+  color: var(--color-muted);
+}
+
+/* Bento Grid of Local Schemas */
+.schemas-bento-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.schema-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  position: relative;
+}
+
+.schema-tile:hover {
+  transform: translateY(-2px);
+  border-color: var(--brand-300);
+  box-shadow: var(--shadow-sm);
+}
+
+.schema-tile.is-active {
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 1px var(--brand-500), 0 4px 14px rgba(37, 99, 235, 0.12);
+  background: linear-gradient(180deg, var(--brand-50, #f8fafc) 0%, var(--color-surface) 100%);
+}
+
+html[data-theme="dark"] .schema-tile.is-active {
+  background: linear-gradient(180deg, rgba(37, 99, 235, 0.12) 0%, var(--color-surface) 100%);
+}
+
+.tile-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.tile-icon-box {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-line-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--ink-800);
+  flex-shrink: 0;
+}
+
+.schema-tile.is-active .tile-icon-box {
+  background: var(--brand-600);
+  color: #fff;
+  border-color: var(--brand-600);
+}
+
+.tile-title-box {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tile-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tile-name {
+  font-size: 13px;
+  font-weight: 750;
+  color: var(--ink-900);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.active-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--brand-600);
+}
+
+.tile-id {
+  font-size: 10px;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+}
+
+.tile-desc {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-600);
+  line-height: 1.4;
+  height: 34px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tile-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid var(--color-line-soft);
+  padding-top: 10px;
+}
+
+.menu-membership-pill :deep(.el-checkbox__label) {
+  font-size: 11px;
+  color: var(--ink-600);
+}
+
+.tile-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-more-dots {
+  padding: 4px !important;
+  color: var(--ink-400);
+}
+
+/* Side Column */
+.schemas-side-column {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.side-menu-dock,
+.side-detail-dock {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dock-header,
+.detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dock-title-group,
+.detail-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 750;
+  color: var(--ink-900);
+}
+
+.dock-count-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  background: var(--brand-50, #eff6ff);
+  color: var(--brand-600);
+  border-radius: var(--radius-full);
+}
+
+.dock-note {
+  margin: 0;
+  font-size: 11px;
+  color: var(--color-muted);
+  line-height: 1.4;
+}
+
+.dock-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.dock-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-xs);
+  transition: all var(--transition-fast);
+}
+
+.dock-item-active {
+  border-color: var(--brand-300);
+  background: var(--brand-50, #eff6ff);
+}
+
+html[data-theme="dark"] .dock-item-active {
+  background: rgba(37, 99, 235, 0.15);
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.dock-num {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--ink-400);
+  width: 14px;
+}
+
+.dock-item-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dock-item-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-800);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dock-item-id {
+  font-size: 10px;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+}
+
+.dock-active-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--brand-500);
+}
+
+.dock-empty {
+  padding: 16px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--color-muted);
+}
+
+.dock-actions,
+.detail-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.detail-desc {
+  margin: 0;
+  font-size: 11px;
+  color: var(--ink-600);
+  line-height: 1.4;
+}
+
+/* Community Hub */
 .community-schema-hub {
+  padding: 20px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -537,16 +1086,17 @@ onMounted(loadSchemas);
   align-items: flex-start;
 }
 
-.hub-header h3 {
-  margin: 0 0 4px 0;
+.hub-title {
+  margin: 0;
   font-size: 16px;
-  color: var(--ink-900, #0f172a);
+  font-weight: 800;
+  color: var(--ink-900);
 }
 
-.hub-header p {
-  margin: 0;
-  font-size: 13px;
-  color: var(--color-muted, #64748b);
+.hub-subtitle {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--color-muted);
 }
 
 .community-grid {
@@ -556,23 +1106,24 @@ onMounted(loadSchemas);
 }
 
 .community-card {
-  background: var(--color-surface, #ffffff);
-  border: 1px solid var(--color-line, #e2e8f0);
-  border-radius: var(--radius-md, 12px);
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-md);
   padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  transition: all 0.2s ease;
+  transition: all var(--transition-fast);
 }
 
 .community-card:hover {
-  border-color: var(--brand-400, #60a5fa);
-  transform: translateY(-1px);
+  border-color: var(--brand-300);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
 }
 
 .community-card.installed {
-  border-color: var(--brand-200, #bfdbfe);
+  border-color: var(--brand-200);
 }
 
 .community-card-top {
@@ -581,21 +1132,27 @@ onMounted(loadSchemas);
   align-items: flex-start;
 }
 
+.community-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .schema-hub-name {
-  margin: 0 0 2px 0;
+  margin: 0;
   font-size: 14px;
-  font-weight: 600;
-  color: var(--ink-800, #1e293b);
+  font-weight: 750;
+  color: var(--ink-900);
 }
 
 .schema-hub-author {
   font-size: 11px;
-  color: var(--color-muted, #64748b);
+  color: var(--color-muted);
 }
 
 .community-card-desc {
   font-size: 12px;
-  color: var(--ink-600, #475569);
+  color: var(--ink-600);
   margin: 0;
   line-height: 1.5;
   flex: 1;
@@ -607,26 +1164,66 @@ onMounted(loadSchemas);
   gap: 4px;
 }
 
-.tag-pill {
+.comm-tag-pill {
   font-size: 10px;
+  font-weight: 600;
+  color: var(--ink-600);
+  background: var(--color-surface-soft);
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--color-line-soft);
 }
 
 .community-card-bottom {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-top: 1px solid var(--color-line-soft, #edf2f7);
+  border-top: 1px solid var(--color-line-soft);
   padding-top: 10px;
   margin-top: 4px;
 }
 
 .recipe-code {
   font-size: 10px;
-  font-family: var(--font-mono, monospace);
-  color: var(--color-muted, #64748b);
+  font-family: var(--font-mono);
+  color: var(--color-muted);
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 150px;
+  max-width: 140px;
   white-space: nowrap;
+}
+
+.pulse-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--emerald-500, #10b981);
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+  display: inline-block;
+}
+
+.tag-pill {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+}
+
+.tag-pill.system {
+  background: var(--color-surface-soft);
+  color: var(--ink-500);
+  border: 1px solid var(--color-line-soft);
+}
+
+.tag-pill.custom {
+  background: var(--indigo-50, #eef2ff);
+  color: var(--indigo-600, #4f46e5);
+  border: 1px solid var(--indigo-200, #c7d2fe);
+}
+
+html[data-theme="dark"] .tag-pill.custom {
+  background: rgba(99, 102, 241, 0.15);
+  border-color: rgba(99, 102, 241, 0.3);
+  color: #a5b4fc;
 }
 </style>

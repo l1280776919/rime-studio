@@ -30,22 +30,23 @@ const releaseNotesPreview = computed(() => {
   if (!notes) return "";
   return notes.length > 600 ? `${notes.slice(0, 600)}...` : notes;
 });
+
 const updateState = computed(() => {
   if (updateCheckFailed.value) {
     return {
       tone: "error",
       title: "检查更新失败",
-      detail: "暂时无法连接 GitHub Releases，请检查网络后重试。",
+      detail: "暂时无法连接 GitHub Releases，请检查网络设置或代理后重试。",
       tagType: "danger" as const,
-      tagText: "检查失败",
-      actionText: "重试",
+      tagText: "网络异常",
+      actionText: "重试检查",
     };
   }
   if (!updateInfo.value) {
     return {
       tone: "idle",
-      title: "检查更新",
-      detail: "从 GitHub Releases 获取最新版本。",
+      title: "检查软件更新",
+      detail: "自动连接 GitHub Releases 获取最新发布版本与安装包。",
       tagType: "info" as const,
       tagText: "待检查",
       actionText: "检查更新",
@@ -55,24 +56,24 @@ const updateState = computed(() => {
     return {
       tone: "available",
       title: `发现新版本 ${updateInfo.value.latest_version}`,
-      detail: "点击更新获取最新安装包。",
+      detail: "已有更新版本可用，点击可自动下载并启动安装向导。",
       tagType: "warning" as const,
-      tagText: "可更新",
-      actionText: "更新",
+      tagText: "可升级",
+      actionText: "一键升级",
     };
   }
   return {
     tone: "current",
-    title: "当前已是最新版本",
-    detail: "本机版本与 GitHub 最新正式发布一致。",
+    title: "当前已是最新正式版本",
+    detail: "本机版本与 GitHub 最新 Release 完全一致，无需更新。",
     tagType: "success" as const,
-    tagText: "已是最新",
+    tagText: "最新版",
     actionText: "重新检查",
   };
 });
 
 function formatPublishedAt(value?: string) {
-  if (!value) return "未知";
+  if (!value) return "未知时间";
   return new Date(value).toLocaleString();
 }
 
@@ -118,7 +119,7 @@ async function handleUpdateAction() {
     const result = await api.downloadAppUpdate();
 
     if (!result.success || !result.installer_path) {
-      ElMessage.warning("下载失败，将跳转到发布页面");
+      ElMessage.warning("下载失败，将跳转到发布页面手动下载");
       await openReleasePage();
       return;
     }
@@ -143,170 +144,529 @@ async function openLogDir() {
 }
 
 onMounted(() => {
-  checkUpdate();
+  void checkUpdate();
 });
 </script>
 
 <template>
-  <section class="content-grid about-grid">
-    <section class="main-column">
-      <el-card class="panel" shadow="never">
-        <template #header>
-          <div class="panel-title">
-            <span>关于 Rime Studio</span>
-          </div>
-        </template>
+  <div class="about-studio-container">
+    <!-- Brand Hero Showcase -->
+    <div class="about-hero panel">
+      <div class="brand-showcase">
+        <div class="brand-avatar-box">
+          <img :src="appLogo" alt="Rime Studio Logo" class="brand-logo-img" />
+        </div>
 
-        <div class="about-intro">
-          <img :src="appLogo" alt="Rime Studio" class="brand-mark" style="margin-bottom: 16px" />
-          <h3>Rime Studio</h3>
-          <p>小狼毫输入法配置工作台 v{{ pkg.version }}</p>
-          <p class="helper-text">
-            基于 Tauri 2 + Vue 3 + Rust 构建的桌面应用，提供图形化界面来管理 Rime
-            输入法的外观主题、自定义短语、词库和配置备份。保存配置时会合并
-            patch，不会覆盖你手写的未知键。
+        <div class="brand-meta">
+          <div class="brand-badge-line">
+            <span class="version-capsule">v{{ pkg.version }}</span>
+            <span class="build-tag">Official Release</span>
+          </div>
+          <h1 class="brand-title">Rime Studio</h1>
+          <p class="brand-tagline">
+            专为中州韵 / 小狼毫 (Weasel) 打造的下一代现代化桌面级输入法控制工作台
           </p>
-          <el-button :icon="FolderOpened" @click="openLogDir">打开应用日志</el-button>
-        </div>
-      </el-card>
+          <p class="brand-description">
+            基于 Tauri 2 + Rust + Vue 3 深度构建。提供视网膜级实景候选窗预览、方案库调度、词库语料管理、智能无损 Patch 合并引擎与时光机自动快照备份。
+          </p>
 
-      <el-card class="panel" shadow="never">
-        <template #header>
-          <div class="panel-title">
-            <span>应用更新</span>
-          </div>
-        </template>
-
-        <div class="update-panel" :class="`is-${updateState.tone}`">
-          <div class="update-status-card">
-            <div class="update-status-icon">
-              <el-icon>
-                <Warning v-if="updateInfo?.update_available" />
-                <Check v-else-if="updateInfo" />
-                <Refresh v-else />
-              </el-icon>
-            </div>
-            <div class="update-status-copy">
-              <div>
-                <strong>{{ updateState.title }}</strong>
-                <el-tag :type="updateState.tagType" effect="light">
-                  {{ updateState.tagText }}
-                </el-tag>
-              </div>
-              <p>{{ updateState.detail }}</p>
-            </div>
-            <div class="update-action-col">
-              <el-button
-                type="primary"
-                :icon="
-                  downloadingUpdate
-                    ? Refresh
-                    : updateInfo?.update_available
-                      ? UploadFilled
-                      : Refresh
-                "
-                :loading="checkingUpdate || downloadingUpdate"
-                :disabled="downloadingUpdate"
-                @click="handleUpdateAction"
-              >
-                {{ downloadingUpdate ? downloadStatus : updateState.actionText }}
-              </el-button>
-            </div>
-          </div>
-
-          <div class="update-version-grid">
-            <div class="update-version-tile">
-              <span>当前版本</span>
-              <strong>v{{ updateInfo?.current_version ?? pkg.version }}</strong>
-              <small>已安装在本机</small>
-            </div>
-            <div class="update-version-tile latest">
-              <span>GitHub 最新版本</span>
-              <strong>{{ updateInfo?.latest_version ?? "尚未检查" }}</strong>
-              <small>{{
-                updateInfo
-                  ? `发布于 ${formatPublishedAt(updateInfo.published_at)}`
-                  : "点击检查后显示"
-              }}</small>
-            </div>
-          </div>
-
-          <div v-if="updateInfo" class="update-release-detail">
-            <section v-if="releaseNotesPreview" class="update-notes">
-              <header>
-                <span>Release Notes</span>
-                <small>{{ updateInfo.release_name ?? updateInfo.latest_version }}</small>
-              </header>
-              <pre>{{ releaseNotesPreview }}</pre>
-            </section>
+          <div class="brand-quick-actions">
+            <el-button :icon="FolderOpened" @click="openLogDir">
+              打开应用运行日志
+            </el-button>
+            <el-button :icon="Link" @click="openReleasePage">
+              GitHub 源码仓库
+            </el-button>
           </div>
         </div>
-      </el-card>
-    </section>
+      </div>
+    </div>
 
-    <aside class="side-column">
-      <el-card class="panel" shadow="never">
-        <template #header>
-          <span>相关链接</span>
-        </template>
-        <div class="about-links">
+    <!-- Update Status Card -->
+    <div class="about-update-card panel" :class="`is-${updateState.tone}`">
+      <div class="update-header-bar">
+        <div class="update-status-icon-wrap">
+          <el-icon>
+            <Warning v-if="updateInfo?.update_available" />
+            <Check v-else-if="updateInfo && !updateCheckFailed" />
+            <Refresh v-else />
+          </el-icon>
+        </div>
+
+        <div class="update-status-meta">
+          <div class="update-title-row">
+            <strong>{{ updateState.title }}</strong>
+            <el-tag :type="updateState.tagType" size="small" effect="light">
+              {{ updateState.tagText }}
+            </el-tag>
+          </div>
+          <p class="update-detail-desc">{{ updateState.detail }}</p>
+        </div>
+
+        <div class="update-action-btn-wrap">
+          <el-button
+            type="primary"
+            :icon="downloadingUpdate ? Refresh : updateInfo?.update_available ? UploadFilled : Refresh"
+            :loading="checkingUpdate || downloadingUpdate"
+            :disabled="downloadingUpdate"
+            @click="handleUpdateAction"
+          >
+            {{ downloadingUpdate ? downloadStatus : updateState.actionText }}
+          </el-button>
+        </div>
+      </div>
+
+      <!-- Version comparison pills -->
+      <div class="update-version-pills">
+        <div class="version-tile">
+          <span class="v-label">本机安装版本</span>
+          <strong class="v-val">v{{ updateInfo?.current_version ?? pkg.version }}</strong>
+          <small class="v-sub">本地运行中</small>
+        </div>
+
+        <div class="version-tile latest-tile">
+          <span class="v-label">GitHub 最新发布</span>
+          <strong class="v-val">{{ updateInfo?.latest_version ?? "尚未获取" }}</strong>
+          <small class="v-sub">
+            {{ updateInfo ? `发布于 ${formatPublishedAt(updateInfo.published_at)}` : "点击右侧按钮获取" }}
+          </small>
+        </div>
+      </div>
+
+      <!-- Release Notes -->
+      <div v-if="updateInfo && releaseNotesPreview" class="update-notes-container">
+        <header class="notes-header">
+          <span>Release Notes（发布说明）</span>
+          <small>{{ updateInfo.release_name ?? updateInfo.latest_version }}</small>
+        </header>
+        <pre class="notes-pre">{{ releaseNotesPreview }}</pre>
+      </div>
+    </div>
+
+    <!-- Ecosystem & Tech Stack Matrix -->
+    <div class="about-ecosystem-grid">
+      <!-- Links Bento -->
+      <div class="panel links-panel">
+        <h3 class="bento-title">社区生态与开源项目</h3>
+
+        <div class="links-cards-grid">
           <a
             href="https://github.com/l1280776919/rime-studio"
             target="_blank"
-            class="about-link-card"
+            class="ecosystem-card"
           >
-            <el-icon><Collection /></el-icon>
-            <span>
+            <div class="eco-icon-box">
+              <el-icon><Collection /></el-icon>
+            </div>
+            <div class="eco-meta">
               <strong>Rime Studio</strong>
-              <small>本项目 — 小狼毫配置工作台</small>
-            </span>
-            <el-icon class="link-arrow"><Link /></el-icon>
+              <span>本项目 GitHub 源码仓库与发版动态</span>
+            </div>
+            <el-icon class="eco-arrow"><Link /></el-icon>
           </a>
 
           <a
-            href="https://github.com/l1280776919/rime-studio/issues/new/choose"
+            href="https://github.com/l1280776919/rime-studio/issues"
             target="_blank"
-            class="about-link-card"
+            class="ecosystem-card"
           >
-            <el-icon><Warning /></el-icon>
-            <span>
-              <strong>问题反馈</strong>
-              <small>提交可复现的问题或功能建议</small>
-            </span>
-            <el-icon class="link-arrow"><Link /></el-icon>
+            <div class="eco-icon-box">
+              <el-icon><Warning /></el-icon>
+            </div>
+            <div class="eco-meta">
+              <strong>问题与建议反馈</strong>
+              <span>提交 Bug 反馈、需求建议或技术交流</span>
+            </div>
+            <el-icon class="eco-arrow"><Link /></el-icon>
           </a>
 
-          <a href="https://github.com/rime/home" target="_blank" class="about-link-card">
-            <el-icon><Connection /></el-icon>
-            <span>
+          <a
+            href="https://github.com/rime/home"
+            target="_blank"
+            class="ecosystem-card"
+          >
+            <div class="eco-icon-box">
+              <el-icon><Connection /></el-icon>
+            </div>
+            <div class="eco-meta">
               <strong>Rime 中州韻</strong>
-              <small>输入法引擎 — 全平台开源输入法框架</small>
-            </span>
-            <el-icon class="link-arrow"><Link /></el-icon>
+              <span>开源跨平台输入法核心引擎项目主页</span>
+            </div>
+            <el-icon class="eco-arrow"><Link /></el-icon>
           </a>
 
-          <a href="https://github.com/iDvel/rime-ice" target="_blank" class="about-link-card">
-            <el-icon><Connection /></el-icon>
-            <span>
-              <strong>雾凇拼音</strong>
-              <small>rime-ice — 长期维护的简体中文词库配置</small>
-            </span>
-            <el-icon class="link-arrow"><Link /></el-icon>
+          <a
+            href="https://github.com/iDvel/rime-ice"
+            target="_blank"
+            class="ecosystem-card"
+          >
+            <div class="eco-icon-box">
+              <el-icon><Connection /></el-icon>
+            </div>
+            <div class="eco-meta">
+              <strong>雾凇拼音 (rime-ice)</strong>
+              <span>长期维护的精细化简体中文拼音词库方案</span>
+            </div>
+            <el-icon class="eco-arrow"><Link /></el-icon>
           </a>
         </div>
-      </el-card>
+      </div>
 
-      <el-card class="panel" shadow="never">
-        <template #header>
-          <span>技术栈</span>
-        </template>
-        <div class="tech-stack">
-          <div><span>桌面框架</span><strong>Tauri 2</strong></div>
-          <div><span>前端</span><strong>Vue 3 + Element Plus</strong></div>
-          <div><span>后端</span><strong>Rust</strong></div>
-          <div><span>平台</span><strong>Windows</strong></div>
+      <!-- Architecture Stack Card -->
+      <div class="panel tech-panel">
+        <h3 class="bento-title">技术架构与系统环境</h3>
+
+        <div class="tech-tiles-list">
+          <div class="tech-tile">
+            <span class="tech-label">客户端内核</span>
+            <strong class="tech-val">Tauri 2.0 (Rust)</strong>
+          </div>
+          <div class="tech-tile">
+            <span class="tech-label">前端视网膜渲染</span>
+            <strong class="tech-val">Vue 3 + Vite 6 + TypeScript</strong>
+          </div>
+          <div class="tech-tile">
+            <span class="tech-label">组件设计系统</span>
+            <strong class="tech-val">Element Plus + Fluent Glass</strong>
+          </div>
+          <div class="tech-tile">
+            <span class="tech-label">输入法目标平台</span>
+            <strong class="tech-val">Weasel (小狼毫) for Windows</strong>
+          </div>
         </div>
-      </el-card>
-    </aside>
-  </section>
+      </div>
+    </div>
+  </div>
 </template>
+
+<style scoped>
+.about-studio-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Brand Hero */
+.about-hero {
+  padding: 24px 28px;
+  background: linear-gradient(135deg, var(--brand-50, #eff6ff) 0%, var(--color-surface) 60%);
+}
+
+html[data-theme="dark"] .about-hero {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.12) 0%, var(--color-surface) 60%);
+}
+
+.brand-showcase {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.brand-avatar-box {
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-soft);
+  box-shadow: 0 8px 24px -4px rgba(37, 99, 235, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  flex-shrink: 0;
+}
+
+.brand-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.brand-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.brand-badge-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.version-capsule {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--brand-600);
+  background: var(--brand-50, #eff6ff);
+  border: 1px solid var(--brand-200);
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+}
+
+.build-tag {
+  font-size: 11px;
+  color: var(--ink-500);
+  font-weight: 600;
+}
+
+.brand-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 850;
+  color: var(--ink-900);
+  letter-spacing: -0.03em;
+}
+
+.brand-tagline {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--ink-700);
+}
+
+.brand-description {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--color-muted);
+  line-height: 1.6;
+  max-width: 680px;
+}
+
+.brand-quick-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+/* Update Card */
+.about-update-card {
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.update-header-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.update-status-icon-wrap {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--brand-600);
+  flex-shrink: 0;
+}
+
+.is-current .update-status-icon-wrap {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+}
+
+.is-available .update-status-icon-wrap {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+}
+
+.update-status-meta {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.update-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.update-title-row strong {
+  font-size: 14px;
+  font-weight: 750;
+  color: var(--ink-900);
+}
+
+.update-detail-desc {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.update-version-pills {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.version-tile {
+  padding: 12px 14px;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.v-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-500);
+}
+
+.v-val {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--ink-900);
+}
+
+.v-sub {
+  font-size: 11px;
+  color: var(--color-muted);
+}
+
+.update-notes-container {
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.notes-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--color-surface-soft);
+  border-bottom: 1px solid var(--color-line-soft);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-800);
+}
+
+.notes-pre {
+  margin: 0;
+  padding: 12px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  background: var(--color-surface);
+  line-height: 1.5;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+/* Ecosystem Grid */
+.about-ecosystem-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 16px;
+  align-items: start;
+}
+
+.links-panel,
+.tech-panel {
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.bento-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 750;
+  color: var(--ink-900);
+}
+
+.links-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ecosystem-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  transition: all var(--transition-fast);
+}
+
+.ecosystem-card:hover {
+  transform: translateY(-1px);
+  border-color: var(--brand-300);
+  box-shadow: var(--shadow-xs);
+}
+
+.eco-icon-box {
+  color: var(--brand-600);
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.eco-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.eco-meta strong {
+  font-size: 12px;
+  font-weight: 750;
+  color: var(--ink-900);
+}
+
+.eco-meta span {
+  font-size: 11px;
+  color: var(--color-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eco-arrow {
+  color: var(--ink-400);
+  font-size: 12px;
+}
+
+.tech-tiles-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tech-tile {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--color-surface-soft);
+  border-radius: var(--radius-xs);
+}
+
+.tech-label {
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--ink-600);
+}
+
+.tech-val {
+  font-size: 11px;
+  font-weight: 750;
+  color: var(--ink-900);
+  font-family: var(--font-mono);
+}
+</style>

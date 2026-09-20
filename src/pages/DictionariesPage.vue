@@ -7,13 +7,18 @@ import DictionaryImportPreviewDialog from "../components/dictionaries/Dictionary
 import DictionaryUrlImportDialog from "../components/dictionaries/DictionaryUrlImportDialog.vue";
 import OnlineDictionaryDialog from "../components/dictionaries/OnlineDictionaryDialog.vue";
 import {
+  Bottom,
   Collection,
   Delete,
   Download,
+  Files,
   FolderOpened,
   InfoFilled,
+  Link,
+  MagicStick,
   Open,
   Refresh,
+  Top,
   UploadFilled,
   Warning,
 } from "@element-plus/icons-vue";
@@ -95,39 +100,67 @@ const pagedAvailable = computed(() =>
 </script>
 
 <template>
-  <section class="content-grid dictionaries-grid">
-    <section class="main-column">
-      <!-- Metric overview -->
-      <div class="metric-grid">
-        <div class="metric accent">
+  <div class="dictionaries-hub-container">
+    <!-- Bento Metrics Stage -->
+    <div class="dict-bento-metrics">
+      <div class="metric-card card-accent">
+        <div class="metric-icon-box">
           <el-icon><Collection /></el-icon>
-          <span>词库文件</span>
-          <strong>{{ dictionaries.length }}</strong>
         </div>
-        <div class="metric">
-          <el-icon><InfoFilled /></el-icon>
-          <span>总条目数</span>
-          <strong>{{ totalEntries.toLocaleString() }}</strong>
-        </div>
-        <div class="metric">
-          <el-icon><FolderOpened /></el-icon>
-          <span>总大小</span>
-          <strong>{{ formatBytes(totalSize) }}</strong>
-        </div>
-        <div class="metric">
-          <el-icon><Warning /></el-icon>
-          <span>当前方案</span>
-          <strong>{{ dictConfig?.schema_name ?? dictConfig?.schema_id ?? "未识别" }}</strong>
-        </div>
-        <div class="metric">
-          <el-icon><Collection /></el-icon>
-          <span>启用词库</span>
-          <strong>{{ enabledCount }}</strong>
+        <div class="metric-body">
+          <span class="metric-label">启用词库 / 总词库</span>
+          <strong class="metric-value">{{ enabledCount }} <span class="metric-total">/ {{ dictionaries.length }}</span></strong>
         </div>
       </div>
 
-      <!-- Toolbar -->
-      <div class="dictionaries-toolbar">
+      <div class="metric-card">
+        <div class="metric-icon-box">
+          <el-icon><InfoFilled /></el-icon>
+        </div>
+        <div class="metric-body">
+          <span class="metric-label">收录总词条</span>
+          <strong class="metric-value">{{ totalEntries.toLocaleString() }}</strong>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-icon-box">
+          <el-icon><FolderOpened /></el-icon>
+        </div>
+        <div class="metric-body">
+          <span class="metric-label">词库总容量</span>
+          <strong class="metric-value">{{ formatBytes(totalSize) }}</strong>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-icon-box">
+          <el-icon><Warning /></el-icon>
+        </div>
+        <div class="metric-body">
+          <span class="metric-label">当前方案</span>
+          <strong class="metric-value truncate" :title="dictConfig?.schema_name ?? dictConfig?.schema_id">
+            {{ dictConfig?.schema_name ?? dictConfig?.schema_id ?? "未识别" }}
+          </strong>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-icon-box">
+          <el-icon><Files /></el-icon>
+        </div>
+        <div class="metric-body">
+          <span class="metric-label">主词库文件</span>
+          <strong class="metric-value truncate" :title="dictConfig?.main_dictionary ? `${dictConfig.main_dictionary}.dict.yaml` : '未配置'">
+            {{ dictConfig?.main_dictionary ? `${dictConfig.main_dictionary}.dict.yaml` : "未配置" }}
+          </strong>
+        </div>
+      </div>
+    </div>
+
+    <!-- Action Bar -->
+    <div class="dict-action-bar panel">
+      <div class="action-bar-left">
         <input
           ref="fileInput"
           type="file"
@@ -137,303 +170,374 @@ const pagedAvailable = computed(() =>
         />
         <el-button
           type="primary"
+          class="deploy-btn"
           :icon="UploadFilled"
           :loading="importing"
           @click="chooseImportFile"
         >
-          导入词库
+          导入词库文件
         </el-button>
-        <el-button type="success" :icon="Download" @click="showOnlineDictionaryDialog = true">
-          在线词库
+
+        <el-button
+          type="success"
+          plain
+          :icon="Download"
+          @click="showOnlineDictionaryDialog = true"
+        >
+          社区在线词库市场
         </el-button>
-        <el-button :icon="Download" :loading="importing" @click="showUrlImportDialog = true">
-          URL 导入
-        </el-button>
-        <el-button :icon="Refresh" :loading="loading" @click="loadAllStats">刷新</el-button>
-        <el-button :icon="UploadFilled" @click="emit('deploy')">重新部署</el-button>
-        <el-button :icon="FolderOpened" @click="emit('openPath', 'open_rime_user_dir')">
-          打开用户目录
+
+        <el-button
+          :icon="Link"
+          :loading="importing"
+          @click="showUrlImportDialog = true"
+        >
+          URL 在线导入
         </el-button>
       </div>
 
-      <el-card class="panel" shadow="never">
-        <template #header>
-          <div class="panel-title">
-            <span>当前方案词库</span>
-            <small>{{
-              dictConfig?.main_dictionary
-                ? `${dictConfig.main_dictionary}.dict.yaml`
-                : "未找到主词库"
-            }}</small>
-          </div>
-        </template>
-        <el-empty
-          v-if="!loading && !dictConfig?.enabled.length && !dictConfig?.missing.length"
-          description="当前方案还没有配置 import_tables"
-          :image-size="80"
-        />
-        <el-table
-          v-else
-          v-loading="loading"
-          :data="[...(dictConfig?.enabled ?? []), ...(dictConfig?.missing ?? [])]"
-          stripe
-          max-height="calc(50dvh - 180px)"
-        >
-          <el-table-column label="引用名" min-width="220">
-            <template #default="{ row, $index }: { row: DictionaryReference; $index: number }">
-              <div class="dict-name-cell">
-                <el-icon><Collection /></el-icon>
-                <span class="dict-name">{{ row.reference }}</span>
-                <el-tag v-if="!row.exists" type="danger" size="small">缺失</el-tag>
-                <el-tag v-else type="success" size="small">启用</el-tag>
+      <div class="action-bar-right">
+        <el-button :icon="Refresh" :loading="loading" @click="loadAllStats">
+          刷新统计
+        </el-button>
+        <el-button :icon="FolderOpened" @click="emit('openPath', 'open_rime_user_dir')">
+          打开词库目录
+        </el-button>
+        <el-button type="primary" :icon="UploadFilled" @click="emit('deploy')">
+          部署生效
+        </el-button>
+      </div>
+    </div>
+
+    <!-- Main Content Layout -->
+    <div class="dict-workbench-grid">
+      <div class="dict-main-column">
+        <!-- Panel 1: Enabled Dictionaries in Current Schema -->
+        <el-card class="panel dict-panel" shadow="never">
+          <template #header>
+            <div class="dict-panel-header">
+              <div class="panel-heading-group">
+                <div class="panel-icon-dot" />
+                <h3 class="panel-heading-title">当前方案启用词库 (import_tables)</h3>
               </div>
-              <small v-if="$index === 0" class="helper-text">优先级最高</small>
-            </template>
-          </el-table-column>
-          <el-table-column label="条目数" width="110" align="right">
-            <template #default="{ row }: { row: DictionaryReference }">
-              {{ row.entry_count?.toLocaleString() ?? "—" }}
-            </template>
-          </el-table-column>
-          <el-table-column label="大小" width="100" align="right">
-            <template #default="{ row }: { row: DictionaryReference }">
-              {{ formatBytes(row.size_bytes) }}
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="260" align="center">
-            <template #default="{ row, $index }: { row: DictionaryReference; $index: number }">
-              <el-button
-                link
-                type="primary"
-                :disabled="$index === 0"
-                @click.stop="moveReference(row.reference, -1)"
-                >上移</el-button
-              >
-              <el-button
-                link
-                type="primary"
-                :disabled="$index >= enabledCount - 1"
-                @click.stop="moveReference(row.reference, 1)"
-                >下移</el-button
-              >
-              <el-button
-                v-if="row.exists"
-                link
-                type="primary"
-                :icon="Download"
-                :loading="exportingDict === `${row.reference}.dict.yaml`"
-                @click.stop="exportDictionary(referenceToDictInfo(row))"
-              >
-                导出
-              </el-button>
-              <el-button
-                link
-                type="danger"
-                :loading="updatingReference === row.reference"
-                @click.stop="removeDictionaryReference(row.reference)"
-              >
-                移除
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-card>
+              <div class="header-tags">
+                <span class="tag-pill-accent">
+                  主词库：{{ dictConfig?.main_dictionary ? `${dictConfig.main_dictionary}.dict.yaml` : "未识别" }}
+                </span>
+                <span class="count-capsule">{{ enabledCount }} 项启用</span>
+              </div>
+            </div>
+          </template>
 
-      <el-card class="panel" shadow="never">
-        <template #header>
-          <div class="panel-title">
-            <span>未启用词库</span>
-            <small>加入当前方案后，重新部署才会生效</small>
-          </div>
-        </template>
-        <el-empty
-          v-if="!loading && !dictConfig?.available.length"
-          description="没有未启用词库"
-          :image-size="80"
-        >
-          <p class="helper-text">
-            还没有 .dict.yaml 词库文件。你可以安装 rime-ice
-            获取预置词库，或手动放置词库文件到用户目录。
-          </p>
-        </el-empty>
+          <el-empty
+            v-if="!loading && !dictConfig?.enabled.length && !dictConfig?.missing.length"
+            description="当前方案尚未配置 import_tables 扩展词库"
+            :image-size="64"
+          />
 
-        <template v-else>
           <el-table
+            v-else
             v-loading="loading"
-            :data="pagedAvailable.items"
+            :data="[...(dictConfig?.enabled ?? []), ...(dictConfig?.missing ?? [])]"
             stripe
-            highlight-current-row
-            max-height="calc(50dvh - 180px)"
-            @row-click="toggleHealth"
+            class="dict-clean-table"
+            max-height="360"
           >
-            <el-table-column label="文件名" min-width="240">
-              <template #default="{ row }: { row: DictInfo }">
-                <div class="dict-name-cell">
-                  <el-icon><Collection /></el-icon>
-                  <span class="dict-name">{{ row.name }}</span>
+            <el-table-column label="优先级 / 词库引用" min-width="240">
+              <template #default="{ row, $index }: { row: DictionaryReference; $index: number }">
+                <div class="dict-ref-cell">
+                  <span class="priority-badge" :class="{ 'is-top': $index === 0 }">
+                    #{{ $index + 1 }}
+                  </span>
+                  <div class="ref-name-wrap">
+                    <span class="dict-ref-name">{{ row.reference }}</span>
+                    <small v-if="$index === 0" class="top-hint">优先级最高</small>
+                  </div>
+                  <span v-if="!row.exists" class="status-tag tag-missing">缺失文件</span>
+                  <span v-else class="status-tag tag-enabled">生效中</span>
                 </div>
               </template>
             </el-table-column>
-            <el-table-column label="条目数" width="110" align="right">
-              <template #default="{ row }: { row: DictInfo }">
-                {{ row.entry_count.toLocaleString() }}
+
+            <el-table-column label="条目数" width="120" align="right">
+              <template #default="{ row }: { row: DictionaryReference }">
+                <span class="entry-num">{{ row.entry_count?.toLocaleString() ?? "—" }}</span>
               </template>
             </el-table-column>
+
             <el-table-column label="大小" width="100" align="right">
-              <template #default="{ row }: { row: DictInfo }">
-                {{ formatBytes(row.size_bytes) }}
+              <template #default="{ row }: { row: DictionaryReference }">
+                <span class="size-num">{{ formatBytes(row.size_bytes) }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="修改时间" width="170">
-              <template #default="{ row }: { row: DictInfo }">
-                {{ formatTime(row.modified) }}
-              </template>
-            </el-table-column>
-            <el-table-column
-              label="操作"
-              width="240"
-              align="center"
-              class-name="dict-actions-column"
-            >
-              <template #default="{ row }: { row: DictInfo }">
-                <div class="dict-row-actions">
+
+            <el-table-column label="排序与管理" width="220" align="center">
+              <template #default="{ row, $index }: { row: DictionaryReference; $index: number }">
+                <div class="row-action-btns">
                   <el-button
                     link
-                    type="success"
-                    :loading="updatingReference === row.name"
-                    @click.stop="addDictionaryReference(dictNameToReference(row.name))"
+                    size="small"
+                    :icon="Top"
+                    :disabled="$index === 0"
+                    title="上移优先级"
+                    @click.stop="moveReference(row.reference, -1)"
                   >
-                    加入
-                  </el-button>
-                  <el-button link type="primary" :icon="Open" @click.stop="openFileLocation(row)">
-                    定位
+                    上移
                   </el-button>
                   <el-button
                     link
-                    type="primary"
+                    size="small"
+                    :icon="Bottom"
+                    :disabled="$index >= enabledCount - 1"
+                    title="下移优先级"
+                    @click.stop="moveReference(row.reference, 1)"
+                  >
+                    下移
+                  </el-button>
+                  <el-button
+                    v-if="row.exists"
+                    link
+                    size="small"
                     :icon="Download"
-                    :loading="exportingDict === row.name"
-                    @click.stop="exportDictionary(row)"
+                    :loading="exportingDict === `${row.reference}.dict.yaml`"
+                    title="导出词库"
+                    @click.stop="exportDictionary(referenceToDictInfo(row))"
                   >
                     导出
                   </el-button>
                   <el-button
                     link
+                    size="small"
                     type="danger"
-                    :icon="Delete"
-                    :loading="deletingDict === row.name"
-                    @click.stop="deleteDictionary(row)"
+                    :loading="updatingReference === row.reference"
+                    title="从方案移除"
+                    @click.stop="removeDictionaryReference(row.reference)"
                   >
-                    删除
+                    移除
                   </el-button>
                 </div>
               </template>
             </el-table-column>
           </el-table>
-          <div
-            v-if="(dictConfig?.available.length ?? 0) > availablePageSize"
-            class="phrases-pagination"
+        </el-card>
+
+        <!-- Panel 2: Available Dictionaries in User Dir -->
+        <el-card class="panel dict-panel" shadow="never">
+          <template #header>
+            <div class="dict-panel-header">
+              <div class="panel-heading-group">
+                <div class="panel-icon-dot gray" />
+                <h3 class="panel-heading-title">未启用 / 本地候选词库库</h3>
+              </div>
+              <span class="count-capsule">{{ dictConfig?.available.length ?? 0 }} 个本地词库</span>
+            </div>
+          </template>
+
+          <el-empty
+            v-if="!loading && !dictConfig?.available.length"
+            description="暂无可加入的独立 .dict.yaml 词库文件"
+            :image-size="64"
           >
-            <el-pagination
-              v-model:current-page="availablePage"
-              v-model:page-size="availablePageSize"
-              :page-sizes="[40, 80, 120]"
-              :total="dictConfig?.available.length ?? 0"
-              layout="total, sizes, prev, pager, next"
-              small
-            />
-          </div>
+            <p class="helper-text" style="font-size: 12px; color: var(--color-muted)">
+              您可以点击上方「导入词库文件」或从「社区在线词库市场」获取词库。
+            </p>
+          </el-empty>
 
-          <!-- Expandable health section -->
-          <Transition name="el-fade-in-linear">
-            <div v-if="expandedDict && dictHealth" class="dict-health-detail">
-              <el-divider />
-              <div class="panel-title" style="margin-bottom: 10px">
-                <span>{{ expandedDict }} — 健康分析</span>
-                <el-button
-                  type="warning"
-                  plain
-                  size="small"
-                  :icon="Delete"
-                  :loading="cleaningDict === expandedDict"
-                  :disabled="!dictHealth.duplicate_exact_lines"
-                  @click.stop="cleanDuplicateLines(expandedDict)"
-                >
-                  一键去重
-                </el-button>
-              </div>
-              <div class="health-list health-list-row">
-                <div>
-                  <span>总条目</span>
-                  <strong>{{ dictHealth.entries.toLocaleString() }}</strong>
-                </div>
-                <div>
-                  <span>重复行</span>
-                  <strong :class="dictHealth.duplicate_exact_lines ? 'warn-text' : ''">
-                    {{ dictHealth.duplicate_exact_lines.toLocaleString() }}
-                  </strong>
-                </div>
-                <div>
-                  <span>长低权重项</span>
-                  <strong :class="dictHealth.long_low_weight_entries ? 'warn-text' : ''">
-                    {{ dictHealth.long_low_weight_entries.toLocaleString() }}
-                  </strong>
-                </div>
-              </div>
+          <template v-else>
+            <el-table
+              v-loading="loading"
+              :data="pagedAvailable.items"
+              stripe
+              class="dict-clean-table"
+              highlight-current-row
+              max-height="360"
+              @row-click="toggleHealth"
+            >
+              <el-table-column label="词库文件名" min-width="260">
+                <template #default="{ row }: { row: DictInfo }">
+                  <div class="dict-file-cell">
+                    <div class="dict-file-icon">
+                      <el-icon><Collection /></el-icon>
+                    </div>
+                    <div class="dict-file-meta">
+                      <span class="file-name">{{ row.name }}</span>
+                      <small class="file-date">{{ formatTime(row.modified) }}</small>
+                    </div>
+                  </div>
+                </template>
+              </el-table-column>
+
+              <el-table-column label="条目数" width="120" align="right">
+                <template #default="{ row }: { row: DictInfo }">
+                  <span class="entry-num">{{ row.entry_count.toLocaleString() }}</span>
+                </template>
+              </el-table-column>
+
+              <el-table-column label="大小" width="100" align="right">
+                <template #default="{ row }: { row: DictInfo }">
+                  <span class="size-num">{{ formatBytes(row.size_bytes) }}</span>
+                </template>
+              </el-table-column>
+
+              <el-table-column label="快捷操作" width="220" align="center">
+                <template #default="{ row }: { row: DictInfo }">
+                  <div class="row-action-btns">
+                    <el-button
+                      size="small"
+                      type="success"
+                      plain
+                      :loading="updatingReference === row.name"
+                      @click.stop="addDictionaryReference(dictNameToReference(row.name))"
+                    >
+                      加入方案
+                    </el-button>
+                    <el-button
+                      link
+                      size="small"
+                      :icon="Open"
+                      title="系统资源管理器定位"
+                      @click.stop="openFileLocation(row)"
+                    >
+                      定位
+                    </el-button>
+                    <el-button
+                      link
+                      size="small"
+                      :icon="Download"
+                      :loading="exportingDict === row.name"
+                      title="导出文本"
+                      @click.stop="exportDictionary(row)"
+                    >
+                      导出
+                    </el-button>
+                    <el-button
+                      link
+                      size="small"
+                      type="danger"
+                      :icon="Delete"
+                      :loading="deletingDict === row.name"
+                      title="从磁盘删除"
+                      @click.stop="deleteDictionary(row)"
+                    />
+                  </div>
+                </template>
+              </el-table-column>
+            </el-table>
+
+            <div
+              v-if="(dictConfig?.available.length ?? 0) > availablePageSize"
+              class="dict-pagination"
+            >
+              <el-pagination
+                v-model:current-page="availablePage"
+                v-model:page-size="availablePageSize"
+                :page-sizes="[40, 80, 120]"
+                :total="dictConfig?.available.length ?? 0"
+                layout="total, sizes, prev, pager, next"
+                small
+              />
             </div>
-            <div v-else-if="expandedDict && healthLoading" class="dict-health-detail">
-              <el-divider />
-              <el-skeleton :rows="2" animated />
-            </div>
-          </Transition>
-        </template>
-      </el-card>
-    </section>
 
-    <aside class="side-column">
-      <!-- Quick help -->
-      <el-card class="panel" shadow="never">
-        <template #header>
-          <span>格式说明</span>
-        </template>
-        <p class="helper-text">
-          Rime 词库文件以 <code>.dict.yaml</code> 结尾。包含 YAML 头部和 Tab
-          分隔的数据行（词汇→编码→权重）。 支持导入搜狗用户备份 <code>.bin</code>、搜狗细胞词库
-          <code>.scel</code>、Tab 分隔 <code>.txt</code> 和 Rime <code>.dict.yaml</code>。
-          导入后点击重新部署生效。
-        </p>
-      </el-card>
+            <!-- Health Inspection Drawer Strip -->
+            <Transition name="el-fade-in-linear">
+              <div v-if="expandedDict && dictHealth" class="health-inspect-banner">
+                <div class="health-banner-top">
+                  <div class="health-title-group">
+                    <el-icon><MagicStick /></el-icon>
+                    <strong>{{ expandedDict }} · 健康诊断报告</strong>
+                  </div>
 
-      <!-- Sogou health from env -->
-      <el-card v-if="env?.sogou_health" class="panel" shadow="never">
-        <template #header>
-          <span>搜狗词库健康</span>
-        </template>
-        <div class="health-list">
-          <div>
-            <span>条目</span>
-            <strong>{{ env.sogou_health.entries.toLocaleString() }}</strong>
+                  <el-button
+                    type="warning"
+                    size="small"
+                    :icon="Delete"
+                    :loading="cleaningDict === expandedDict"
+                    :disabled="!dictHealth.duplicate_exact_lines"
+                    @click.stop="cleanDuplicateLines(expandedDict)"
+                  >
+                    一键智能去重
+                  </el-button>
+                </div>
+
+                <div class="health-metrics-row">
+                  <div class="health-pill">
+                    <span class="health-pill-label">分析词条</span>
+                    <strong class="health-pill-val">{{ dictHealth.entries.toLocaleString() }}</strong>
+                  </div>
+
+                  <div class="health-pill" :class="{ warn: dictHealth.duplicate_exact_lines > 0 }">
+                    <span class="health-pill-label">完全重复行</span>
+                    <strong class="health-pill-val">{{ dictHealth.duplicate_exact_lines.toLocaleString() }}</strong>
+                  </div>
+
+                  <div class="health-pill" :class="{ warn: dictHealth.long_low_weight_entries > 0 }">
+                    <span class="health-pill-label">长低权生僻项</span>
+                    <strong class="health-pill-val">{{ dictHealth.long_low_weight_entries.toLocaleString() }}</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div v-else-if="expandedDict && healthLoading" class="health-inspect-banner">
+                <el-skeleton :rows="2" animated />
+              </div>
+            </Transition>
+          </template>
+        </el-card>
+      </div>
+
+      <!-- Right Column: Format Guide & Sogou Health -->
+      <aside class="dict-side-column">
+        <div class="panel side-card">
+          <div class="side-card-title">
+            <el-icon><InfoFilled /></el-icon>
+            <strong>词库格式与生态规范</strong>
           </div>
-          <div>
-            <span>重复行</span>
-            <strong :class="env.sogou_health.duplicate_exact_lines ? 'warn-text' : ''">
-              {{ env.sogou_health.duplicate_exact_lines.toLocaleString() }}
-            </strong>
+          <p class="side-card-text">
+            Rime 规范词库文件名必须以 <code>.dict.yaml</code> 结尾，文件内部包含 YAML 元数据头部与 Tab 分隔的数据行（词汇 → 编码 → 权重）。
+          </p>
+
+          <div class="format-badges-list">
+            <span class="fmt-badge">搜狗用户备份 .bin</span>
+            <span class="fmt-badge">搜狗细胞词库 .scel</span>
+            <span class="fmt-badge">纯文本词表 .txt</span>
+            <span class="fmt-badge">Rime 词库 .dict.yaml</span>
           </div>
-          <div>
-            <span>长低权重项</span>
-            <strong :class="env.sogou_health.long_low_weight_entries ? 'warn-text' : ''">
-              {{ env.sogou_health.long_low_weight_entries.toLocaleString() }}
-            </strong>
-          </div>
-          <div v-if="env.sogou_health.truncated">
-            <span>分析范围</span>
-            <strong class="warn-text">大词库已截断分析</strong>
+
+          <div class="side-card-tip">
+            💡 词库导入或修改顺序后，请点击右上角「部署生效」使 Rime 输入法更新编译索引。
           </div>
         </div>
-      </el-card>
-    </aside>
 
+        <!-- Sogou Health Card -->
+        <div v-if="env?.sogou_health" class="panel side-card">
+          <div class="side-card-title">
+            <el-icon><MagicStick /></el-icon>
+            <strong>搜狗扩展词库健康</strong>
+          </div>
+
+          <div class="sogou-health-list">
+            <div class="sogou-health-item">
+              <span>词条总量</span>
+              <strong>{{ env.sogou_health.entries.toLocaleString() }}</strong>
+            </div>
+            <div class="sogou-health-item">
+              <span>完全重复行</span>
+              <strong :class="{ 'warn-text': env.sogou_health.duplicate_exact_lines > 0 }">
+                {{ env.sogou_health.duplicate_exact_lines.toLocaleString() }}
+              </strong>
+            </div>
+            <div class="sogou-health-item">
+              <span>长低权重项</span>
+              <strong :class="{ 'warn-text': env.sogou_health.long_low_weight_entries > 0 }">
+                {{ env.sogou_health.long_low_weight_entries.toLocaleString() }}
+              </strong>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- Modals -->
     <OnlineDictionaryDialog
       v-model="showOnlineDictionaryDialog"
       :online-dictionaries="onlineDictionaries"
@@ -477,5 +581,440 @@ const pagedAvailable = computed(() =>
       :importing="importing"
       @confirm="confirmDictionaryImport"
     />
-  </section>
+  </div>
 </template>
+
+<style scoped>
+.dictionaries-hub-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Bento Metrics Grid */
+.dict-bento-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.metric-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs);
+  transition: all var(--transition-fast);
+}
+
+.metric-card:hover {
+  transform: translateY(-1px);
+  border-color: var(--brand-300);
+  box-shadow: var(--shadow-sm);
+}
+
+.metric-card.card-accent {
+  background: linear-gradient(135deg, var(--brand-50, #eff6ff) 0%, var(--color-surface) 100%);
+  border-color: var(--brand-200);
+}
+
+html[data-theme="dark"] .metric-card.card-accent {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.15) 0%, var(--color-surface) 100%);
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.metric-icon-box {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--brand-600);
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.card-accent .metric-icon-box {
+  background: var(--brand-600);
+  color: #fff;
+}
+
+.metric-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.metric-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-500);
+}
+
+.metric-value {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--ink-900);
+}
+
+.metric-value.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metric-total {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-muted);
+}
+
+/* Action Bar */
+.dict-action-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.action-bar-left,
+.action-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.deploy-btn {
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+}
+
+/* Main Grid */
+.dict-workbench-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 16px;
+  align-items: start;
+}
+
+.dict-main-column {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dict-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.dict-panel :deep(.el-card__header) {
+  padding: 12px 16px;
+  background: var(--color-surface-soft);
+  border-bottom: 1px solid var(--color-line-soft);
+}
+
+.dict-panel :deep(.el-card__body) {
+  padding: 0;
+}
+
+.dict-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.panel-heading-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.panel-icon-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brand-500);
+  box-shadow: 0 0 6px rgba(37, 99, 235, 0.4);
+}
+
+.panel-icon-dot.gray {
+  background: var(--ink-400);
+  box-shadow: none;
+}
+
+.panel-heading-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 750;
+  color: var(--ink-900);
+}
+
+.header-tags {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tag-pill-accent {
+  font-size: 11px;
+  color: var(--brand-600);
+  background: var(--brand-50, #eff6ff);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-family: var(--font-mono);
+  border: 1px solid var(--brand-200);
+}
+
+.count-capsule {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-600);
+  background: var(--color-surface);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-line-soft);
+}
+
+/* Table Enhancements */
+.dict-clean-table {
+  font-size: 12px;
+}
+
+.dict-ref-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.priority-badge {
+  font-size: 10px;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--color-surface-soft);
+  color: var(--ink-500);
+  border: 1px solid var(--color-line-soft);
+}
+
+.priority-badge.is-top {
+  background: var(--brand-600);
+  color: #fff;
+  border-color: var(--brand-600);
+}
+
+.ref-name-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+.dict-ref-name {
+  font-weight: 700;
+  color: var(--ink-900);
+}
+
+.top-hint {
+  font-size: 10px;
+  color: var(--brand-600);
+}
+
+.status-tag {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+}
+
+.tag-enabled {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+}
+
+.tag-missing {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+}
+
+.dict-file-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dict-file-icon {
+  color: var(--brand-500);
+  font-size: 16px;
+}
+
+.dict-file-meta {
+  display: flex;
+  flex-direction: column;
+}
+
+.file-name {
+  font-weight: 700;
+  color: var(--ink-900);
+}
+
+.file-date {
+  font-size: 10px;
+  color: var(--color-muted);
+}
+
+.entry-num,
+.size-num {
+  font-family: var(--font-mono);
+  color: var(--ink-700);
+}
+
+.row-action-btns {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.dict-pagination {
+  padding: 8px 16px;
+  display: flex;
+  justify-content: flex-end;
+  background: var(--color-surface-soft);
+  border-top: 1px solid var(--color-line-soft);
+}
+
+/* Health Inspection Banner */
+.health-inspect-banner {
+  padding: 14px 16px;
+  background: var(--amber-50, #fffbeb);
+  border-top: 1px solid #fef3c7;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+html[data-theme="dark"] .health-inspect-banner {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.25);
+}
+
+.health-banner-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.health-title-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 750;
+  color: var(--ink-900);
+}
+
+.health-metrics-row {
+  display: flex;
+  gap: 12px;
+}
+
+.health-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-xs);
+  font-size: 11px;
+}
+
+.health-pill.warn {
+  border-color: #f59e0b;
+  color: #b45309;
+}
+
+.health-pill-val {
+  font-weight: 800;
+  color: var(--ink-900);
+}
+
+/* Side Column */
+.dict-side-column {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.side-card {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.side-card-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 750;
+  color: var(--ink-900);
+}
+
+.side-card-text {
+  margin: 0;
+  font-size: 11px;
+  color: var(--ink-600);
+  line-height: 1.5;
+}
+
+.format-badges-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fmt-badge {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  background: var(--color-surface-soft);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--color-line-soft);
+  color: var(--ink-700);
+}
+
+.side-card-tip {
+  font-size: 11px;
+  color: var(--color-muted);
+  line-height: 1.4;
+  padding-top: 6px;
+  border-top: 1px solid var(--color-line-soft);
+}
+
+.sogou-health-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sogou-health-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--color-surface-soft);
+  border-radius: var(--radius-xs);
+  font-size: 11px;
+}
+
+.warn-text {
+  color: #ef4444;
+}
+</style>

@@ -6,11 +6,9 @@ import { useErrorHandler } from "../composables/useErrorHandler";
 import {
   Check,
   Connection,
-  MagicStick,
-  Refresh,
-  Setting,
-  Warning,
+  FirstAidKit,
   UploadFilled,
+  View,
 } from "@element-plus/icons-vue";
 import type {
   ConfigHealthCheck,
@@ -42,9 +40,9 @@ const checkingHealth = ref(false);
 const repairingHealth = ref(false);
 const repairingHealthItem = ref<string>();
 const postDeployChecking = ref(false);
-const savingIceSettings = ref(false);
 const previewing = ref(false);
 const showPreviewDialog = ref(false);
+const showHealthDialog = ref(false);
 const schemas = ref<SchemaInfo[]>([]);
 const healthReport = ref<ConfigHealthReport>();
 const configPreview = ref<ConfigPreview>();
@@ -131,7 +129,6 @@ function toggleFuzzyPair(key: string) {
   } else {
     iceSettings.fuzzy_pairs.push(key);
   }
-  // Auto toggle master fuzzy_pinyin
   iceSettings.fuzzy_pinyin = iceSettings.fuzzy_pairs.length > 0;
 }
 
@@ -149,7 +146,6 @@ function onMasterFuzzyToggle(val: boolean | string | number) {
   const enabled = Boolean(val);
   if (enabled) {
     if (!iceSettings.fuzzy_pairs || iceSettings.fuzzy_pairs.length === 0) {
-      // Default common set
       iceSettings.fuzzy_pairs = ["z_zh", "c_ch", "s_sh", "an_ang", "en_eng", "in_ing"];
     }
   } else {
@@ -173,8 +169,8 @@ const hasRimeIce = computed(() => {
 
 const schemaPresets = [
   { id: "rime_ice", name: "雾凇拼音", description: "雾凇默认全拼方案" },
-  { id: "double_pinyin", name: "自然码双拼", description: "常见双拼入口，依赖本地方案文件" },
-  { id: "double_pinyin_flypy", name: "小鹤双拼", description: "小鹤双拼入口，依赖本地方案文件" },
+  { id: "double_pinyin", name: "自然码双拼", description: "常见双拼入口" },
+  { id: "double_pinyin_flypy", name: "小鹤双拼", description: "小鹤双拼入口" },
   { id: "luna_pinyin", name: "朙月拼音", description: "Rime 内置拼音方案" },
 ];
 
@@ -185,6 +181,30 @@ const isDoublePinyin = computed(
     form.schema_id.includes("flypy") ||
     form.schema_id.includes("ziranma"),
 );
+
+const mockWords = [
+  "我们",
+  "文明",
+  "蜗牛",
+  "握手",
+  "卧室",
+  "莴苣",
+  "沃土",
+  "乌鸦",
+  "舞会",
+  "污染",
+  "无聊",
+  "物价",
+];
+
+const liveCandidates = computed(() => {
+  const size = Math.max(3, Math.min(form.page_size || 7, 12));
+  const words = mockWords.slice(0, size);
+  if (iceSettings.emoji && words.length > 0) {
+    return ["我们 😊", ...words.slice(1)];
+  }
+  return words;
+});
 
 function applyConfig(config: QuickSettingsConfig) {
   Object.assign(form, config);
@@ -284,11 +304,12 @@ async function inspectHealth() {
   const report = await withErrorHandling(() => api.inspectConfigHealth());
   if (report) {
     healthReport.value = report;
+    showHealthDialog.value = true;
     const hasError = report.checks.some((check) => check.status === "error");
     if (hasError) {
-      ElMessage.warning("发现配置阻断项，建议重新保存快速设置和主题");
+      ElMessage.warning("发现配置阻断项，建议一键修复");
     } else {
-      ElMessage.success("配置体检完成");
+      ElMessage.success("配置体检完成，各项正常");
     }
   }
   checkingHealth.value = false;
@@ -320,37 +341,6 @@ async function repairHealthItem(check: ConfigHealthCheck) {
   repairingHealthItem.value = undefined;
 }
 
-async function previewIceSettings() {
-  previewing.value = true;
-  const preview = await withErrorHandling(() => api.previewRimeIceSettings({ ...iceSettings }));
-  if (preview) {
-    configPreview.value = preview;
-    showPreviewDialog.value = true;
-  }
-  previewing.value = false;
-}
-
-async function saveIceSettings() {
-  savingIceSettings.value = true;
-  const results = await withErrorHandling(() =>
-    Promise.all([api.saveQuickSettings({ ...form }), api.saveRimeIceSettings({ ...iceSettings })]),
-  );
-  if (results) {
-    const [config, settings] = results;
-    if (config) {
-      applyConfig(config);
-    }
-    if (settings) {
-      Object.assign(iceSettings, settings);
-    }
-    emit("saved");
-    emit("deploy");
-    schedulePostDeployCheck();
-    ElMessage.success("雾凇组件已保存，开始部署");
-  }
-  savingIceSettings.value = false;
-}
-
 function chooseSchema(id: string) {
   form.schema_id = id;
 }
@@ -371,55 +361,221 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="content-grid quick-settings-grid">
-    <section class="main-column">
-      <div class="quick-hero panel">
-        <div>
-          <el-icon><MagicStick /></el-icon>
-          <span>常用配置</span>
-          <strong>{{ activeSchema?.name ?? form.schema_id }}</strong>
+  <div class="quick-settings-workbench">
+    <!-- Hero Spotlight Header -->
+    <header class="quick-hero panel">
+      <div class="hero-left">
+        <div class="schema-badge-box">
+          <span class="active-dot" />
+          <strong class="schema-name">{{ activeSchema?.name ?? form.schema_id }}</strong>
+          <code class="schema-id">{{ form.schema_id }}</code>
         </div>
-        <div class="form-actions">
-          <el-button :icon="Refresh" :loading="loading" @click="loadQuickSettings">
-            刷新
-          </el-button>
-          <el-button :icon="Warning" :loading="previewing" @click="previewQuickSettings">
-            预览变更
-          </el-button>
-          <el-button
-            type="primary"
-            :icon="Check"
-            :loading="saving"
-            @click="saveQuickSettings(false)"
-          >
-            保存
-          </el-button>
-          <el-button
-            type="primary"
-            plain
-            :icon="UploadFilled"
-            :loading="deploying"
-            @click="saveQuickSettings(true)"
-          >
-            保存并部署
-          </el-button>
+        <div class="hero-tags">
+          <span class="tag-pill" :class="hasRimeIce ? 'ice-ready' : 'ice-missing'">
+            {{ hasRimeIce ? "❄️ 雾凇组件已安装" : "未检测到雾凇" }}
+          </span>
+          <span class="path-mini-capsule" title="写入文件">
+            default.custom.yaml & weasel.custom.yaml
+          </span>
         </div>
       </div>
 
-      <el-card class="panel" shadow="never">
-        <template #header>
-          <div class="panel-title">
-            <span>输入方案</span>
-            <el-tag effect="light">{{ schemas.length }} 个可用方案</el-tag>
-          </div>
-        </template>
+      <div class="hero-actions">
+        <el-button
+          size="small"
+          :icon="FirstAidKit"
+          :loading="checkingHealth"
+          @click="inspectHealth"
+        >
+          配置体检
+        </el-button>
 
+        <el-button
+          v-if="!hasRimeIce"
+          size="small"
+          type="success"
+          plain
+          :icon="Connection"
+          :loading="installingRecipe === 'iDvel/rime-ice:others/recipes/full'"
+          @click="emit('install', 'iDvel/rime-ice:others/recipes/full')"
+        >
+          一键安装雾凇
+        </el-button>
+
+        <el-button
+          size="small"
+          :icon="View"
+          :loading="previewing"
+          @click="previewQuickSettings"
+        >
+          变更 Diff
+        </el-button>
+
+        <el-button
+          size="small"
+          type="primary"
+          plain
+          :icon="Check"
+          :loading="saving"
+          @click="saveQuickSettings(false)"
+        >
+          保存
+        </el-button>
+
+        <el-button
+          size="small"
+          type="primary"
+          class="deploy-cta"
+          :icon="UploadFilled"
+          :loading="deploying"
+          @click="saveQuickSettings(true)"
+        >
+          保存并部署
+        </el-button>
+      </div>
+    </header>
+
+    <!-- Interactive Live Candidate Window Simulation Sandbox -->
+    <section class="live-sandbox-stage panel">
+      <div class="sandbox-stage-bar">
+        <div class="stage-title-wrap">
+          <span class="stage-icon">🎯</span>
+          <strong>实时候选窗仿真舞台 (Live Candidate Sandbox)</strong>
+        </div>
+        <div class="stage-chips">
+          <span class="chip-item">{{ form.page_size }} 候选词</span>
+          <span class="chip-item">{{ form.horizontal ? '水平横排' : '垂直竖排' }}</span>
+          <span class="chip-item">{{ form.inline_preedit ? '光标内嵌' : '窗顶独立' }}</span>
+        </div>
+      </div>
+
+      <!-- Preview Canvas -->
+      <div class="sandbox-canvas">
+        <div class="realistic-weasel-window">
+          <!-- Non-inline Preedit -->
+          <div v-if="!form.inline_preedit" class="weasel-box-preedit">
+            <span>wo'men</span>
+          </div>
+
+          <!-- Candidates -->
+          <div class="weasel-box-candidates" :class="{ vertical: !form.horizontal }">
+            <span
+              v-for="(word, idx) in liveCandidates"
+              :key="word"
+              class="candidate-pill"
+              :class="{ active: idx === 0 }"
+            >
+              <em class="cand-idx">{{ idx + 1 }}.</em> {{ word }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Knobs Bar -->
+      <div class="stage-knobs">
+        <div class="knob-item">
+          <span class="knob-label">候选词数 ({{ form.page_size }})</span>
+          <el-slider v-model="form.page_size" :min="3" :max="12" size="small" style="width: 140px" />
+        </div>
+
+        <div class="knob-divider" />
+
+        <div class="knob-item">
+          <span class="knob-label">排布方向</span>
+          <el-segmented
+            v-model="form.horizontal"
+            size="small"
+            :options="[
+              { label: '横排', value: true },
+              { label: '竖排', value: false },
+            ]"
+          />
+        </div>
+
+        <div class="knob-divider" />
+
+        <div class="knob-item">
+          <span class="knob-label">拼音编码</span>
+          <el-segmented
+            v-model="form.inline_preedit"
+            size="small"
+            :options="[
+              { label: '行内跟随', value: true },
+              { label: '窗顶独立', value: false },
+            ]"
+          />
+        </div>
+      </div>
+    </section>
+
+    <!-- Scheme & Layout Settings (Grouped) -->
+    <div class="setting-card">
+      <div class="setting-card-header">
+        <span class="setting-card-title">
+          <span>⌨️</span> 输入行为与按键映射规则
+        </span>
+        <span class="panel-caption">直接控制 Weasel 输入法底层的键位响应</span>
+      </div>
+
+      <div class="setting-group">
+        <div class="setting-row">
+          <div class="setting-lead">
+            <span class="setting-label">Shift 按键行为</span>
+            <span class="setting-desc">敲击左/右 Shift 键时的中英文快捷切换机制</span>
+          </div>
+          <div class="setting-control" style="width: 220px">
+            <el-select v-model="form.switch_key" size="small">
+              <el-option label="提交编码并切换中英" value="shift" />
+              <el-option label="不处理 Shift" value="none" />
+            </el-select>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-lead">
+            <span class="setting-label">翻页按键映射</span>
+            <span class="setting-desc">备选项过多时快速翻页的物理按键</span>
+          </div>
+          <div class="setting-control" style="width: 220px">
+            <el-select v-model="form.paging_keys" size="small">
+              <el-option label="逗号 / 句号 (, .)" value="comma_period" />
+              <el-option label="减号 / 等号 (- =)" value="minus_equal" />
+              <el-option label="方向键上下 (↑ ↓)" value="arrow_keys" />
+            </el-select>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-lead">
+            <span class="setting-label">候选词光标选择键</span>
+            <span class="setting-desc">在当前页备选项之间高亮移动的选择键</span>
+          </div>
+          <div class="setting-control" style="width: 220px">
+            <el-select v-model="form.navigation_keys" size="small">
+              <el-option label="方向键上下 (↑ ↓)" value="up_down" />
+              <el-option label="方向键左右 (← →)" value="left_right" />
+            </el-select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Active Schema Chooser -->
+    <div class="setting-card">
+      <div class="setting-card-header">
+        <span class="setting-card-title">
+          <span>📚</span> 快速切换输入方案
+        </span>
+        <span class="panel-caption">共 {{ schemas.length }} 个本机已安装方案</span>
+      </div>
+
+      <div style="padding: 16px 20px">
         <div class="schema-choice-grid">
           <button
             v-for="preset in schemaPresets"
             :key="preset.id"
             type="button"
-            class="schema-choice"
+            class="schema-choice-btn"
             :class="{ active: form.schema_id === preset.id }"
             @click="chooseSchema(preset.id)"
           >
@@ -428,411 +584,718 @@ onBeforeUnmount(() => {
           </button>
         </div>
 
-        <el-divider />
-
-        <el-form label-position="top" class="quick-form">
-          <el-form-item label="从本机已安装方案中选择">
-            <el-select
-              v-model="form.schema_id"
-              filterable
-              placeholder="选择输入方案"
-              :loading="loading"
-            >
-              <el-option
-                v-for="schema in schemas"
-                :key="schema.id"
-                :label="`${schema.name} (${schema.id})`"
-                :value="schema.id"
-              />
-            </el-select>
-          </el-form-item>
-          <div v-if="isDoublePinyin || showKeymap" class="keymap-toggle-wrapper">
-            <el-button size="small" type="primary" plain @click="showKeymap = !showKeymap">
-              {{ showKeymap ? "收起双拼键位图" : "查看双拼键位分布图" }}
-            </el-button>
-            <div v-if="showKeymap" style="margin-top: 12px">
-              <DoublePinyinVisualizer />
-            </div>
-          </div>
-        </el-form>
-      </el-card>
-
-      <LuaPluginManager @change="emit('saved')" @deploy="emit('deploy')" />
-
-      <el-card class="panel" shadow="never">
-        <template #header>
-          <span>候选与按键</span>
-        </template>
-
-        <el-form label-position="top" class="quick-form">
-          <div class="form-grid compact-form-grid">
-            <el-form-item :label="`候选数量 (${form.page_size} 项)`">
-              <el-slider v-model="form.page_size" :min="3" :max="12" />
-            </el-form-item>
-            <el-form-item label="候选布局">
-              <el-segmented
-                v-model="form.horizontal"
-                :options="[
-                  { label: '横排', value: true },
-                  { label: '竖排', value: false },
-                ]"
-              />
-            </el-form-item>
-            <el-form-item label="拼音显示">
-              <el-segmented
-                v-model="form.inline_preedit"
-                :options="[
-                  { label: '内嵌', value: true },
-                  { label: '候选窗', value: false },
-                ]"
-              />
-            </el-form-item>
-            <el-form-item label="Shift 行为">
-              <el-select v-model="form.switch_key">
-                <el-option label="提交编码并切换" value="shift" />
-                <el-option label="不处理 Shift" value="none" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="翻页键">
-              <el-select v-model="form.paging_keys">
-                <el-option label="逗号句号 (, .)" value="comma_period" />
-                <el-option label="减号等号 (- =)" value="minus_equal" />
-                <el-option label="上下箭头 (↑↓)" value="arrow_keys" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="候选选择键">
-              <el-select v-model="form.navigation_keys">
-                <el-option label="上下键 (↑↓)" value="up_down" />
-                <el-option label="左右键 (←→)" value="left_right" />
-              </el-select>
-            </el-form-item>
-          </div>
-        </el-form>
-      </el-card>
-
-      <el-card v-if="hasRimeIce" class="panel rime-ice-settings-panel" shadow="never">
-        <template #header>
-          <div class="panel-title">
-            <span>雾凇组件</span>
-            <el-button
-              plain
-              :loading="previewing"
-              :disabled="!hasRimeIce"
-              @click="previewIceSettings"
-            >
-              预览变更
-            </el-button>
-            <el-button
-              type="primary"
-              plain
-              :icon="UploadFilled"
-              :loading="savingIceSettings"
-              :disabled="!hasRimeIce"
-              @click="saveIceSettings"
-            >
-              保存并部署
-            </el-button>
-          </div>
-        </template>
-
-        <div class="ice-toggle-grid">
-          <div class="ice-toggle">
-            <span>
-              <strong>Emoji</strong>
-              <small>默认启用候选 Emoji 转换</small>
-            </span>
-            <el-switch v-model="iceSettings.emoji" :disabled="!hasRimeIce" />
-          </div>
-          <div class="ice-toggle">
-            <span>
-              <strong>繁体输出</strong>
-              <small>默认进入简繁转换状态</small>
-            </span>
-            <el-switch v-model="iceSettings.traditionalization" :disabled="!hasRimeIce" />
-          </div>
-          <div class="ice-toggle">
-            <span>
-              <strong>英文标点</strong>
-              <small>默认使用英文标点状态</small>
-            </span>
-            <el-switch v-model="iceSettings.ascii_punct" :disabled="!hasRimeIce" />
-          </div>
-          <div class="ice-toggle">
-            <span>
-              <strong>全角字符</strong>
-              <small>默认进入全角输入状态</small>
-            </span>
-            <el-switch v-model="iceSettings.full_shape" :disabled="!hasRimeIce" />
-          </div>
-          <div class="ice-toggle">
-            <span>
-              <strong>辅码单字优先</strong>
-              <small>部件/拼音反查时更偏向单字</small>
-            </span>
-            <el-switch v-model="iceSettings.search_single_char" :disabled="!hasRimeIce" />
-          </div>
-          <div class="ice-toggle fuzzy-master-toggle">
-            <span>
-              <strong>常用模糊音</strong>
-              <small>自定义声母、平翘舌及前后鼻音容错，按需勾选</small>
-            </span>
-            <el-switch
-              v-model="iceSettings.fuzzy_pinyin"
-              :disabled="!hasRimeIce"
-              @change="onMasterFuzzyToggle"
+        <div style="margin-top: 14px; display: flex; align-items: center; gap: 12px">
+          <el-select
+            v-model="form.schema_id"
+            filterable
+            placeholder="从本机所有方案中选择"
+            size="small"
+            style="flex: 1"
+            :loading="loading"
+          >
+            <el-option
+              v-for="schema in schemas"
+              :key="schema.id"
+              :label="`${schema.name} (${schema.id})`"
+              :value="schema.id"
             />
-          </div>
+          </el-select>
 
-          <!-- Granular Fuzzy Pairs Panel -->
-          <div v-if="iceSettings.fuzzy_pinyin" class="fuzzy-pairs-panel">
-            <div class="fuzzy-pairs-toolbar">
-              <span class="fuzzy-toolbar-title">
-                细粒度音节容错
-                <el-tag size="small" type="primary" effect="plain">
-                  已选 {{ iceSettings.fuzzy_pairs?.length ?? 0 }} 项
-                </el-tag>
-              </span>
-              <div class="fuzzy-toolbar-actions">
-                <el-button link type="primary" size="small" @click="selectAllFuzzyPairs">
-                  全选
-                </el-button>
-                <el-button link type="info" size="small" @click="clearAllFuzzyPairs">
-                  清空
-                </el-button>
-              </div>
-            </div>
+          <el-button
+            v-if="isDoublePinyin || showKeymap"
+            size="small"
+            type="primary"
+            plain
+            @click="showKeymap = !showKeymap"
+          >
+            {{ showKeymap ? "收起键位图" : "查看双拼键位图" }}
+          </el-button>
+        </div>
 
-            <div class="fuzzy-groups-container">
-              <div v-for="group in fuzzyGroups" :key="group.name" class="fuzzy-group-item">
-                <span class="fuzzy-group-name">{{ group.name }}</span>
-                <div class="fuzzy-chip-list">
-                  <button
-                    v-for="pair in group.pairs"
-                    :key="pair.key"
-                    type="button"
-                    class="fuzzy-chip"
-                    :class="{ active: isFuzzyPairActive(pair.key) }"
-                    :title="pair.desc"
-                    @click="toggleFuzzyPair(pair.key)"
-                  >
-                    <span class="fuzzy-chip-label">{{ pair.label }}</span>
-                    <small class="fuzzy-chip-desc">{{ pair.desc.replace("例如：", "") }}</small>
-                  </button>
-                </div>
-              </div>
+        <div v-if="showKeymap" style="margin-top: 14px">
+          <DoublePinyinVisualizer />
+        </div>
+      </div>
+    </div>
+
+    <!-- Rime Ice Advanced Feature Bento Matrix -->
+    <section v-if="hasRimeIce" class="panel rime-ice-bento-section">
+      <div class="bento-section-header">
+        <div>
+          <h3 class="bento-section-title">雾凇高级组件配置 (rime-ice)</h3>
+          <p class="bento-section-subtitle">
+            配置将写入 <code>rime_ice.custom.yaml</code> · 保存后自动触发 Weasel 重新编译部署
+          </p>
+        </div>
+      </div>
+
+      <div class="ice-bento-grid">
+        <div class="ice-tile">
+          <div class="ice-tile-info">
+            <span class="ice-tile-icon">😃</span>
+            <div>
+              <strong>Emoji 表情联想</strong>
+              <small>输入对应词条时候选列中智能出现表情包</small>
             </div>
           </div>
-          <div class="ice-toggle select-toggle">
-            <span>
-              <strong>繁体地区</strong>
-              <small>选择简繁转换 OpenCC 预设</small>
-            </span>
+          <el-switch v-model="iceSettings.emoji" />
+        </div>
+
+        <div class="ice-tile">
+          <div class="ice-tile-info">
+            <span class="ice-tile-icon">繁</span>
+            <div>
+              <strong>简繁转换输出</strong>
+              <small>自动将候选转换为繁体字形输出</small>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px">
             <el-select
+              v-if="iceSettings.traditionalization"
               v-model="iceSettings.traditional_preset"
               size="small"
-              :disabled="!hasRimeIce"
+              style="width: 130px"
             >
               <el-option label="通用繁体" value="s2t.json" />
               <el-option label="台湾繁体" value="s2tw.json" />
-              <el-option label="台湾繁体含词汇" value="s2twp.json" />
               <el-option label="香港繁体" value="s2hk.json" />
             </el-select>
+            <el-switch v-model="iceSettings.traditionalization" />
           </div>
         </div>
-      </el-card>
-    </section>
 
-    <aside class="side-column">
-      <el-card class="panel" shadow="never">
-        <template #header>
-          <span>雾凇状态</span>
-        </template>
-        <div class="health-list">
-          <div>
-            <span>当前方案</span>
-            <strong>{{ env?.active_schema ?? form.schema_id }}</strong>
+        <div class="ice-tile">
+          <div class="ice-tile-info">
+            <span class="ice-tile-icon">🔤</span>
+            <div>
+              <strong>英文半角标点</strong>
+              <small>中文状态下输入逗号句号等输出半角符号</small>
+            </div>
           </div>
-          <div>
-            <span>雾凇配置</span>
-            <el-tag :type="hasRimeIce ? 'success' : 'warning'" effect="light">
-              {{ hasRimeIce ? "已检测到" : "未检测到" }}
-            </el-tag>
+          <el-switch v-model="iceSettings.ascii_punct" />
+        </div>
+
+        <div class="ice-tile">
+          <div class="ice-tile-info">
+            <span class="ice-tile-icon">🔲</span>
+            <div>
+              <strong>全角字符模式</strong>
+              <small>输出两倍宽度的全角英文字母与空格</small>
+            </div>
           </div>
-          <div>
-            <span>候选数量</span>
-            <strong>{{ form.page_size }}</strong>
+          <el-switch v-model="iceSettings.full_shape" />
+        </div>
+
+        <div class="ice-tile">
+          <div class="ice-tile-info">
+            <span class="ice-tile-icon">🎯</span>
+            <div>
+              <strong>辅码单字优先</strong>
+              <small>拼音/部件反查输入时更偏向优先单字</small>
+            </div>
+          </div>
+          <el-switch v-model="iceSettings.search_single_char" />
+        </div>
+
+        <div class="ice-tile fuzzy-tile">
+          <div class="ice-tile-info">
+            <span class="ice-tile-icon">🗣️</span>
+            <div>
+              <strong>常用模糊音纠错</strong>
+              <small>声母、平翘舌及前后鼻音容错，按需选择</small>
+            </div>
+          </div>
+          <el-switch v-model="iceSettings.fuzzy_pinyin" @change="onMasterFuzzyToggle" />
+        </div>
+      </div>
+
+      <!-- Granular Fuzzy Pairs Panel -->
+      <div v-if="iceSettings.fuzzy_pinyin" class="fuzzy-pairs-card">
+        <div class="fuzzy-pairs-toolbar">
+          <span class="fuzzy-toolbar-title">
+            细粒度音节容错选项 (已选 {{ iceSettings.fuzzy_pairs?.length ?? 0 }} 项)
+          </span>
+          <div class="fuzzy-toolbar-actions">
+            <el-button link type="primary" size="small" @click="selectAllFuzzyPairs">
+              全选
+            </el-button>
+            <el-button link type="info" size="small" @click="clearAllFuzzyPairs">
+              清空
+            </el-button>
           </div>
         </div>
-      </el-card>
 
-      <el-card class="panel" shadow="never">
-        <template #header>
-          <span>雾凇安装</span>
-        </template>
-        <div class="quick-actions">
-          <el-button
-            type="primary"
-            plain
-            :loading="installingRecipe === 'iDvel/rime-ice:others/recipes/full'"
-            :icon="Connection"
-            @click="emit('install', 'iDvel/rime-ice:others/recipes/full')"
-          >
-            {{ hasRimeIce ? "更新/修复雾凇" : "安装完整雾凇" }}
-          </el-button>
-          <el-button
-            :loading="installingRecipe === 'iDvel/rime-ice:others/recipes/all_dicts'"
-            :icon="Setting"
-            @click="emit('install', 'iDvel/rime-ice:others/recipes/all_dicts')"
-          >
-            仅更新词库
-          </el-button>
-        </div>
-        <p class="helper-text">安装会写入当前 Rime 用户目录；执行前会自动创建安装前备份。</p>
-      </el-card>
-
-      <el-card class="panel" shadow="never">
-        <template #header>
-          <span>写入位置</span>
-        </template>
-        <div class="path-chip">
-          <el-icon><Setting /></el-icon>
-          <span>{{
-            env?.user_dir ? `${env.user_dir}\\default.custom.yaml` : "等待扫描 Rime 目录"
-          }}</span>
-        </div>
-        <p class="helper-text">
-          方案、候选数量和按键写入 default.custom.yaml；候选窗方向写入 weasel.custom.yaml。
-        </p>
-      </el-card>
-
-      <el-card class="panel config-health-panel" shadow="never">
-        <template #header>
-          <div class="panel-title">
-            <span>配置体检</span>
-            <el-tag v-if="postDeployChecking" type="info" effect="light" size="small">
-              复检中
-            </el-tag>
-            <span class="health-actions">
-              <el-button
-                link
-                type="primary"
-                :icon="Refresh"
-                :loading="checkingHealth"
-                @click="inspectHealth"
+        <div class="fuzzy-groups-wrap">
+          <div v-for="group in fuzzyGroups" :key="group.name" class="fuzzy-group-col">
+            <span class="fuzzy-group-title">{{ group.name }}</span>
+            <div class="fuzzy-chips-row">
+              <button
+                v-for="pair in group.pairs"
+                :key="pair.key"
+                type="button"
+                class="fuzzy-chip-btn"
+                :class="{ active: isFuzzyPairActive(pair.key) }"
+                :title="pair.desc"
+                @click="toggleFuzzyPair(pair.key)"
               >
-                检查
-              </el-button>
-              <el-button
-                link
-                type="warning"
-                :icon="UploadFilled"
-                :loading="repairingHealth"
-                @click="repairHealth"
-              >
-                修复并部署
-              </el-button>
-            </span>
-          </div>
-        </template>
-        <div v-if="healthReport" class="config-health-summary">
-          <strong>{{ healthReport.summary }}</strong>
-          <div class="config-health-list">
-            <div
-              v-for="check in healthReport.checks"
-              :key="check.name"
-              class="config-health-item"
-              :class="check.status"
-            >
-              <el-icon>
-                <Check v-if="check.status === 'ok'" />
-                <Warning v-else />
-              </el-icon>
-              <span>
-                <strong>{{ check.name }}</strong>
-                <small>{{ check.detail }}</small>
-              </span>
-              <el-button
-                v-if="check.status !== 'ok'"
-                link
-                type="warning"
-                :loading="repairingHealthItem === check.name"
-                @click="repairHealthItem(check)"
-              >
-                修复此项
-              </el-button>
+                <span class="chip-label">{{ pair.label }}</span>
+                <small class="chip-desc">{{ pair.desc.replace("例如：", "") }}</small>
+              </button>
             </div>
           </div>
         </div>
-        <el-empty v-else description="尚未检查" :image-size="56">
-          <div class="health-empty-actions">
-            <el-button :icon="Refresh" :loading="checkingHealth" @click="inspectHealth">
-              开始体检
-            </el-button>
+      </div>
+    </section>
+
+    <!-- Lua Plugins -->
+    <LuaPluginManager @change="emit('saved')" @deploy="emit('deploy')" />
+
+    <!-- Health Dialog -->
+    <el-dialog v-model="showHealthDialog" title="Rime 配置健康体检报告" width="650px" append-to-body>
+      <div v-if="healthReport" class="health-dialog-body">
+        <div class="health-summary-banner">
+          <span>共执行 {{ healthReport.checks.length }} 项配置兼容性检查</span>
+          <el-button
+            type="warning"
+            size="small"
+            :loading="repairingHealth"
+            @click="repairHealth"
+          >
+            一键修复全部
+          </el-button>
+        </div>
+
+        <div class="health-checks-list">
+          <div
+            v-for="check in healthReport.checks"
+            :key="check.name"
+            class="check-row"
+            :class="`status-${check.status}`"
+          >
+            <div class="check-left">
+              <el-tag
+                size="small"
+                :type="check.status === 'ok' ? 'success' : check.status === 'warning' ? 'warning' : 'danger'"
+                effect="light"
+              >
+                {{ check.status === 'ok' ? '正常' : check.status === 'warning' ? '提醒' : '错误' }}
+              </el-tag>
+              <strong>{{ check.name }}</strong>
+              <span class="check-message">{{ check.detail }}</span>
+            </div>
+
             <el-button
-              type="warning"
+              v-if="check.status !== 'ok'"
+              size="small"
+              type="primary"
               plain
-              :icon="UploadFilled"
-              :loading="repairingHealth"
-              @click="repairHealth"
+              :loading="repairingHealthItem === check.name"
+              @click="repairHealthItem(check)"
             >
-              修复并部署
+              修复
             </el-button>
           </div>
-        </el-empty>
-      </el-card>
-    </aside>
-
-    <el-dialog v-model="showPreviewDialog" title="配置变更预览" width="760px">
-      <div class="config-preview-dialog">
-        <p class="helper-text">
-          这里展示保存会写入的文件变更。未知 patch 键会保留，保存前仍会自动创建备份。
-        </p>
-        <div v-if="configPreview?.files.some((file) => file.changed)" class="config-preview-list">
-          <section
-            v-for="file in configPreview.files"
-            :key="file.name"
-            class="config-preview-file"
-            :class="{ unchanged: !file.changed }"
-          >
-            <header>
-              <strong>{{ file.name }}</strong>
-              <el-tag :type="file.changed ? 'warning' : 'success'" effect="light" size="small">
-                {{ file.changed ? "将更新" : "无变化" }}
-              </el-tag>
-            </header>
-            <code>{{ file.path }}</code>
-            <pre v-if="file.changed"><span
-              v-for="(line, index) in file.diff_lines"
-              :key="`${file.name}-${index}`"
-              :class="diffLineClass(line)"
-            >{{ line }}</span></pre>
-            <p v-else class="helper-text">这个文件内容不会变化。</p>
-          </section>
         </div>
-        <el-empty v-else description="没有检测到配置变更" :image-size="64" />
       </div>
-      <template #footer>
-        <el-button @click="showPreviewDialog = false">关闭</el-button>
-        <el-button
-          type="primary"
-          @click="
-            showPreviewDialog = false;
-            saveQuickSettings(false);
-          "
-        >
-          保存
-        </el-button>
-        <el-button
-          type="primary"
-          plain
-          @click="
-            showPreviewDialog = false;
-            saveQuickSettings(true);
-          "
-        >
-          保存并部署
-        </el-button>
-      </template>
     </el-dialog>
-  </section>
+
+    <!-- Diff Dialog -->
+    <el-dialog v-model="showPreviewDialog" title="快速设置配置变更预览" width="760px" append-to-body>
+      <p class="helper-text" style="margin-top: 0">
+        确认将写入配置文件的 patch 差异，未知手写键始终安全保留。
+      </p>
+      <div v-if="configPreview?.files.some((f) => f.changed)" class="config-preview-list">
+        <section
+          v-for="file in configPreview.files"
+          :key="file.name"
+          class="config-preview-file"
+          :class="{ unchanged: !file.changed }"
+        >
+          <header>
+            <strong>{{ file.name }}</strong>
+            <el-tag :type="file.changed ? 'warning' : 'success'" size="small" effect="light">
+              {{ file.changed ? "将更新" : "无变化" }}
+            </el-tag>
+          </header>
+          <pre v-if="file.changed"><span
+            v-for="(line, idx) in file.diff_lines"
+            :key="idx"
+            :class="diffLineClass(line)"
+          >{{ line }}</span></pre>
+        </section>
+      </div>
+      <el-empty v-else description="没有检测到配置变更" :image-size="64" />
+    </el-dialog>
+  </div>
 </template>
+
+<style scoped>
+.quick-settings-workbench {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Quick Hero */
+.quick-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 20px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.hero-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.schema-badge-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-full);
+}
+
+.active-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--emerald-500);
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+}
+
+.schema-name {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink-900);
+}
+
+.schema-id {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--color-muted);
+}
+
+.hero-tags {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tag-pill {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+}
+
+.tag-pill.ice-ready {
+  background: var(--brand-50, #eff6ff);
+  color: var(--brand-600);
+  border: 1px solid var(--brand-200);
+}
+
+.tag-pill.ice-missing {
+  background: var(--amber-50, #fffbeb);
+  color: var(--amber-600);
+  border: 1px solid #fef3c7;
+}
+
+.path-mini-capsule {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--color-muted);
+  background: var(--color-surface-soft);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-line-soft);
+}
+
+.hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.deploy-cta {
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+}
+
+/* Sandbox Stage */
+.live-sandbox-stage {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.sandbox-stage-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  background: var(--color-surface-soft);
+  border-bottom: 1px solid var(--color-line-soft);
+}
+
+.stage-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink-900);
+}
+
+.stage-chips {
+  display: flex;
+  gap: 6px;
+}
+
+.chip-item {
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-soft);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  color: var(--ink-600);
+}
+
+.sandbox-canvas {
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 20px;
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+}
+
+html[data-theme="dark"] .sandbox-canvas {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+}
+
+.realistic-weasel-window {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  box-shadow: 0 16px 36px -8px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.weasel-box-preedit {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-600);
+  border-bottom: 1px solid var(--color-line-soft);
+  padding-bottom: 4px;
+  margin-bottom: 2px;
+}
+
+.weasel-box-candidates {
+  display: flex;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.weasel-box-candidates.vertical {
+  flex-direction: column;
+}
+
+.candidate-pill {
+  font-size: 13px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--ink-800);
+}
+
+.candidate-pill.active {
+  background: var(--brand-600);
+  color: #fff;
+  font-weight: 700;
+}
+
+.cand-idx {
+  font-style: normal;
+  font-size: 0.85em;
+  opacity: 0.8;
+}
+
+.stage-knobs {
+  display: flex;
+  align-items: center;
+  padding: 12px 18px;
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-line-soft);
+  gap: 16px 20px;
+  flex-wrap: wrap;
+}
+
+.knob-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+.knob-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-600);
+}
+
+.knob-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--color-line-soft);
+}
+
+@media (max-width: 768px) {
+  .knob-divider {
+    display: none;
+  }
+}
+
+/* Schema Presets Grid */
+.schema-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+.schema-choice-btn {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: all var(--transition-fast);
+}
+
+.schema-choice-btn:hover {
+  background: var(--color-surface-hover);
+  border-color: var(--brand-300);
+}
+
+.schema-choice-btn.active {
+  background: var(--brand-50, #eff6ff);
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 1px var(--brand-500);
+}
+
+html[data-theme="dark"] .schema-choice-btn.active {
+  background: rgba(37, 99, 235, 0.15);
+}
+
+.schema-choice-btn strong {
+  font-size: 12px;
+  color: var(--ink-900);
+}
+
+.schema-choice-btn span {
+  font-size: 10px;
+  color: var(--color-muted);
+}
+
+/* Rime Ice Bento */
+.rime-ice-bento-section {
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.bento-section-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--ink-900);
+}
+
+.bento-section-subtitle {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.ice-bento-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.ice-tile {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+}
+
+.ice-tile:hover {
+  background: var(--color-surface);
+  border-color: var(--brand-300);
+  box-shadow: var(--shadow-xs);
+}
+
+.ice-tile-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ice-tile-icon {
+  font-size: 20px;
+}
+
+.ice-tile-info strong {
+  display: block;
+  font-size: 13px;
+  color: var(--ink-900);
+}
+
+.ice-tile-info small {
+  display: block;
+  font-size: 11px;
+  color: var(--color-muted);
+}
+
+/* Fuzzy Pairs Card */
+.fuzzy-pairs-card {
+  margin-top: 10px;
+  padding: 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fuzzy-pairs-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.fuzzy-toolbar-title {
+  font-size: 12px;
+  font-weight: 750;
+  color: var(--ink-800);
+}
+
+.fuzzy-groups-wrap {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.fuzzy-group-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fuzzy-group-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-500);
+}
+
+.fuzzy-chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fuzzy-chip-btn {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 4px 8px;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.fuzzy-chip-btn:hover {
+  border-color: var(--brand-300);
+}
+
+.fuzzy-chip-btn.active {
+  background: var(--brand-50, #eff6ff);
+  border-color: var(--brand-500);
+  color: var(--brand-700);
+}
+
+html[data-theme="dark"] .fuzzy-chip-btn.active {
+  background: rgba(37, 99, 235, 0.2);
+  color: var(--brand-300);
+}
+
+.chip-label {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.chip-desc {
+  font-size: 9px;
+  color: var(--color-muted);
+}
+
+/* Health Dialog */
+.health-summary-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--color-surface-soft);
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+
+.health-checks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.check-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-xs);
+}
+
+.check-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.check-message {
+  color: var(--color-muted);
+  font-size: 11px;
+}
+</style>

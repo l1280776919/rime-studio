@@ -20,15 +20,19 @@ function formatElapsed(seconds: number): string {
 
 <template>
   <footer class="statusbar" :class="{ busy: isBusy }">
-    <span
-      >{{ status
-      }}<template v-if="isBusy && elapsedSeconds">
-        (已用时 {{ formatElapsed(elapsedSeconds) }})</template
-      ></span
-    >
-    <el-button v-if="deploying" link type="danger" size="small" @click="emit('cancelDeploy')">
-      取消部署
-    </el-button>
+    <div class="status-left">
+      <span class="status-dot" :class="{ active: isBusy }"></span>
+      <span class="status-text">{{ status }}</span>
+      <span v-if="isBusy && elapsedSeconds" class="elapsed-badge">
+        {{ formatElapsed(elapsedSeconds) }}
+      </span>
+    </div>
+
+    <div v-if="deploying" class="status-right">
+      <el-button link type="danger" size="small" class="cancel-btn" @click="emit('cancelDeploy')">
+        取消部署
+      </el-button>
+    </div>
   </footer>
 </template>
 
@@ -36,41 +40,77 @@ function formatElapsed(seconds: number): string {
 .statusbar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   flex: 0 0 auto;
-  margin-top: 16px;
-  padding: 8px 12px;
-  color: var(--ink-500);
-  font-size: 12px;
+  margin-top: 12px;
+  padding: 6px 14px;
+  color: var(--ink-600);
+  font-size: 11px;
   font-weight: 500;
   background: var(--color-surface);
   border: 1px solid var(--color-line-soft);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-full);
   box-shadow: var(--shadow-xs);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
-.statusbar::before {
-  content: "";
-  width: 8px;
-  height: 8px;
-  margin-right: 8px;
+.status-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
   border-radius: var(--radius-full);
   background: var(--emerald-500);
   box-shadow: 0 0 6px rgba(16, 185, 129, 0.4);
   flex-shrink: 0;
-  animation: statusPulse 2s ease-in-out infinite;
+}
+
+.status-dot.active {
+  background: var(--brand-500);
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.6);
+  animation: statusPulse 1.4s ease-in-out infinite;
 }
 
 @keyframes statusPulse {
   0%,
   100% {
     opacity: 1;
+    transform: scale(1);
   }
   50% {
     opacity: 0.5;
+    transform: scale(1.2);
   }
 }
 
-.statusbar span {
-  flex: 1;
+.status-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.elapsed-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  background: var(--brand-100);
+  color: var(--brand-800);
+}
+
+html[data-theme="dark"] .elapsed-badge {
+  background: rgba(37, 99, 235, 0.25);
+  color: var(--brand-300);
+}
+
+.cancel-btn {
+  font-size: 11px;
 }
 </style>

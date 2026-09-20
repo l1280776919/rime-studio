@@ -194,6 +194,8 @@ onBeforeUnmount(() => {
           @refresh="studio.loadEnvironment"
           @deploy="studio.deploy"
           @restart-server="studio.restartWeaselServer"
+          @navigate="navigateTo"
+          @create-backup="studio.createManualBackup"
         />
 
         <div class="page-container">
@@ -216,6 +218,9 @@ onBeforeUnmount(() => {
                 @open-backup="studio.openBackupDir"
                 @restore-backup="studio.restoreBackup"
                 @delete-backup="studio.deleteBackupEntry"
+                @deploy="studio.deploy"
+                @saved="refreshEnvironment"
+                @navigate="navigateTo"
               />
 
               <QuickSettingsPage

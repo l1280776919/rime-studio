@@ -1,6 +1,17 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { Delete, FolderOpened, Open, RefreshLeft, View } from "@element-plus/icons-vue";
+import {
+  Clock,
+  Delete,
+  Document,
+  FolderOpened,
+  InfoFilled,
+  Lock,
+  Open,
+  Plus,
+  RefreshLeft,
+  View,
+} from "@element-plus/icons-vue";
 import { backupLabel, backupKindLabel, backupKindType, formatTime } from "../utils";
 import type { BackupEntry, ConfigPreview } from "../types";
 import { useStudioStore } from "../stores/studio";
@@ -49,158 +60,587 @@ const visibleBackups = computed(() => {
   }
   return props.backups;
 });
+
+function diffLineClass(line: string) {
+  if (line.startsWith("+ ")) return "added";
+  if (line.startsWith("- ")) return "removed";
+  return "";
+}
 </script>
 
 <template>
-  <section class="content-grid backups-grid backup-manager-grid">
-    <section class="main-column">
-      <div class="backup-hero panel">
-        <div>
-          <span>配置备份</span>
-          <strong>{{ latestBackup ? formatTime(latestBackup.modified) : "还没有备份" }}</strong>
-          <small>
-            自动备份只保存 *.custom.yaml、词库和短语；手动备份还会带上方案、Lua 和
-            installation.yaml。build/、sync/ 和用户词库 *.userdb 不会进入备份。
-          </small>
+  <div class="backups-vault-container">
+    <!-- Hero Vault Header -->
+    <header class="vault-hero panel">
+      <div class="hero-left">
+        <div class="vault-icon-badge">
+          <el-icon><Clock /></el-icon>
         </div>
+        <div class="vault-meta">
+          <div class="vault-kicker-row">
+            <span class="vault-kicker">TIME MACHINE VAULT</span>
+            <span class="vault-pill">
+              {{ latestBackup ? `最近快照：${formatTime(latestBackup.modified)}` : "尚未创建任何备份" }}
+            </span>
+          </div>
+          <h2 class="vault-title">配置时光机与备份档案</h2>
+          <p class="vault-subtitle">
+            全量配置快照与差异回滚 · 手动备份包含完整方案与词库 · 恢复前自动创建保护存档
+          </p>
+        </div>
+      </div>
+
+      <div class="hero-actions">
         <el-button
           type="primary"
-          :icon="FolderOpened"
+          class="create-backup-btn"
+          :icon="Plus"
           :loading="backingUp"
           @click="emit('createBackup')"
         >
-          创建备份
+          创建全新快照备份
+        </el-button>
+      </div>
+    </header>
+
+    <!-- Bento Metrics Strip -->
+    <div class="vault-metrics-grid">
+      <div class="metric-card card-accent">
+        <div class="metric-icon-box">
+          <el-icon><Lock /></el-icon>
+        </div>
+        <div class="metric-body">
+          <span class="metric-label">备份档案总数</span>
+          <strong class="metric-value">{{ backups.length }}</strong>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-icon-box">
+          <el-icon><FolderOpened /></el-icon>
+        </div>
+        <div class="metric-body">
+          <span class="metric-label">手动完整快照</span>
+          <strong class="metric-value">{{ manualCount }}</strong>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-icon-box">
+          <el-icon><Clock /></el-icon>
+        </div>
+        <div class="metric-body">
+          <span class="metric-label">系统自动轮转</span>
+          <strong class="metric-value">{{ autoCount }}</strong>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-icon-box">
+          <el-icon><Document /></el-icon>
+        </div>
+        <div class="metric-body">
+          <span class="metric-label">归档文件总数</span>
+          <strong class="metric-value">{{ totalFiles }}</strong>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filter & Timeline Main Section -->
+    <div class="vault-main-card panel">
+      <div class="vault-toolbar">
+        <div class="filter-controls">
+          <el-segmented
+            v-model="activeFilter"
+            size="default"
+            :options="[
+              { label: `全部 (${backups.length})`, value: 'all' },
+              { label: `手动快照 (${manualCount})`, value: 'manual' },
+              { label: `自动备份 (${autoCount})`, value: 'auto' },
+            ]"
+          />
+        </div>
+
+        <div class="vault-hint">
+          <el-icon><InfoFilled /></el-icon>
+          <span>自动备份轮转保留最近 30 份；手动快照永久保留不受数量限制</span>
+        </div>
+      </div>
+
+      <!-- Empty State -->
+      <div v-if="!backups.length" class="vault-empty">
+        <div class="empty-icon-circle">
+          <el-icon><FolderOpened /></el-icon>
+        </div>
+        <strong>尚未创建任何配置备份</strong>
+        <p>创建备份后，当前 Rime 用户配置、自定义外观与词库将被封装至时光机归档。</p>
+        <el-button
+          type="primary"
+          :icon="Plus"
+          :loading="backingUp"
+          @click="emit('createBackup')"
+        >
+          立即创建第一份备份
         </el-button>
       </div>
 
-      <div class="backup-summary-row">
-        <div>
-          <span>备份数量</span>
-          <strong>{{ backups.length }}</strong>
-        </div>
-        <div>
-          <span>手动备份</span>
-          <strong>{{ manualCount }}</strong>
-        </div>
-        <div>
-          <span>自动备份</span>
-          <strong>{{ autoCount }}</strong>
-        </div>
-        <div>
-          <span>备份文件</span>
-          <strong>{{ totalFiles }}</strong>
-        </div>
-        <div>
-          <span>最近备份</span>
-          <strong>{{ latestBackup ? formatTime(latestBackup.modified) : "无" }}</strong>
-        </div>
+      <div v-else-if="!visibleBackups.length" class="vault-empty compact">
+        <el-icon><FolderOpened /></el-icon>
+        <strong>当前筛选条件无记录</strong>
+        <p>切换至「全部」或其他筛选类别查看其他备份记录。</p>
       </div>
 
-      <el-card class="panel backup-list-panel" shadow="never">
-        <template #header>
-          <div class="panel-title">
-            <span>备份记录</span>
-            <span class="schema-count">{{ visibleBackups.length }} / {{ backups.length }} 项</span>
+      <!-- Timeline Cards -->
+      <div v-else class="vault-timeline-list">
+        <article
+          v-for="backup in visibleBackups"
+          :key="backup.path"
+          class="timeline-card"
+        >
+          <div class="card-lead">
+            <div class="card-badge-row">
+              <el-tag size="small" :type="backupKindType(backup.kind)" effect="light">
+                {{ backupKindLabel(backup.kind) }}
+              </el-tag>
+              <strong class="card-name">{{ backupLabel(backup) }}</strong>
+            </div>
+
+            <div class="card-meta-line">
+              <span class="card-time">
+                <el-icon><Clock /></el-icon> {{ formatTime(backup.modified) }}
+              </span>
+              <span class="card-divider">·</span>
+              <span class="card-files">
+                <el-icon><Document /></el-icon> {{ backup.files }} 个配置与资源文件
+              </span>
+            </div>
+
+            <div v-if="backup.note || backup.scope" class="card-note-box">
+              <span v-if="backup.note" class="note-text">备注：{{ backup.note }}</span>
+              <span v-if="backup.scope" class="scope-text">{{ backup.scope }}</span>
+            </div>
           </div>
-        </template>
 
-        <div v-if="backups.length" class="backup-filter-row">
-          <el-segmented
-            v-model="activeFilter"
-            :options="[
-              { label: '全部', value: 'all' },
-              { label: '手动', value: 'manual' },
-              { label: '自动', value: 'auto' },
-            ]"
-          />
-          <span>自动备份仅保留最近 30 个；手动备份不会自动清理。</span>
-        </div>
+          <div class="card-safe-pill">
+            <span>🛡️ 恢复前自动快照当前状态</span>
+          </div>
 
-        <div v-if="!backups.length" class="backup-empty-state">
-          <el-icon><FolderOpened /></el-icon>
-          <strong>还没有备份</strong>
-          <span>创建一个备份后，当前 Rime 配置文件会被保存到应用数据目录。</span>
-          <el-button
-            type="primary"
-            :icon="FolderOpened"
-            :loading="backingUp"
-            @click="emit('createBackup')"
-          >
-            创建第一个备份
-          </el-button>
-        </div>
+          <div class="card-actions">
+            <el-button
+              size="small"
+              :icon="View"
+              :loading="previewingBackup === backup.name"
+              @click="previewBackup(backup)"
+            >
+              差异对比
+            </el-button>
+            <el-button
+              size="small"
+              :icon="Open"
+              @click="emit('openBackup', backup)"
+            >
+              定位归档
+            </el-button>
+            <el-button
+              size="small"
+              type="warning"
+              plain
+              :icon="RefreshLeft"
+              :loading="restoringBackup === backup.name"
+              @click="emit('restoreBackup', backup)"
+            >
+              回滚此版本
+            </el-button>
+            <el-button
+              size="small"
+              type="danger"
+              link
+              :icon="Delete"
+              :loading="deletingBackup === backup.name"
+              title="删除此备份"
+              @click="emit('deleteBackup', backup)"
+            />
+          </div>
+        </article>
+      </div>
+    </div>
 
-        <div v-else-if="!visibleBackups.length" class="backup-empty-state compact">
-          <el-icon><FolderOpened /></el-icon>
-          <strong>当前筛选没有备份</strong>
-          <span>切换筛选条件查看其他类型的备份。</span>
-        </div>
-
-        <div v-else class="backup-manual-list">
-          <article v-for="backup in visibleBackups" :key="backup.path" class="backup-manual-item">
-            <div class="backup-manual-main">
-              <strong>
-                <el-tag size="small" effect="light" :type="backupKindType(backup.kind)">
-                  {{ backupKindLabel(backup.kind) }}
-                </el-tag>
-                {{ backupLabel(backup) }}
-              </strong>
-              <span>{{ formatTime(backup.modified) }} · {{ backup.files }} 个文件</span>
-              <span v-if="backup.note" class="backup-scope">备注：{{ backup.note }}</span>
-              <span v-if="backup.scope" class="backup-scope">{{ backup.scope }}</span>
-            </div>
-            <div class="backup-manual-note">
-              <span>恢复前会先创建安全备份</span>
-            </div>
-            <div class="backup-manual-actions">
-              <el-button
-                link
-                type="primary"
-                :icon="View"
-                :loading="previewingBackup === backup.name"
-                @click="previewBackup(backup)"
-              >
-                预览
-              </el-button>
-              <el-button
-                link
-                type="warning"
-                :icon="RefreshLeft"
-                :loading="restoringBackup === backup.name"
-                @click="emit('restoreBackup', backup)"
-              >
-                恢复
-              </el-button>
-              <el-button link type="primary" :icon="Open" @click="emit('openBackup', backup)">
-                打开
-              </el-button>
-              <el-button
-                link
-                type="info"
-                :icon="Delete"
-                :loading="deletingBackup === backup.name"
-                @click="emit('deleteBackup', backup)"
-              >
-                删除
-              </el-button>
-            </div>
-          </article>
-        </div>
-      </el-card>
-    </section>
-
-    <el-dialog v-model="showPreview" title="备份预览" width="720px">
-      <p class="helper-text">
-        对比当前用户目录，列出备份将覆盖的差异。空 diff 表示文件相同或当前不存在。
+    <!-- Diff Preview Dialog -->
+    <el-dialog v-model="showPreview" title="时光机快照差异对比" width="760px" append-to-body>
+      <p class="helper-text" style="margin-top: 0">
+        对比当前用户目录，列出回滚该快照将覆盖的改动内容。若文件完全相同则标记为无差异。
       </p>
-      <el-empty v-if="!backupPreview?.files.length" description="备份里没有可对比的文件" />
-      <div v-for="file in backupPreview?.files" :key="file.path" class="backup-preview-file">
-        <strong>{{ file.name }}</strong>
-        <el-tag :type="file.changed ? 'warning' : 'success'" size="small" effect="light">
-          {{ file.changed ? "有差异" : "相同" }}
-        </el-tag>
-        <pre v-if="file.changed">{{ file.diff_lines.slice(0, 80).join("\n") }}</pre>
+
+      <el-empty
+        v-if="!backupPreview?.files.length"
+        description="该快照中未检测到可比对的文件"
+        :image-size="64"
+      />
+
+      <div v-else class="preview-diff-container">
+        <div
+          v-for="file in backupPreview.files"
+          :key="file.path"
+          class="preview-diff-block"
+        >
+          <header class="diff-block-header">
+            <strong class="diff-filename">{{ file.name }}</strong>
+            <el-tag :type="file.changed ? 'warning' : 'success'" size="small" effect="light">
+              {{ file.changed ? "有差异" : "完全相同" }}
+            </el-tag>
+          </header>
+
+          <pre v-if="file.changed" class="diff-pre"><span
+            v-for="(line, idx) in file.diff_lines.slice(0, 80)"
+            :key="idx"
+            :class="diffLineClass(line)"
+          >{{ line }}</span></pre>
+        </div>
       </div>
     </el-dialog>
-  </section>
+  </div>
 </template>
+
+<style scoped>
+.backups-vault-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Vault Hero */
+.vault-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.hero-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.vault-icon-badge {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, var(--brand-600) 0%, #0284c7 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 20px;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+  flex-shrink: 0;
+}
+
+.vault-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vault-kicker-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vault-kicker {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--ink-500);
+  letter-spacing: 0.05em;
+}
+
+.vault-pill {
+  font-size: 11px;
+  color: var(--brand-600);
+  background: var(--brand-50, #eff6ff);
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--brand-200);
+}
+
+.vault-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--ink-900);
+  letter-spacing: -0.02em;
+}
+
+.vault-subtitle {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.create-backup-btn {
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.25);
+}
+
+/* Bento Metrics Grid */
+.vault-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.metric-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs);
+  transition: all var(--transition-fast);
+}
+
+.metric-card:hover {
+  transform: translateY(-1px);
+  border-color: var(--brand-300);
+  box-shadow: var(--shadow-sm);
+}
+
+.metric-card.card-accent {
+  background: linear-gradient(135deg, var(--brand-50, #eff6ff) 0%, var(--color-surface) 100%);
+  border-color: var(--brand-200);
+}
+
+html[data-theme="dark"] .metric-card.card-accent {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.15) 0%, var(--color-surface) 100%);
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.metric-icon-box {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--brand-600);
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.card-accent .metric-icon-box {
+  background: var(--brand-600);
+  color: #fff;
+}
+
+.metric-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.metric-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-500);
+}
+
+.metric-value {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--ink-900);
+}
+
+/* Main Timeline Section */
+.vault-main-card {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.vault-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  border-bottom: 1px solid var(--color-line-soft);
+  padding-bottom: 14px;
+}
+
+.vault-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+/* Empty State */
+.vault-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 20px;
+  text-align: center;
+  gap: 8px;
+}
+
+.empty-icon-circle {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--color-surface-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  color: var(--color-muted);
+  margin-bottom: 6px;
+}
+
+/* Timeline Cards */
+.vault-timeline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.timeline-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.timeline-card:hover {
+  border-color: var(--brand-300);
+  box-shadow: var(--shadow-xs);
+  transform: translateY(-1px);
+}
+
+.card-lead {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 240px;
+}
+
+.card-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-name {
+  font-size: 13px;
+  font-weight: 750;
+  color: var(--ink-900);
+}
+
+.card-meta-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--ink-500);
+}
+
+.card-time,
+.card-files {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.card-divider {
+  color: var(--color-line-soft);
+}
+
+.card-note-box {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--color-muted);
+}
+
+.card-safe-pill {
+  font-size: 11px;
+  color: var(--emerald-600, #059669);
+  background: rgba(16, 185, 129, 0.08);
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Diff Blocks */
+.preview-diff-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.preview-diff-block {
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.diff-block-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--color-surface-soft);
+  border-bottom: 1px solid var(--color-line-soft);
+}
+
+.diff-filename {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--ink-900);
+}
+
+.diff-pre {
+  margin: 0;
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--color-surface);
+  line-height: 1.5;
+  overflow-x: auto;
+}
+
+.diff-pre span {
+  display: block;
+}
+
+.diff-pre span.added {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.diff-pre span.removed {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+</style>
