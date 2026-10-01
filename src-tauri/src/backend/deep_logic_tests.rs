@@ -117,6 +117,7 @@ fn dictionary_import_changes_preserve_header_entries_and_reference_order() {
             .expect("fixture");
             let cfg = read_dictionary_config_sync().expect("read configuration");
             assert_eq!(cfg.main_dictionary.as_deref(), Some("custom"));
+            assert_eq!(cfg.imports, vec!["missing", "present"]);
             add_dictionary_to_current_schema_sync("new".into()).expect("add reference");
             let saved = fs::read_to_string(user.join("custom.dict.yaml")).expect("read");
             assert_eq!(
@@ -476,6 +477,149 @@ fn interrupted_empty_and_truncated_downloads_preserve_the_previous_file() {
             .expect("download");
             assert_eq!(fs::read_to_string(&path).expect("read"), "complete");
             assert_eq!(fs::read_dir(&user).expect("list").count(), 1);
+        },
+    );
+}
+
+#[test]
+fn phrases_round_trip_spaces_empty_codes_and_metadata() {
+    isolated("phrases_round_trip_spaces_empty_codes_and_metadata", || {
+        let user = rime_user_dir().expect("user");
+        let path = user.join("custom_phrase.txt");
+        fs::write(
+            &path,
+            "\u{feff}# header\n---\n...\n  spaced phrase  \t\t12\n# interior note\n你好\tnh\t4\n",
+        )
+        .expect("fixture");
+        let phrases = get_custom_phrases_sync().expect("read");
+        assert_eq!(phrases.len(), 2);
+        assert_eq!(phrases[0].text, "  spaced phrase  ");
+        assert_eq!(phrases[0].code, "");
+        assert_eq!(phrases[0].weight, 12);
+        save_custom_phrases_sync(phrases).expect("save");
+        let saved = fs::read_to_string(path).expect("read");
+        assert!(saved.contains("# interior note"));
+        assert!(saved.contains("  spaced phrase  \t\t12"));
+        assert_eq!(get_custom_phrases_sync().expect("read").len(), 2);
+    });
+}
+
+#[test]
+fn invalid_phrase_fields_and_unreadable_files_do_not_overwrite() {
+    isolated(
+        "invalid_phrase_fields_and_unreadable_files_do_not_overwrite",
+        || {
+            let user = rime_user_dir().expect("user");
+            let path = user.join("custom_phrase.txt");
+            let original = "old\tcode\t1\n";
+            fs::write(&path, original).expect("fixture");
+            for (text, code) in [
+                ("new\nother", "a"),
+                ("new", "a\tb"),
+                ("", "a"),
+                ("# comment", "a"),
+                ("...", "a"),
+            ] {
+                assert!(save_custom_phrases_sync(vec![PhraseEntry {
+                    text: text.into(),
+                    code: code.into(),
+                    weight: 1
+                }])
+                .is_err());
+                assert_eq!(fs::read_to_string(&path).expect("read"), original);
+            }
+            fs::write(&path, [0xff]).expect("fixture");
+            assert!(save_custom_phrases_sync(Vec::new()).is_err());
+            assert_eq!(fs::read(&path).expect("read"), vec![0xff]);
+            fs::write(&path, "phrase\tcode\tnot-a-weight").expect("fixture");
+            assert!(get_custom_phrases_sync().is_err());
+        },
+    );
+}
+
+#[test]
+fn lua_toggle_preserves_unrelated_exports_and_long_comments() {
+    isolated(
+        "lua_toggle_preserves_unrelated_exports_and_long_comments",
+        || {
+            let user = rime_user_dir().expect("user");
+            fs::create_dir_all(user.join("lua")).expect("directory");
+            fs::write(user.join("lua/date.lua"), "return function() end").expect("fixture");
+            let original = "local update = true\nother = require(\"date\")\n--[=[\ndate_translator = require(\"date\")\n]=]\n";
+            fs::write(user.join("rime.lua"), original).expect("fixture");
+            assert!(!list_lua_plugins_sync().expect("list")[0].enabled);
+            let plugins = toggle_lua_plugin_sync("date".into(), true).expect("enable");
+            assert!(plugins[0].enabled);
+            let saved = fs::read_to_string(user.join("rime.lua")).expect("read");
+            assert!(saved.starts_with(original));
+            assert!(!toggle_lua_plugin_sync("date".into(), false).expect("disable")[0].enabled);
+            assert!(fs::read_to_string(user.join("rime.lua"))
+                .expect("read")
+                .starts_with(original));
+        },
+    );
+}
+
+#[test]
+fn lua_disable_does_not_install_and_failed_reads_preserve_files() {
+    isolated(
+        "lua_disable_does_not_install_and_failed_reads_preserve_files",
+        || {
+            let user = rime_user_dir().expect("user");
+            toggle_lua_plugin_sync("date".into(), false).expect("disable");
+            assert!(!user.join("lua").exists());
+            assert!(!user.join("rime.lua").exists());
+            fs::write(user.join("rime.lua"), [0xff]).expect("fixture");
+            assert!(toggle_lua_plugin_sync("date".into(), true).is_err());
+            assert!(!user.join("lua").exists());
+            assert_eq!(fs::read(user.join("rime.lua")).expect("read"), vec![0xff]);
+            fs::remove_file(user.join("rime.lua")).expect("remove");
+            save_lua_script_content_sync("date".into(), "original".into()).expect("save");
+            save_lua_script_content_sync("date".into(), "edited".into()).expect("save");
+            let backups = list_backup_dirs(&user).expect("backups");
+            assert!(backups.iter().any(|backup| {
+                let snapshot = Path::new(&backup.path).join("lua/date.lua");
+                fs::read_to_string(snapshot).ok().as_deref() == Some("original")
+            }));
+            fs::write(user.join("lua/date.lua"), [0xff]).expect("fixture");
+            fs::write(
+                user.join("rime.lua"),
+                "date_translator = require(\"date\")\n",
+            )
+            .expect("fixture");
+            assert!(toggle_lua_plugin_sync("date".into(), true).is_err());
+            assert!(
+                !toggle_lua_plugin_sync("date".into(), false).expect("disable damaged script")[0]
+                    .enabled
+            );
+            assert_eq!(
+                fs::read(user.join("lua/date.lua")).expect("read"),
+                vec![0xff]
+            );
+        },
+    );
+}
+
+#[test]
+fn lua_and_phrase_operations_reject_linked_paths_outside_user_root() {
+    isolated(
+        "lua_and_phrase_operations_reject_linked_paths_outside_user_root",
+        || {
+            let user = rime_user_dir().expect("user");
+            let outside = user.parent().expect("parent").join("outside-lua");
+            fs::create_dir_all(&outside).expect("directory");
+            fs::write(outside.join("date.lua"), "private").expect("fixture");
+            directory_link(&outside, &user.join("lua"));
+            directory_link(&outside, &user.join("custom_phrase.txt"));
+            assert!(get_custom_phrases_sync().is_err());
+            assert!(save_custom_phrases_sync(Vec::new()).is_err());
+            assert!(get_lua_script_content_sync("date".into()).is_err());
+            assert!(save_lua_script_content_sync("date".into(), "overwrite".into()).is_err());
+            assert!(toggle_lua_plugin_sync("date".into(), true).is_err());
+            assert_eq!(
+                fs::read_to_string(outside.join("date.lua")).expect("read"),
+                "private"
+            );
         },
     );
 }

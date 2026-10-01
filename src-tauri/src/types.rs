@@ -443,6 +443,7 @@ pub(crate) struct DictionaryReference {
 
 #[derive(Debug, Serialize)]
 pub(crate) struct DictionaryConfig {
+    pub(crate) imports: Vec<String>,
     pub(crate) schema_id: Option<String>,
     pub(crate) schema_name: Option<String>,
     pub(crate) main_dictionary: Option<String>,

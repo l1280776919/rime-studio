@@ -49,7 +49,7 @@ const sourceNameModel = computed({
     </div>
     <template #footer>
       <el-button @click="visible = false">取消</el-button>
-      <el-button type="primary" :loading="importing" @click="emit('preview')">
+      <el-button type="primary" :loading="importing" :disabled="importing" @click="emit('preview')">
         下载并预览
       </el-button>
     </template>

@@ -342,6 +342,7 @@ pub(crate) fn read_dictionary_config_sync() -> Result<DictionaryConfig, RimeErro
 
     let Some(main_dictionary_value) = main_dictionary.clone() else {
         return Ok(DictionaryConfig {
+            imports: Vec::new(),
             schema_id,
             schema_name,
             main_dictionary: None,
@@ -365,7 +366,7 @@ pub(crate) fn read_dictionary_config_sync() -> Result<DictionaryConfig, RimeErro
 
     let mut enabled = Vec::new();
     let mut missing = Vec::new();
-    for reference in imports {
+    for reference in imports.iter().cloned() {
         if let Some(dict) = dict_by_ref.get(&reference) {
             enabled.push(DictionaryReference {
                 reference,
@@ -396,6 +397,7 @@ pub(crate) fn read_dictionary_config_sync() -> Result<DictionaryConfig, RimeErro
         .collect();
 
     Ok(DictionaryConfig {
+        imports,
         schema_id,
         schema_name,
         main_dictionary: Some(main_dictionary_value),

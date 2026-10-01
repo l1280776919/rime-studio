@@ -1,4 +1,4 @@
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { api } from "../api";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -56,28 +56,42 @@ export function useDictionaries(emit: EmitFn) {
   const lmdgGrammarResult = ref<LmdgGrammarInstallResult>();
   const lmdgGrammarUninstallResult = ref<LmdgGrammarUninstallResult>();
   const lmdgDownloadProgress = ref<LmdgDownloadProgress>();
+  type PreparedImport =
+    { kind: "file"; name: string; data: number[] } | { kind: "url"; url: string; name?: string };
+  let preparedImport: PreparedImport | undefined;
+  let previewVersion = 0;
+  let activePreviewSource: "file" | "url" | "online" | undefined;
+  let confirmingImport = false;
+  let healthVersion = 0;
+  let categoryVersion = 0;
+  let listVersion = 0;
+  let disposed = false;
   let unlistenLmdgProgress: UnlistenFn | undefined;
 
   async function loadDictionaries() {
+    const version = ++listVersion;
     loading.value = true;
     try {
       const [dictList, config] = await Promise.all([
         api.listDictionaries(),
         api.getDictionaryConfig(),
       ]);
+      if (disposed || version !== listVersion) return;
       dictionaries.value = dictList;
       dictConfig.value = config;
     } catch (error) {
       ElMessage.error(String(error));
     } finally {
-      loading.value = false;
+      if (version === listVersion) loading.value = false;
     }
   }
 
   async function toggleHealth(dict: DictInfo) {
+    const version = ++healthVersion;
     if (expandedDict.value === dict.name) {
       expandedDict.value = null;
       dictHealth.value = null;
+      healthLoading.value = false;
       return;
     }
 
@@ -85,11 +99,12 @@ export function useDictionaries(emit: EmitFn) {
     healthLoading.value = true;
     dictHealth.value = null;
     try {
-      dictHealth.value = await api.getDictHealth(dict.name);
+      const result = await api.getDictHealth(dict.name);
+      if (!disposed && version === healthVersion) dictHealth.value = result;
     } catch (error) {
       ElMessage.error(String(error));
     } finally {
-      healthLoading.value = false;
+      if (version === healthVersion) healthLoading.value = false;
     }
   }
 
@@ -115,34 +130,81 @@ export function useDictionaries(emit: EmitFn) {
     fileInput.value?.click();
   }
 
+  function cancelPreview() {
+    ++previewVersion;
+    activePreviewSource = undefined;
+    importing.value = false;
+    onlineImporting.value = undefined;
+    preparedImport = undefined;
+    importPreview.value = undefined;
+  }
+
+  async function prepareImport(
+    origin: "file" | "url" | "online",
+    prepare: () => Promise<{ source: PreparedImport; preview: DictionaryImportPreview }>,
+  ) {
+    if (confirmingImport || disposed) return;
+    const version = ++previewVersion;
+    activePreviewSource = origin;
+    preparedImport = undefined;
+    importPreview.value = undefined;
+    showImportPreviewDialog.value = false;
+    importing.value = true;
+    try {
+      const { source, preview } = await prepare();
+      if (disposed || version !== previewVersion) return;
+      // Commit the preview together with the exact immutable source it describes.
+      preparedImport = source;
+      importPreview.value = preview;
+      activePreviewSource = undefined;
+      showUrlImportDialog.value = false;
+      showImportPreviewDialog.value = true;
+    } catch (error) {
+      if (version === previewVersion) ElMessage.error(String(error));
+    } finally {
+      if (version === previewVersion) {
+        importing.value = false;
+        onlineImporting.value = undefined;
+        activePreviewSource = undefined;
+      }
+    }
+  }
+
+  watch(
+    showUrlImportDialog,
+    (visible) => {
+      if (!visible && activePreviewSource === "url") cancelPreview();
+    },
+    { flush: "sync" },
+  );
+  watch(
+    showOnlineDictionaryDialog,
+    (visible) => {
+      if (!visible && activePreviewSource === "online") cancelPreview();
+    },
+    { flush: "sync" },
+  );
+  watch(
+    showImportPreviewDialog,
+    (visible) => {
+      if (!visible && !confirmingImport && !activePreviewSource) {
+        preparedImport = undefined;
+        importPreview.value = undefined;
+      }
+    },
+    { flush: "sync" },
+  );
+
   async function importDictionary(event: Event) {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
     input.value = "";
     if (!file) return;
-
-    importing.value = true;
-    try {
-      const buffer = await file.arrayBuffer();
-      importKind.value = "file";
-      importSourceName.value = file.name;
-      importData.value = new Uint8Array(buffer);
-      importOnlineId.value = "";
-      importUrl.value = "";
-      importUrlSourceName.value = "";
-      importPreview.value = await api.previewDictionaryImport(
-        file.name,
-        Array.from(importData.value),
-      );
-      showImportPreviewDialog.value = true;
-    } catch (error) {
-      importSourceName.value = "";
-      importData.value = new Uint8Array(0);
-      importPreview.value = undefined;
-      ElMessage.error(String(error));
-    } finally {
-      importing.value = false;
-    }
+    await prepareImport("file", async () => {
+      const data = Array.from(new Uint8Array(await file.arrayBuffer()));
+      const preview = await api.previewDictionaryImport(file.name, data);
+      return { source: { kind: "file", name: file.name, data }, preview };
+    });
   }
 
   async function loadOnlineDictionaries() {
@@ -162,20 +224,27 @@ export function useDictionaries(emit: EmitFn) {
   }
 
   async function loadCategoryDictionaries() {
-    if (!selectedOnlineCategory.value) return;
-    categoryLoading.value = true;
+    const version = ++categoryVersion;
+    const category = selectedOnlineCategory.value;
+    categoryDictionaries.value = [];
+    categoryLoading.value = !!category;
+    if (!category) return;
     try {
-      categoryDictionaries.value = await api.listOnlineDictionariesByCategory(
-        selectedOnlineCategory.value,
-      );
+      const result = await api.listOnlineDictionariesByCategory(category);
+      if (!disposed && version === categoryVersion) categoryDictionaries.value = result;
     } catch (error) {
-      ElMessage.error(String(error));
+      if (version === categoryVersion) ElMessage.error(String(error));
     } finally {
-      categoryLoading.value = false;
+      if (version === categoryVersion) categoryLoading.value = false;
     }
   }
 
+  const resourceBusy = computed(
+    () => lmdgInstalling.value || lmdgGrammarInstalling.value || lmdgGrammarUninstalling.value,
+  );
+
   async function installLmdgDictionaries() {
+    if (resourceBusy.value) return;
     lmdgInstalling.value = true;
     lmdgDownloadProgress.value = {
       kind: "dicts",
@@ -195,6 +264,7 @@ export function useDictionaries(emit: EmitFn) {
   }
 
   async function installLmdgGrammar() {
+    if (resourceBusy.value) return;
     lmdgGrammarInstalling.value = true;
     lmdgGrammarUninstallResult.value = undefined;
     lmdgDownloadProgress.value = {
@@ -214,6 +284,7 @@ export function useDictionaries(emit: EmitFn) {
   }
 
   async function uninstallLmdgGrammar() {
+    if (resourceBusy.value) return;
     lmdgGrammarUninstalling.value = true;
     try {
       const result = await api.uninstallLmdgGrammar();
@@ -228,75 +299,48 @@ export function useDictionaries(emit: EmitFn) {
   }
 
   async function previewOnlineDictionary(dict: OnlineDictionary) {
+    if (confirmingImport) return;
     onlineImporting.value = dict.id;
-    try {
-      importKind.value = "url";
-      importOnlineId.value = "";
-      importSourceName.value = dict.source_name;
-      importData.value = new Uint8Array(0);
-      importUrl.value = dict.detail_url;
-      importUrlSourceName.value = dict.source_name;
-      importPreview.value = await api.previewDictionaryUrlImport(dict.detail_url, dict.source_name);
-      showImportPreviewDialog.value = true;
-    } catch (error) {
-      importPreview.value = undefined;
-      ElMessage.error(String(error));
-    } finally {
-      onlineImporting.value = undefined;
-    }
+    const url = dict.detail_url;
+    const name = dict.source_name;
+    await prepareImport("online", async () => ({
+      source: { kind: "url", url, name },
+      preview: await api.previewDictionaryUrlImport(url, name),
+    }));
   }
 
   async function previewUrlDictionary() {
     const url = importUrl.value.trim();
+    const name = importUrlSourceName.value.trim() || undefined;
     if (!url) {
       ElMessage.warning("请先填写在线词库地址");
       return;
     }
-
-    importing.value = true;
-    try {
-      importKind.value = "url";
-      importSourceName.value = "";
-      importOnlineId.value = "";
-      importData.value = new Uint8Array(0);
-      importPreview.value = await api.previewDictionaryUrlImport(
-        url,
-        importUrlSourceName.value.trim() || undefined,
-      );
-      showUrlImportDialog.value = false;
-      showImportPreviewDialog.value = true;
-    } catch (error) {
-      importPreview.value = undefined;
-      ElMessage.error(String(error));
-    } finally {
-      importing.value = false;
-    }
+    await prepareImport("url", async () => ({
+      source: { kind: "url", url, name },
+      preview: await api.previewDictionaryUrlImport(url, name),
+    }));
   }
 
   async function confirmDictionaryImport(enableAfterImport = false) {
-    if (!importPreview.value) return;
-
+    if (!importPreview.value || !preparedImport || importing.value || confirmingImport) return;
+    const source = preparedImport;
+    confirmingImport = true;
     importing.value = true;
     try {
       let result: DictionaryImportResult;
-      if (importKind.value === "online") {
-        result = await api.importOnlineDictionary(importOnlineId.value);
-      } else if (importKind.value === "url") {
-        result = await api.importDictionaryUrl(
-          importUrl.value.trim(),
-          importUrlSourceName.value.trim() || undefined,
-        );
+      if (source.kind === "url") {
+        result = await api.importDictionaryUrl(source.url, source.name);
       } else {
-        if (!importSourceName.value || !importData.value.length) return;
-        result = await api.importDictionary(importSourceName.value, Array.from(importData.value));
+        result = await api.importDictionary(source.name, source.data);
       }
       await loadAllStats();
       ElMessage.success(
         `已导入 ${result.imported_entries.toLocaleString()} 条到 ${result.name}` +
           (result.skipped_entries ? `，跳过 ${result.skipped_entries.toLocaleString()} 条` : ""),
       );
-      if (enableAfterImport) {
-        await addDictionaryReference(result.reference);
+      if (enableAfterImport && !(await addDictionaryReference(result.reference))) {
+        ElMessage.warning("词库文件已导入，但未能加入当前方案。请在本地词库列表中重试加入。");
       }
       showImportPreviewDialog.value = false;
       importSourceName.value = "";
@@ -305,10 +349,12 @@ export function useDictionaries(emit: EmitFn) {
       importUrl.value = "";
       importUrlSourceName.value = "";
       importPreview.value = undefined;
+      preparedImport = undefined;
     } catch (error) {
       ElMessage.error(String(error));
     } finally {
       importing.value = false;
+      confirmingImport = false;
     }
   }
 
@@ -332,19 +378,23 @@ export function useDictionaries(emit: EmitFn) {
   }
 
   async function addDictionaryReference(reference: string) {
+    if (updatingReference.value) return false;
     updatingReference.value = reference;
     try {
       dictConfig.value = await api.addDictionaryToCurrentSchema(reference);
       await loadAllStats();
       ElMessage.success("已加入当前方案，重新部署后生效");
+      return true;
     } catch (error) {
       ElMessage.error(String(error));
+      return false;
     } finally {
       updatingReference.value = undefined;
     }
   }
 
   async function removeDictionaryReference(reference: string) {
+    if (updatingReference.value) return;
     updatingReference.value = reference;
     try {
       dictConfig.value = await api.removeDictionaryFromCurrentSchema(reference);
@@ -358,11 +408,8 @@ export function useDictionaries(emit: EmitFn) {
   }
 
   async function moveReference(reference: string, direction: -1 | 1) {
-    if (!dictConfig.value) return;
-    const imports = [
-      ...dictConfig.value.enabled.map((entry) => entry.reference),
-      ...dictConfig.value.missing.map((entry) => entry.reference),
-    ];
+    if (!dictConfig.value || updatingReference.value) return;
+    const imports = [...dictConfig.value.imports];
     const index = imports.indexOf(reference);
     const nextIndex = index + direction;
     if (index < 0 || nextIndex < 0 || nextIndex >= imports.length) return;
@@ -380,18 +427,25 @@ export function useDictionaries(emit: EmitFn) {
   }
 
   async function deleteDictionary(dict: DictInfo) {
-    try {
-      await ElMessageBox.confirm(`确定删除「${dict.name}」？此操作不可恢复。`, "删除词库", {
-        confirmButtonText: "删除",
-        cancelButtonText: "取消",
-        type: "warning",
-      });
-    } catch {
-      return;
-    }
+    if (deletingDict.value) return;
     deletingDict.value = dict.name;
     try {
+      try {
+        await ElMessageBox.confirm(`确定删除「${dict.name}」？此操作不可恢复。`, "删除词库", {
+          confirmButtonText: "删除",
+          cancelButtonText: "取消",
+          type: "warning",
+        });
+      } catch {
+        return;
+      }
       await api.deleteDictionary(dict.name);
+      if (expandedDict.value === dict.name) {
+        ++healthVersion;
+        expandedDict.value = null;
+        dictHealth.value = null;
+        healthLoading.value = false;
+      }
       ElMessage.success("词库已删除");
       await loadAllStats();
     } catch (error) {
@@ -402,11 +456,13 @@ export function useDictionaries(emit: EmitFn) {
   }
 
   async function cleanDuplicateLines(dictName: string) {
+    if (cleaningDict.value || expandedDict.value !== dictName) return;
     if (!dictHealth.value?.duplicate_exact_lines) {
       ElMessage.info("这个词库没有重复词条");
       return;
     }
 
+    cleaningDict.value = dictName;
     try {
       await ElMessageBox.confirm(
         `将从「${dictName}」中移除 ${dictHealth.value.duplicate_exact_lines.toLocaleString()} 条完全重复的词条行。执行前会自动创建保存前备份。`,
@@ -414,14 +470,16 @@ export function useDictionaries(emit: EmitFn) {
         { confirmButtonText: "清理", cancelButtonText: "取消", type: "warning" },
       );
     } catch {
+      cleaningDict.value = undefined;
       return;
     }
 
-    cleaningDict.value = dictName;
     try {
       const result = await api.cleanDictionaryDuplicates(dictName);
       await loadAllStats();
-      dictHealth.value = await api.getDictHealth(dictName);
+      const version = healthVersion;
+      const health = await api.getDictHealth(dictName);
+      if (version === healthVersion && expandedDict.value === dictName) dictHealth.value = health;
       ElMessage.success(
         result.removed_duplicate_lines
           ? `已移除 ${result.removed_duplicate_lines.toLocaleString()} 条重复词条`
@@ -433,6 +491,20 @@ export function useDictionaries(emit: EmitFn) {
       cleaningDict.value = undefined;
     }
   }
+
+  const orderedReferences = computed(() => {
+    if (!dictConfig.value) return [];
+    const byName = new Map(
+      [...dictConfig.value.enabled, ...dictConfig.value.missing].map((reference) => [
+        reference.reference,
+        reference,
+      ]),
+    );
+    return dictConfig.value.imports.flatMap((name) => {
+      const reference = byName.get(name);
+      return reference ? [reference] : [];
+    });
+  });
 
   const totalEntries = computed(() => dictionaries.value.reduce((s, d) => s + d.entry_count, 0));
   const totalSize = computed(() => dictionaries.value.reduce((s, d) => s + d.size_bytes, 0));
@@ -449,14 +521,26 @@ export function useDictionaries(emit: EmitFn) {
     await loadDictionaries();
   }
 
-  onMounted(async () => {
-    unlistenLmdgProgress = await listen<LmdgDownloadProgress>("lmdg-download-progress", (event) => {
-      lmdgDownloadProgress.value = event.payload;
-    });
-    await Promise.all([loadAllStats(), loadOnlineDictionaries(), loadCategoryDictionaries()]);
+  onMounted(() => {
+    void listen<LmdgDownloadProgress>("lmdg-download-progress", (event) => {
+      if (!disposed) lmdgDownloadProgress.value = event.payload;
+    })
+      .then((unlisten) => {
+        if (disposed) unlisten();
+        else unlistenLmdgProgress = unlisten;
+      })
+      .catch((error) => {
+        if (!disposed) ElMessage.error(`下载进度监听失败: ${String(error)}`);
+      });
+    void Promise.all([loadAllStats(), loadOnlineDictionaries(), loadCategoryDictionaries()]);
   });
 
   onUnmounted(() => {
+    disposed = true;
+    ++healthVersion;
+    ++categoryVersion;
+    ++listVersion;
+    ++previewVersion;
     unlistenLmdgProgress?.();
   });
 
@@ -464,6 +548,7 @@ export function useDictionaries(emit: EmitFn) {
     // Refs
     dictionaries,
     dictConfig,
+    orderedReferences,
     loading,
     importing,
     exportingDict,

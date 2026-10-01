@@ -224,6 +224,7 @@ export type DictionaryReference = {
 };
 
 export type DictionaryConfig = {
+  imports: string[];
   schema_id?: string;
   schema_name?: string;
   main_dictionary?: string;
