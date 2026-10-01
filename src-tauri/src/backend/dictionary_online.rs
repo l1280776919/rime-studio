@@ -1,6 +1,5 @@
 use crate::backend::*;
 use crate::*;
-use std::fs;
 use std::io::{Read, Write};
 use std::path::Path;
 use std::time::Instant;
@@ -351,49 +350,72 @@ where
         .set("Accept", "*/*")
         .call()
         .map_err(|err| RimeError::DownloadError(format!("下载失败: {err}")))?;
-    let total_bytes = response
-        .header("Content-Length")
-        .and_then(|value| value.parse::<u64>().ok());
+    let total_bytes = if response
+        .header("Content-Encoding")
+        .is_some_and(|encoding| encoding != "identity")
+    {
+        None
+    } else {
+        response
+            .header("Content-Length")
+            .and_then(|value| value.parse::<u64>().ok())
+    };
+    download_reader_to_file(
+        response.into_reader(),
+        destination,
+        max_bytes,
+        total_bytes,
+        empty_message,
+        too_large_message,
+        &mut progress,
+    )
+}
+
+pub(crate) fn download_reader_to_file(
+    mut reader: impl std::io::Read,
+    destination: &Path,
+    max_bytes: usize,
+    total_bytes: Option<u64>,
+    empty_message: &str,
+    too_large_message: &str,
+    mut progress: impl FnMut(u64, Option<u64>),
+) -> Result<(), RimeError> {
     if total_bytes.is_some_and(|value| value > max_bytes as u64) {
         return Err(RimeError::DownloadError(too_large_message.to_string()));
     }
-
-    let mut reader = response.into_reader();
-    let mut file = fs::File::create(destination)
-        .map_err(|err| RimeError::FileOperationError(format!("创建下载文件失败: {err}")))?;
-    let mut buffer = [0u8; 64 * 1024];
-    let mut downloaded = 0u64;
-    let mut last_emit = Instant::now();
-    progress(downloaded, total_bytes);
-
-    loop {
-        let read = reader
-            .read(&mut buffer)
-            .map_err(|err| RimeError::DownloadError(format!("读取下载内容失败: {err}")))?;
-        if read == 0 {
-            break;
+    write_file_atomically(destination, "保存下载文件失败", |file| {
+        let mut buffer = [0u8; 64 * 1024];
+        let mut downloaded = 0u64;
+        let mut last_emit = Instant::now();
+        progress(0, total_bytes);
+        loop {
+            let read = reader
+                .read(&mut buffer)
+                .map_err(|err| RimeError::DownloadError(format!("读取下载内容失败: {err}")))?;
+            if read == 0 {
+                break;
+            }
+            downloaded += read as u64;
+            if downloaded > max_bytes as u64 {
+                return Err(RimeError::DownloadError(too_large_message.to_string()));
+            }
+            file.write_all(&buffer[..read])?;
+            if last_emit.elapsed().as_millis() >= 200 {
+                progress(downloaded, total_bytes);
+                last_emit = Instant::now();
+            }
         }
-        downloaded += read as u64;
-        if downloaded > max_bytes as u64 {
-            let _ = fs::remove_file(destination);
-            return Err(RimeError::DownloadError(too_large_message.to_string()));
+        if downloaded == 0 {
+            return Err(RimeError::DownloadError(empty_message.to_string()));
         }
-        file.write_all(&buffer[..read])
-            .map_err(|err| RimeError::FileOperationError(format!("保存下载文件失败: {err}")))?;
-        if last_emit.elapsed().as_millis() >= 200 || total_bytes == Some(downloaded) {
-            progress(downloaded, total_bytes);
-            last_emit = Instant::now();
+        if total_bytes.is_some_and(|total| total != downloaded) {
+            return Err(RimeError::DownloadError(
+                "下载内容不完整或与响应大小不符".to_string(),
+            ));
         }
-    }
-
-    if downloaded == 0 {
-        let _ = fs::remove_file(destination);
-        return Err(RimeError::DownloadError(empty_message.to_string()));
-    }
-    file.flush()
-        .map_err(|err| RimeError::FileOperationError(format!("保存下载文件失败: {err}")))?;
-    progress(downloaded, total_bytes);
-    Ok(())
+        progress(downloaded, total_bytes);
+        Ok(())
+    })
 }
 
 pub(crate) fn resolve_sogou_detail_download(

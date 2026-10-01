@@ -86,6 +86,13 @@ pub(crate) fn list_dictionaries_sync() -> Result<Vec<DictInfo>, RimeError> {
             let entry = entry
                 .map_err(|err| RimeError::FileOperationError(format!("检查文件失败: {err}")))?;
             let path = entry.path();
+            if entry
+                .file_type()
+                .map(|kind| kind.is_symlink())
+                .unwrap_or(true)
+            {
+                continue;
+            }
             if path.is_dir() {
                 pending_dirs.push(path);
                 continue;
@@ -209,23 +216,11 @@ pub(crate) fn validate_dictionary_path(
         ));
     }
 
-    let relative = PathBuf::from(dict_name.replace('\\', "/"));
-    if relative.components().any(|component| {
-        matches!(
-            component,
-            std::path::Component::Prefix(_)
-                | std::path::Component::RootDir
-                | std::path::Component::ParentDir
-        )
-    }) {
-        return Err(RimeError::InvalidDictionaryPath("词库路径无效".to_string()));
-    }
-
-    let path = user_dir.join(relative);
-    if !path.exists() || !path.is_file() {
+    let relative = dict_name.replace('\\', "/");
+    let path = resolve_user_relative_path(user_dir, &relative, true)?;
+    if !path.is_file() {
         return Err(RimeError::DictionaryNotFound("词库文件不存在".to_string()));
     }
-
     Ok(path)
 }
 
@@ -237,60 +232,64 @@ pub(crate) fn dictionary_file_name_from_reference(reference: &str) -> String {
     format!("{}.dict.yaml", reference.trim_end_matches(".dict.yaml"))
 }
 
-pub(crate) fn parse_import_tables(contents: &str) -> Vec<String> {
-    if let Some(Value::Sequence(items)) = yaml_lookup(contents, "import_tables") {
-        let imports = items
-            .iter()
-            .filter_map(yaml_value_to_string)
-            .map(|value| {
-                value
-                    .trim()
-                    .trim_end_matches(".dict.yaml")
-                    .replace('\\', "/")
-            })
-            .filter(|value| !value.is_empty())
-            .collect::<Vec<_>>();
-        if !imports.is_empty() {
-            return imports;
+pub(crate) fn split_dictionary_header(contents: &str) -> (&str, &str) {
+    let mut offset = 0;
+    for line in contents.split_inclusive('\n') {
+        if line.trim() == "..." {
+            return (&contents[..offset], &contents[offset + line.len()..]);
         }
+        offset += line.len();
     }
+    (contents, "")
+}
 
-    let mut imports = Vec::new();
-    let mut in_import_tables = false;
-    for line in contents.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("import_tables:") || trimmed.starts_with("\"import_tables\":") {
-            in_import_tables = true;
-            continue;
-        }
-        if !in_import_tables {
-            continue;
-        }
-        if let Some(value) = trimmed.strip_prefix("- ") {
-            let value = value
-                .split('#')
-                .next()
-                .unwrap_or(value)
+pub(crate) fn parse_import_tables(contents: &str) -> Vec<String> {
+    let (header, _) = split_dictionary_header(contents);
+    yaml_lookup(header, "import_tables")
+        .and_then(|value| value.as_sequence().cloned())
+        .unwrap_or_default()
+        .iter()
+        .filter_map(yaml_value_to_string)
+        .map(|reference| {
+            reference
                 .trim()
-                .trim_matches('"')
                 .trim_end_matches(".dict.yaml")
-                .replace('\\', "/");
-            if !value.is_empty() {
-                imports.push(value);
-            }
-        } else if !trimmed.is_empty() && !trimmed.starts_with('#') {
-            break;
-        }
+                .replace('\\', "/")
+        })
+        .filter(|reference| !reference.is_empty())
+        .collect()
+}
+
+pub(crate) fn merge_dictionary_imports(
+    existing: &str,
+    dictionary_id: &str,
+    imports: &[String],
+) -> Result<String, RimeError> {
+    let (header, body) = split_dictionary_header(existing);
+    let mut root = parse_yaml_mapping(header)?;
+    if root.is_empty() {
+        root.insert(yaml_str("name"), yaml_str(dictionary_id));
+        root.insert(yaml_str("version"), yaml_str(&timestamp()));
+        root.insert(yaml_str("sort"), yaml_str("by_weight"));
     }
-    imports
+    root.insert(
+        yaml_str("import_tables"),
+        Value::Sequence(imports.iter().map(|entry| yaml_str(entry)).collect()),
+    );
+    let header = serde_yaml::to_string(&root)?;
+    Ok(format!(
+        "---\n{}...\n{body}",
+        header.trim_start_matches("---\n")
+    ))
 }
 
 pub(crate) fn resolve_schema_path(user_dir: &Path, schema_id: &str) -> Option<PathBuf> {
-    let user_schema = user_dir.join(format!("{schema_id}.schema.yaml"));
-    if user_schema.exists() {
-        return Some(user_schema);
+    let schema_id = sanitize_schema_id(schema_id).ok()?;
+    let user_schema =
+        resolve_user_relative_path(user_dir, &format!("{schema_id}.schema.yaml"), true).ok();
+    if let Some(path) = user_schema {
+        return Some(path);
     }
-
     locate_deployer()
         .and_then(|d| d.parent().map(|p| p.join("data")))
         .into_iter()
@@ -319,7 +318,13 @@ pub(crate) fn current_schema_dictionary(
         .unwrap_or_default();
     let schema_name = parse_quoted_value(&schema_contents, "schema/name")
         .or_else(|| parse_string_after_key(&schema_contents, "name:"));
-    let dictionary = parse_string_after_key(&schema_contents, "translator/dictionary")
+    let schema_custom =
+        resolve_user_relative_path(user_dir, &format!("{schema_id_value}.custom.yaml"), true)
+            .ok()
+            .map(|path| read_to_string(&path))
+            .unwrap_or_default();
+    let dictionary = parse_string_after_key(&schema_custom, "translator/dictionary")
+        .or_else(|| parse_string_after_key(&schema_contents, "translator/dictionary"))
         .or_else(|| parse_string_after_key(&schema_contents, "dictionary:"))
         .or_else(|| Some(schema_id_value.to_string()));
 
@@ -347,7 +352,11 @@ pub(crate) fn read_dictionary_config_sync() -> Result<DictionaryConfig, RimeErro
         });
     };
 
-    let main_path = user_dir.join(dictionary_file_name_from_reference(&main_dictionary_value));
+    let main_path = resolve_user_relative_path(
+        &user_dir,
+        &dictionary_file_name_from_reference(&main_dictionary_value),
+        false,
+    )?;
     let imports = parse_import_tables(&read_to_string(&main_path));
     let dict_by_ref = dictionaries
         .iter()
@@ -401,22 +410,6 @@ pub(crate) fn read_dictionary_config_sync() -> Result<DictionaryConfig, RimeErro
     })
 }
 
-pub(crate) fn render_main_dictionary(dictionary_id: &str, imports: &[String]) -> String {
-    let mut contents = vec![
-        "---".to_string(),
-        format!("name: {dictionary_id}"),
-        format!("version: \"{}\"", timestamp()),
-        "sort: by_weight".to_string(),
-        "import_tables:".to_string(),
-    ];
-    for reference in imports {
-        contents.push(format!("  - {reference}"));
-    }
-    contents.push("...".to_string());
-    contents.push(String::new());
-    contents.join("\n")
-}
-
 pub(crate) fn save_dictionary_imports_sync(
     imports: Vec<String>,
 ) -> Result<DictionaryConfig, RimeError> {
@@ -426,30 +419,45 @@ pub(crate) fn save_dictionary_imports_sync(
     let (_, _, main_dictionary) = current_schema_dictionary(&user_dir);
     let main_dictionary = main_dictionary
         .ok_or_else(|| RimeError::ConfigNotFound("当前方案未找到主词库".to_string()))?;
-    backup_user_config(&user_dir, BackupKind::BeforeSave)?;
-
-    let mut seen = std::collections::HashSet::new();
-    let cleaned = imports
-        .into_iter()
-        .map(|reference| {
-            reference
-                .trim()
-                .trim_end_matches(".dict.yaml")
-                .replace('\\', "/")
-        })
-        .filter(|reference| !reference.is_empty())
-        .filter(|reference| !reference.contains("..") && !reference.starts_with('/'))
-        .filter(|reference| seen.insert(reference.clone()))
-        .collect::<Vec<_>>();
-
-    let path = user_dir.join(dictionary_file_name_from_reference(&main_dictionary));
-    write_text_file(
-        &path,
-        &render_main_dictionary(&main_dictionary, &cleaned),
-        "写入主词库配置失败",
+    let path = resolve_user_relative_path(
+        &user_dir,
+        &dictionary_file_name_from_reference(&main_dictionary),
+        false,
     )?;
-
+    let mut seen = std::collections::HashSet::new();
+    let mut cleaned = Vec::new();
+    for reference in imports {
+        let reference = reference
+            .trim()
+            .trim_end_matches(".dict.yaml")
+            .replace('\\', "/");
+        if !valid_user_relative_path(&reference) || reference == main_dictionary {
+            return Err(RimeError::InvalidDictionaryPath(
+                "词库引用无效或引用了主词库自身".to_string(),
+            ));
+        }
+        if seen.insert(reference.clone()) {
+            cleaned.push(reference);
+        }
+    }
+    let existing = read_optional_config(&path)?;
+    let rendered = merge_dictionary_imports(&existing, &main_dictionary, &cleaned)?;
+    backup_user_config(&user_dir, BackupKind::BeforeSave)?;
+    write_text_file(&path, &rendered, "写入主词库配置失败")?;
     read_dictionary_config_sync()
+}
+
+fn read_current_dictionary_imports(config: &DictionaryConfig) -> Result<Vec<String>, RimeError> {
+    let reference = config
+        .main_dictionary
+        .as_deref()
+        .ok_or_else(|| RimeError::ConfigNotFound("当前方案未找到主词库".to_string()))?;
+    let path = resolve_user_relative_path(
+        &rime_user_dir()?,
+        &dictionary_file_name_from_reference(reference),
+        false,
+    )?;
+    Ok(parse_import_tables(&read_optional_config(&path)?))
 }
 
 pub(crate) fn add_dictionary_to_current_schema_sync(
@@ -466,12 +474,7 @@ pub(crate) fn add_dictionary_to_current_schema_sync(
         ));
     }
 
-    let mut imports = config
-        .enabled
-        .iter()
-        .map(|entry| entry.reference.clone())
-        .chain(config.missing.iter().map(|entry| entry.reference.clone()))
-        .collect::<Vec<_>>();
+    let mut imports = read_current_dictionary_imports(&config)?;
     if !imports.iter().any(|item| item == &reference) {
         imports.push(reference);
     }
@@ -486,11 +489,8 @@ pub(crate) fn remove_dictionary_from_current_schema_sync(
         .trim()
         .trim_end_matches(".dict.yaml")
         .replace('\\', "/");
-    let imports = config
-        .enabled
-        .iter()
-        .map(|entry| entry.reference.clone())
-        .chain(config.missing.iter().map(|entry| entry.reference.clone()))
+    let imports = read_current_dictionary_imports(&config)?
+        .into_iter()
         .filter(|item| item != &reference)
         .collect::<Vec<_>>();
     save_dictionary_imports_sync(imports)

@@ -141,7 +141,7 @@ pub(crate) fn preview_quick_settings_sync(
                 merge_default_custom(
                     &default_existing,
                     &config,
-                    &[sanitize_schema_id(&config.schema_id)],
+                    &promoted_schema_ids(&default_existing, &config.schema_id)?,
                 )?,
             ),
             preview_file(
@@ -159,27 +159,30 @@ pub(crate) fn save_quick_settings_sync(
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir)
         .map_err(|err| RimeError::SettingsError(format!("创建 Rime 目录失败: {err}")))?;
-    backup_user_config(&user_dir, BackupKind::BeforeSave)?;
-
-    let default_custom_path = user_dir.join("default.custom.yaml");
-    let existing_default = read_optional_config(&default_custom_path)?;
-    write_text_file(
-        &default_custom_path,
-        &merge_default_custom(
-            &existing_default,
-            &config,
-            &[sanitize_schema_id(&config.schema_id)],
-        )?,
-        "写入 default.custom.yaml 失败",
-    )?;
-
+    let default_path = user_dir.join("default.custom.yaml");
+    let weasel_path = user_dir.join("weasel.custom.yaml");
+    let existing_default = read_optional_config(&default_path)?;
+    let existing_weasel = read_optional_config(&weasel_path)?;
+    let schemas = promoted_schema_ids(&existing_default, &config.schema_id)?;
     let mut appearance = read_appearance_config(&user_dir);
     appearance.page_size = config.page_size;
-    appearance.switch_key = config.switch_key;
+    appearance.switch_key = config.switch_key.clone();
     appearance.horizontal = config.horizontal;
     appearance.inline_preedit = config.inline_preedit;
-    write_appearance_config(&user_dir, &appearance)?;
-
+    // Validate and render both documents before changing either one.
+    let default_contents = merge_default_custom(&existing_default, &config, &schemas)?;
+    let weasel_contents = merge_weasel_custom(&existing_weasel, &appearance)?;
+    backup_user_config(&user_dir, BackupKind::BeforeSave)?;
+    write_text_file(
+        &default_path,
+        &default_contents,
+        "写入 default.custom.yaml 失败",
+    )?;
+    write_text_file(
+        &weasel_path,
+        &weasel_contents,
+        "写入 weasel.custom.yaml 失败",
+    )?;
     get_quick_settings_sync()
 }
 
@@ -961,23 +964,13 @@ pub(crate) fn preview_backup_sync(backup_name: String) -> Result<ConfigPreview, 
     let user_dir = rime_user_dir()?;
     let backup_dir = validated_backup_dir(&user_dir, &backup_name)?;
     let mut files = Vec::new();
-    let entries = fs::read_dir(&backup_dir)
-        .map_err(|err| RimeError::BackupError(format!("读取备份失败: {err}")))?;
-    for entry in entries {
-        let entry =
-            entry.map_err(|err| RimeError::BackupError(format!("检查备份文件失败: {err}")))?;
-        let source = entry.path();
-        if !source.is_file() {
-            continue;
-        }
-        let Some(name) = source.file_name().and_then(OsStr::to_str) else {
-            continue;
-        };
-        if name == "backup-meta.json" {
-            continue;
-        }
-        let new_contents = fs::read_to_string(&source).unwrap_or_default();
-        files.push(preview_file(&user_dir, name, new_contents));
+    for relative in collect_snapshot_files(&backup_dir)? {
+        let source = backup_dir.join(&relative);
+        let name = relative.to_string_lossy().replace('\\', "/");
+        let new_contents = fs::read_to_string(&source).map_err(|err| {
+            RimeError::BackupError(format!("读取备份 {} 失败: {err}", relative.display()))
+        })?;
+        files.push(preview_file(&user_dir, &name, new_contents));
     }
     files.sort_by(|left, right| left.name.cmp(&right.name));
     Ok(ConfigPreview { files })
