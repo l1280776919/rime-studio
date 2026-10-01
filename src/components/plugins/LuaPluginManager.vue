@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, onUnmounted, ref } from "vue";
 import { ElMessage } from "element-plus";
 import { api } from "../../api";
 import { Edit, Refresh } from "@element-plus/icons-vue";
 import type { LuaPluginInfo } from "../../types";
+import { useLuaScriptEditor } from "../../composables/useLuaScriptEditor";
 import { useErrorHandler } from "../../composables/useErrorHandler";
 
 const emit = defineEmits<{
@@ -14,14 +15,30 @@ const emit = defineEmits<{
 const loading = ref(false);
 const toggling = ref<string | null>(null);
 const plugins = ref<LuaPluginInfo[]>([]);
-const editDialogVisible = ref(false);
-const editingPlugin = ref<LuaPluginInfo | null>(null);
-const scriptContent = ref("");
-const savingScript = ref(false);
+const editor = useLuaScriptEditor(
+  (id) => withErrorHandling(() => api.getLuaScriptContent(id)),
+  (id, content) =>
+    withErrorHandling(async () => {
+      await api.saveLuaScriptContent(id, content);
+      return true;
+    }),
+  () => {
+    ElMessage.success("Lua 脚本已保存");
+    emit("change");
+  },
+);
+const {
+  content: scriptContent,
+  loading: loadingScript,
+  saving: savingScript,
+  editingPlugin,
+  visible: editDialogVisible,
+} = editor;
 
 const { withErrorHandling } = useErrorHandler();
 
 async function loadPlugins() {
+  if (loading.value || toggling.value) return;
   loading.value = true;
   try {
     const list = await withErrorHandling(() => api.listLuaPlugins());
@@ -34,6 +51,7 @@ async function loadPlugins() {
 }
 
 async function handleToggle(plugin: LuaPluginInfo, enabled: boolean) {
+  if (loading.value || toggling.value) return;
   toggling.value = plugin.id;
   try {
     const result = await withErrorHandling(() => api.toggleLuaPlugin(plugin.id, enabled));
@@ -47,28 +65,9 @@ async function handleToggle(plugin: LuaPluginInfo, enabled: boolean) {
   }
 }
 
-async function openScriptEditor(plugin: LuaPluginInfo) {
-  editingPlugin.value = plugin;
-  editDialogVisible.value = true;
-  const content = await withErrorHandling(() => api.getLuaScriptContent(plugin.id));
-  if (content !== undefined) {
-    scriptContent.value = content;
-  }
-}
-
-async function saveScript() {
-  if (!editingPlugin.value) return;
-  savingScript.value = true;
-  try {
-    await withErrorHandling(() =>
-      api.saveLuaScriptContent(editingPlugin.value!.id, scriptContent.value),
-    );
-    ElMessage.success("Lua 脚本已保存");
-    editDialogVisible.value = false;
-  } finally {
-    savingScript.value = false;
-  }
-}
+const openScriptEditor = editor.open;
+const saveScript = editor.save;
+onUnmounted(editor.cancelLoad);
 
 onMounted(() => {
   loadPlugins();
@@ -106,6 +105,7 @@ defineExpose({
           <el-switch
             :model-value="plugin.enabled"
             :loading="toggling === plugin.id"
+            :disabled="loading || toggling !== null"
             @change="(val: boolean | string | number) => handleToggle(plugin, Boolean(val))"
           />
         </div>
@@ -123,6 +123,7 @@ defineExpose({
             link
             type="primary"
             size="small"
+            :disabled="loadingScript || savingScript"
             :icon="Edit"
             @click="openScriptEditor(plugin)"
           >
@@ -139,7 +140,7 @@ defineExpose({
       width="640px"
       append-to-body
     >
-      <div class="script-editor-body">
+      <div v-loading="loadingScript" class="script-editor-body">
         <el-input
           v-model="scriptContent"
           type="textarea"
@@ -150,7 +151,14 @@ defineExpose({
       </div>
       <template #footer>
         <el-button @click="editDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="savingScript" @click="saveScript"> 保存脚本 </el-button>
+        <el-button
+          type="primary"
+          :loading="savingScript"
+          :disabled="loadingScript"
+          @click="saveScript"
+        >
+          保存脚本
+        </el-button>
       </template>
     </el-dialog>
   </div>

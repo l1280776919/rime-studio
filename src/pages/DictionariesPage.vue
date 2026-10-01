@@ -36,6 +36,7 @@ const emit = defineEmits<{
 const {
   dictionaries,
   dictConfig,
+  orderedReferences,
   loading,
   importing,
   exportingDict,
@@ -242,7 +243,7 @@ const pagedAvailable = computed(() =>
           <el-table
             v-else
             v-loading="loading"
-            :data="[...(dictConfig?.enabled ?? []), ...(dictConfig?.missing ?? [])]"
+            :data="orderedReferences"
             stripe
             class="dict-clean-table"
             max-height="360"
@@ -282,7 +283,7 @@ const pagedAvailable = computed(() =>
                     link
                     size="small"
                     :icon="Top"
-                    :disabled="$index === 0"
+                    :disabled="$index === 0 || !!updatingReference"
                     title="上移优先级"
                     @click.stop="moveReference(row.reference, -1)"
                   >
@@ -292,7 +293,7 @@ const pagedAvailable = computed(() =>
                     link
                     size="small"
                     :icon="Bottom"
-                    :disabled="$index >= enabledCount - 1"
+                    :disabled="$index >= enabledCount - 1 || !!updatingReference"
                     title="下移优先级"
                     @click.stop="moveReference(row.reference, 1)"
                   >
@@ -314,6 +315,7 @@ const pagedAvailable = computed(() =>
                     size="small"
                     type="danger"
                     :loading="updatingReference === row.reference"
+                    :disabled="!!updatingReference"
                     title="从方案移除"
                     @click.stop="removeDictionaryReference(row.reference)"
                   >
@@ -391,6 +393,7 @@ const pagedAvailable = computed(() =>
                       type="success"
                       plain
                       :loading="updatingReference === row.name"
+                      :disabled="!!updatingReference"
                       @click.stop="addDictionaryReference(dictNameToReference(row.name))"
                     >
                       加入方案

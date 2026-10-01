@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { api } from "../api";
 import {
@@ -17,7 +17,14 @@ import {
 } from "@element-plus/icons-vue";
 import type { PhraseEntry, RimeEnvironment } from "../types";
 import { useErrorHandler } from "../composables/useErrorHandler";
-import { countDuplicatePhrases, dedupePhrases, paginateItems } from "../utils/phrases";
+import { usePhraseDocument } from "../composables/usePhraseDocument";
+import {
+  countDuplicatePhrases,
+  dedupePhrases,
+  paginateItems,
+  parsePhraseImport,
+  isValidPhrase,
+} from "../utils/phrases";
 
 const props = defineProps<{
   env?: RimeEnvironment;
@@ -28,9 +35,16 @@ const emit = defineEmits<{
   deploy: [];
 }>();
 
-const entries = ref<PhraseEntry[]>([]);
+const document = usePhraseDocument(
+  () => withErrorHandling(() => api.getCustomPhrases()),
+  (entries) =>
+    withErrorHandling(async () => {
+      await api.saveCustomPhrases(entries);
+      return true;
+    }),
+);
+const { entries, loading, ready, dirty } = document;
 const searchQuery = ref("");
-const loading = ref(false);
 const saving = ref(false);
 const deploying = ref(false);
 const editingEntry = ref<PhraseEntry | null>(null);
@@ -88,36 +102,53 @@ const parsedDuplicateCount = computed(() =>
   countDuplicatePhrases([...entries.value, ...parsedImport.value]),
 );
 
+let confirmingRefresh = false;
+
 async function loadPhrases() {
-  loading.value = true;
-  const result = await withErrorHandling(() => api.getCustomPhrases());
-  if (result !== undefined) {
-    entries.value = result;
+  if (loading.value || document.saving.value || confirmingRefresh) return;
+  if (dirty.value || editingEntry.value) {
+    confirmingRefresh = true;
+    try {
+      await ElMessageBox.confirm("刷新会丢弃尚未保存的修改，确定重新读取文件？", "刷新短语", {
+        confirmButtonText: "刷新",
+        cancelButtonText: "保留修改",
+        type: "warning",
+      });
+    } catch {
+      return;
+    } finally {
+      confirmingRefresh = false;
+    }
   }
-  loading.value = false;
+  if (await document.load()) editingEntry.value = null;
 }
 
 async function savePhrases(shouldDeploy: boolean) {
+  if (!ready.value || loading.value || document.saving.value) return;
+  if (editingEntry.value) {
+    ElMessage.warning("请先完成或取消正在编辑的短语，再保存");
+    return;
+  }
+  if (!entries.value.every(isValidPhrase)) {
+    ElMessage.warning("短语或编码格式无效，请检查空内容、制表符、换行及权重");
+    return;
+  }
   saving.value = !shouldDeploy;
   deploying.value = shouldDeploy;
-  const saved = await withErrorHandling(async () => {
-    await api.saveCustomPhrases(entries.value);
-    return true;
-  });
-  if (saved) {
-    emit("saved");
-    if (shouldDeploy) {
-      ElMessage.success("短语已保存，开始部署");
-      emit("deploy");
-    } else {
-      ElMessage.success("短语已保存");
+  try {
+    if (await document.save()) {
+      emit("saved");
+      ElMessage.success(shouldDeploy ? "短语已保存，开始部署" : "短语已保存");
+      if (shouldDeploy) emit("deploy");
     }
+  } finally {
+    saving.value = false;
+    deploying.value = false;
   }
-  saving.value = false;
-  deploying.value = false;
 }
 
 function startEdit(entry: PhraseEntry) {
+  if (!ready.value || loading.value || document.saving.value) return;
   editingEntry.value = entry;
   editDraft.value = { ...entry };
 }
@@ -127,6 +158,10 @@ function cancelEdit() {
 }
 
 async function confirmEdit(entry: PhraseEntry) {
+  if (!isValidPhrase(editDraft.value)) {
+    ElMessage.warning("短语内容或编码格式无效");
+    return;
+  }
   const index = entries.value.indexOf(entry);
   if (index < 0) {
     ElMessage.error("未找到要编辑的短语，请刷新后重试");
@@ -157,8 +192,9 @@ async function deleteEntry(entry: PhraseEntry) {
 }
 
 function addNewPhrase() {
-  if (!newPhrase.value.text.trim()) {
-    ElMessage.warning("请输入短语内容");
+  if (!ready.value || loading.value || document.saving.value) return;
+  if (!isValidPhrase(newPhrase.value)) {
+    ElMessage.warning("请输入有效的短语内容、编码和权重");
     return;
   }
   entries.value.push({ ...newPhrase.value });
@@ -167,47 +203,17 @@ function addNewPhrase() {
   ElMessage.success("已添加短语（记得保存生效）");
 }
 
+watch(
+  importText,
+  () => {
+    parsedImport.value = [];
+  },
+  { flush: "sync" },
+);
+
 function parseImportText() {
-  parsedImport.value = [];
-  const lines = importText.value.split(/\r?\n/);
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-
-    const parts = trimmed.includes("\t")
-      ? trimmed.split("\t")
-      : trimmed.includes(",")
-        ? trimmed.split(",")
-        : trimmed.split(/\s+/);
-
-    if (parts.length < 1 || !parts[0]) continue;
-
-    const first = parts[0].trim();
-    const second = (parts[1] ?? "").trim();
-    const third = (parts[2] ?? "").trim();
-
-    const firstIsCode = /^[a-zA-Z0-9=_\-';/.]+$/.test(first) && first.length <= 15;
-    const secondIsText = second.length > 0;
-
-    let text = first;
-    let code = second;
-    let weightStr = third;
-
-    if (firstIsCode && secondIsText && !second.match(/^[0-9]+$/)) {
-      code = first;
-      text = second;
-    }
-
-    const weight = parseInt(weightStr || "1", 10);
-    parsedImport.value.push({
-      text,
-      code,
-      weight: Number.isNaN(weight) ? 1 : weight,
-    });
-  }
-  if (!parsedImport.value.length) {
-    ElMessage.warning("未能从输入中解析出有效短语");
-  }
+  parsedImport.value = parsePhraseImport(importText.value);
+  if (!parsedImport.value.length) ElMessage.warning("未能从输入中解析出有效短语");
 }
 
 function confirmImport() {
@@ -265,10 +271,11 @@ async function cleanDuplicatePhrases() {
 }
 
 onMounted(loadPhrases);
+onUnmounted(document.cancelLoad);
 </script>
 
 <template>
-  <div class="phrases-studio-container">
+  <div v-loading="loading || saving || deploying" class="phrases-studio-container">
     <!-- Header Hero Bar -->
     <header class="phrases-hero panel">
       <div class="hero-left">
@@ -305,12 +312,20 @@ onMounted(loadPhrases);
           去重 ({{ duplicateCount }})
         </el-button>
 
-        <el-button type="primary" :icon="Plus" @click="showAddDialog = true"> 添加短语 </el-button>
+        <el-button
+          type="primary"
+          :disabled="!ready || loading"
+          :icon="Plus"
+          @click="showAddDialog = true"
+        >
+          添加短语
+        </el-button>
 
         <el-button
           type="primary"
           plain
           :loading="saving"
+          :disabled="!ready || loading || deploying"
           :icon="UploadFilled"
           @click="savePhrases(false)"
         >
@@ -321,6 +336,7 @@ onMounted(loadPhrases);
           type="primary"
           class="deploy-btn"
           :loading="deploying"
+          :disabled="!ready || loading || saving"
           :icon="Refresh"
           @click="savePhrases(true)"
         >
@@ -349,9 +365,22 @@ onMounted(loadPhrases);
               匹配 <strong>{{ filteredEntries.length }}</strong> / {{ entries.length }}
             </span>
 
-            <el-button :icon="Download" @click="showImportDialog = true"> 批量导入 </el-button>
+            <el-button
+              :disabled="!ready || loading"
+              :icon="Download"
+              @click="showImportDialog = true"
+            >
+              批量导入
+            </el-button>
             <el-button :icon="CopyDocument" @click="copyAllAsTSV"> 复制全部 TSV </el-button>
-            <el-button :icon="Refresh" :loading="loading" @click="loadPhrases"> 刷新 </el-button>
+            <el-button
+              :icon="Refresh"
+              :loading="loading"
+              :disabled="saving || deploying"
+              @click="loadPhrases"
+            >
+              刷新
+            </el-button>
           </div>
         </div>
 
@@ -362,7 +391,12 @@ onMounted(loadPhrases);
             description="还没有自定义短语"
             :image-size="64"
           >
-            <el-button type="primary" :icon="Plus" @click="showAddDialog = true">
+            <el-button
+              type="primary"
+              :disabled="!ready || loading"
+              :icon="Plus"
+              @click="showAddDialog = true"
+            >
               添加第一条短语
             </el-button>
           </el-empty>

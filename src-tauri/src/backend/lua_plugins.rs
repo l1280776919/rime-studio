@@ -1,7 +1,9 @@
 use crate::backend::*;
 use crate::*;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+
+static LUA_WRITE_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct LuaPluginInfo {
@@ -30,7 +32,7 @@ const PRESET_PLUGINS: &[LuaPluginPreset] = &[
     LuaPluginPreset {
         id: "date",
         name: "动态日期时间",
-        description: "输入 date、time、week 获取当前系统日期、时间、星期与农历提示。",
+        description: "输入 date、time、week 获取当前系统日期、时间、星期。",
         file_name: "date.lua",
         trigger_preview: "输入 date、time、week",
         author: "Rime Community",
@@ -133,7 +135,7 @@ local function unicode_translator(input, seg)
     local hex = input:match("^[Uu]%+?([0-9a-fA-F]+)$")
     if hex then
         local code = tonumber(hex, 16)
-        if code and code > 0 and code <= 0x10FFFF then
+        if code and code > 0 and code <= 0x10FFFF and not (code >= 0xD800 and code <= 0xDFFF) then
             local char = utf8.char(code)
             local cand = Candidate("unicode", seg.start, seg._end, char, string.format("U+%04X", code))
             cand.quality = 100
@@ -147,122 +149,196 @@ return unicode_translator
     },
 ];
 
-fn rime_lua_file(user_dir: &Path) -> PathBuf {
-    user_dir.join("rime.lua")
+// Long Lua strings/comments are opaque, so apparent exports inside them are never edited.
+fn export_line_mask(content: &str) -> Vec<bool> {
+    let mut long_end: Option<String> = None;
+    content
+        .lines()
+        .map(|line| {
+            let editable = long_end.is_none();
+            let bytes = line.as_bytes();
+            let mut i = 0;
+            while i < bytes.len() {
+                if let Some(end) = &long_end {
+                    if let Some(offset) = line[i..].find(end) {
+                        i += offset + end.len();
+                        long_end = None;
+                    } else {
+                        break;
+                    }
+                    continue;
+                }
+                if bytes[i] == b'\'' || bytes[i] == b'"' {
+                    let quote = bytes[i];
+                    i += 1;
+                    while i < bytes.len() {
+                        if bytes[i] == b'\\' {
+                            i = (i + 2).min(bytes.len());
+                        } else if bytes[i] == quote {
+                            i += 1;
+                            break;
+                        } else {
+                            i += 1;
+                        }
+                    }
+                    continue;
+                }
+                let comment = bytes[i..].starts_with(b"--");
+                let start = i + if comment { 2 } else { 0 };
+                if bytes.get(start) == Some(&b'[') {
+                    let mut end = start + 1;
+                    while bytes.get(end) == Some(&b'=') {
+                        end += 1;
+                    }
+                    if bytes.get(end) == Some(&b'[') {
+                        long_end = Some(format!("]{}]", "=".repeat(end - start - 1)));
+                        i = end + 1;
+                        continue;
+                    }
+                }
+                if comment {
+                    break;
+                }
+                // Move across UTF-8 text without slicing through a character later.
+                i += line[i..].chars().next().expect("character").len_utf8();
+            }
+            editable
+        })
+        .collect()
 }
 
-fn lua_dir(user_dir: &Path) -> PathBuf {
-    user_dir.join("lua")
+// Match only the preset's complete global export, never an unrelated require or ID substring.
+fn is_preset_export(line: &str, preset: &LuaPluginPreset) -> bool {
+    let line = line.trim().trim_start_matches("--").trim();
+    let Some((name, expression)) = line.split_once('=') else {
+        return false;
+    };
+    if name.trim() != format!("{}_translator", preset.id) {
+        return false;
+    }
+    let expression = expression
+        .split("--")
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .trim_end_matches(';')
+        .trim();
+    let compact: String = expression
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect();
+    compact == format!("require(\"{}\")", preset.id)
+        || compact == format!("require('{}')", preset.id)
 }
 
 pub(crate) fn list_lua_plugins_sync() -> Result<Vec<LuaPluginInfo>, RimeError> {
     let user_dir = rime_user_dir()?;
-    let rime_lua_path = rime_lua_file(&user_dir);
-    let rime_lua_content = if rime_lua_path.exists() {
-        fs::read_to_string(&rime_lua_path).unwrap_or_default()
-    } else {
-        String::new()
-    };
-
-    let l_dir = lua_dir(&user_dir);
-    let mut plugins = Vec::new();
-
-    for preset in PRESET_PLUGINS {
-        let script_path = l_dir.join(preset.file_name);
-        let installed = script_path.exists();
-        let enabled = rime_lua_content.lines().any(|line| {
-            let trimmed = line.trim();
-            !trimmed.starts_with("--") && trimmed.contains(preset.id)
-        });
-
-        plugins.push(LuaPluginInfo {
-            id: preset.id.to_string(),
-            name: preset.name.to_string(),
-            description: preset.description.to_string(),
-            file_name: preset.file_name.to_string(),
-            trigger_preview: preset.trigger_preview.to_string(),
-            installed,
-            enabled,
-            author: preset.author.to_string(),
-        });
+    if !user_dir.exists() {
+        return Ok(PRESET_PLUGINS
+            .iter()
+            .map(|preset| plugin_info(preset, false, false))
+            .collect());
     }
+    let entry = resolve_user_relative_path(&user_dir, "rime.lua", false)?;
+    let content = read_optional_config(&entry)?;
+    PRESET_PLUGINS
+        .iter()
+        .map(|preset| {
+            let path =
+                resolve_user_relative_path(&user_dir, &format!("lua/{}", preset.file_name), false)?;
+            let installed = path.is_file();
+            let enabled = installed
+                && content
+                    .lines()
+                    .zip(export_line_mask(&content))
+                    .any(|(line, editable)| {
+                        editable && !line.trim().starts_with("--") && is_preset_export(line, preset)
+                    });
+            Ok(plugin_info(preset, installed, enabled))
+        })
+        .collect()
+}
 
-    Ok(plugins)
+fn plugin_info(preset: &LuaPluginPreset, installed: bool, enabled: bool) -> LuaPluginInfo {
+    LuaPluginInfo {
+        id: preset.id.into(),
+        name: preset.name.into(),
+        description: preset.description.into(),
+        file_name: preset.file_name.into(),
+        trigger_preview: preset.trigger_preview.into(),
+        installed,
+        enabled,
+        author: preset.author.into(),
+    }
+}
+
+fn find_preset(plugin_id: &str) -> Result<&'static LuaPluginPreset, RimeError> {
+    PRESET_PLUGINS
+        .iter()
+        .find(|preset| preset.id == plugin_id)
+        .ok_or_else(|| RimeError::ConfigNotFound(format!("未找到插件: {plugin_id}")))
 }
 
 pub(crate) fn toggle_lua_plugin_sync(
     plugin_id: String,
     enabled: bool,
 ) -> Result<Vec<LuaPluginInfo>, RimeError> {
+    let _guard = LUA_WRITE_LOCK
+        .lock()
+        .map_err(|_| RimeError::FileOperationError("Lua 写入锁不可用".into()))?;
+    let preset = find_preset(&plugin_id)?;
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir)
         .map_err(|err| RimeError::FileOperationError(format!("创建用户目录失败: {err}")))?;
-
-    let preset = PRESET_PLUGINS
-        .iter()
-        .find(|p| p.id == plugin_id)
-        .ok_or_else(|| RimeError::ConfigNotFound(format!("未找到插件: {plugin_id}")))?;
-
-    let l_dir = lua_dir(&user_dir);
-    fs::create_dir_all(&l_dir)
-        .map_err(|err| RimeError::FileOperationError(format!("创建 lua 目录失败: {err}")))?;
-
-    let script_path = l_dir.join(preset.file_name);
-    if !script_path.exists() {
-        fs::write(&script_path, preset.script_template)
-            .map_err(|err| RimeError::FileOperationError(format!("写入 Lua 脚本失败: {err}")))?;
-    }
-
-    let rime_lua_path = rime_lua_file(&user_dir);
-    let current_content = if rime_lua_path.exists() {
-        fs::read_to_string(&rime_lua_path).unwrap_or_default()
-    } else {
-        "-- Rime Lua plugins entry point\n".to_string()
-    };
-
-    let mut new_lines = Vec::new();
+    let script =
+        resolve_user_relative_path(&user_dir, &format!("lua/{}", preset.file_name), false)?;
+    let entry = resolve_user_relative_path(&user_dir, "rime.lua", false)?;
+    let previous = read_optional_config(&entry)?;
+    // Validate both existing files before installing anything.
+    read_optional_config(&script)?;
     let mut found = false;
-
-    for line in current_content.lines() {
-        let trimmed = line.trim();
-        if trimmed.contains(&format!("require(\"{}\")", preset.id))
-            || trimmed.contains(&format!("require('{}')", preset.id))
-        {
-            found = true;
-            if enabled {
-                new_lines.push(preset.lua_export.to_string());
-            } else {
-                new_lines.push(format!("-- {}", preset.lua_export));
+    let mut lines = Vec::new();
+    for (line, editable) in previous.lines().zip(export_line_mask(&previous)) {
+        if editable && is_preset_export(line, preset) {
+            if !found {
+                lines.push(if enabled {
+                    preset.lua_export.into()
+                } else {
+                    format!("-- {}", preset.lua_export)
+                });
             }
+            found = true;
         } else {
-            new_lines.push(line.to_string());
+            lines.push(line.to_string());
         }
     }
-
-    if !found && enabled {
-        new_lines.push(preset.lua_export.to_string());
+    if !found {
+        if !enabled {
+            return list_lua_plugins_sync();
+        }
+        lines.push(preset.lua_export.into());
     }
-
-    let final_content = new_lines.join("\n") + "\n";
-    fs::write(&rime_lua_path, final_content)
-        .map_err(|err| RimeError::FileOperationError(format!("保存 rime.lua 失败: {err}")))?;
-
+    backup_user_config(&user_dir, BackupKind::BeforeSave)?;
+    if enabled && !script.exists() {
+        fs::create_dir_all(script.parent().expect("script parent"))
+            .map_err(|err| RimeError::FileOperationError(format!("创建 lua 目录失败: {err}")))?;
+        write_text_file(&script, preset.script_template, "写入 Lua 脚本失败")?;
+    }
+    write_text_file(&entry, &(lines.join("\n") + "\n"), "保存 rime.lua 失败")?;
     list_lua_plugins_sync()
 }
 
 pub(crate) fn get_lua_script_content_sync(plugin_id: String) -> Result<String, RimeError> {
+    let preset = find_preset(&plugin_id)?;
     let user_dir = rime_user_dir()?;
-    let preset = PRESET_PLUGINS
-        .iter()
-        .find(|p| p.id == plugin_id)
-        .ok_or_else(|| RimeError::ConfigNotFound(format!("未找到插件: {plugin_id}")))?;
-
-    let script_path = lua_dir(&user_dir).join(preset.file_name);
-    if script_path.exists() {
-        fs::read_to_string(&script_path)
-            .map_err(|err| RimeError::FileOperationError(format!("读取 Lua 脚本失败: {err}")))
+    if !user_dir.exists() {
+        return Ok(preset.script_template.into());
+    }
+    let path = resolve_user_relative_path(&user_dir, &format!("lua/{}", preset.file_name), false)?;
+    if path.exists() {
+        read_optional_config(&path)
     } else {
-        Ok(preset.script_template.to_string())
+        Ok(preset.script_template.into())
     }
 }
 
@@ -270,19 +346,18 @@ pub(crate) fn save_lua_script_content_sync(
     plugin_id: String,
     content: String,
 ) -> Result<(), RimeError> {
+    let _guard = LUA_WRITE_LOCK
+        .lock()
+        .map_err(|_| RimeError::FileOperationError("Lua 写入锁不可用".into()))?;
+    let preset = find_preset(&plugin_id)?;
     let user_dir = rime_user_dir()?;
-    let preset = PRESET_PLUGINS
-        .iter()
-        .find(|p| p.id == plugin_id)
-        .ok_or_else(|| RimeError::ConfigNotFound(format!("未找到插件: {plugin_id}")))?;
-
-    let l_dir = lua_dir(&user_dir);
-    fs::create_dir_all(&l_dir)
+    fs::create_dir_all(&user_dir)
+        .map_err(|err| RimeError::FileOperationError(format!("创建用户目录失败: {err}")))?;
+    let script =
+        resolve_user_relative_path(&user_dir, &format!("lua/{}", preset.file_name), false)?;
+    read_optional_config(&script)?;
+    backup_user_config(&user_dir, BackupKind::BeforeSave)?;
+    fs::create_dir_all(script.parent().expect("script parent"))
         .map_err(|err| RimeError::FileOperationError(format!("创建 lua 目录失败: {err}")))?;
-
-    let script_path = l_dir.join(preset.file_name);
-    fs::write(&script_path, content)
-        .map_err(|err| RimeError::FileOperationError(format!("保存 Lua 脚本失败: {err}")))?;
-
-    Ok(())
+    write_text_file(&script, &content, "保存 Lua 脚本失败")
 }

@@ -1,0 +1,70 @@
+import { describe, expect, it, vi } from "vitest";
+import { usePhraseDocument } from "./usePhraseDocument";
+import type { PhraseEntry } from "../types";
+const phrase = (text: string): PhraseEntry => ({ text, code: "a", weight: 1 });
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+describe("phrase document", () => {
+  it("blocks saving before initial load and after failed initial reads", async () => {
+    const write = vi.fn();
+    const document = usePhraseDocument(async () => undefined, write);
+    expect(await document.save()).toBe(false);
+    await document.load();
+    expect(await document.save()).toBe(false);
+    expect(write).not.toHaveBeenCalled();
+  });
+  it("keeps edits and the previous document after a failed refresh", async () => {
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce([phrase("a")])
+      .mockResolvedValueOnce(undefined);
+    const document = usePhraseDocument(read, async () => true);
+    await document.load();
+    document.entries.value[0].text = "edited";
+    await document.load();
+    expect(document.entries.value[0].text).toBe("edited");
+    expect(document.dirty.value).toBe(true);
+  });
+  it("saves a snapshot, blocks double clicks, and keeps edits made during saving dirty", async () => {
+    const result = deferred<boolean>();
+    const write = vi.fn(() => result.promise);
+    const document = usePhraseDocument(async () => [phrase("a")], write);
+    await document.load();
+    const first = document.save();
+    document.entries.value[0].text = "new edit";
+    expect(await document.save()).toBe(false);
+    expect(await document.load()).toBe(false);
+    result.resolve(true);
+    await first;
+    expect(write).toHaveBeenCalledExactlyOnceWith([phrase("a")]);
+    expect(document.dirty.value).toBe(true);
+  });
+  it("ignores late refreshes and pending reads canceled during unmount", async () => {
+    const a = deferred<PhraseEntry[]>();
+    const b = deferred<PhraseEntry[]>();
+    const document = usePhraseDocument(
+      vi.fn().mockReturnValueOnce(a.promise).mockReturnValueOnce(b.promise),
+      vi.fn(),
+    );
+    const first = document.load();
+    const second = document.load();
+    b.resolve([phrase("b")]);
+    await second;
+    a.resolve([phrase("a")]);
+    await first;
+    expect(document.entries.value[0].text).toBe("b");
+    const c = deferred<PhraseEntry[]>();
+    const canceled = usePhraseDocument(() => c.promise, vi.fn());
+    const loading = canceled.load();
+    canceled.cancelLoad();
+    c.resolve([phrase("c")]);
+    await loading;
+    expect(canceled.ready.value).toBe(false);
+  });
+});

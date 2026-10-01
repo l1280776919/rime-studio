@@ -21,7 +21,14 @@ const visible = computed({
 </script>
 
 <template>
-  <el-dialog v-model="visible" title="词库导入预览" width="720px">
+  <el-dialog
+    v-model="visible"
+    title="词库导入预览"
+    width="720px"
+    :close-on-click-modal="!importing"
+    :close-on-press-escape="!importing"
+    :show-close="!importing"
+  >
     <div v-if="importPreview" class="dictionary-import-preview">
       <el-alert
         v-if="importPreview.will_overwrite"
@@ -61,9 +68,16 @@ const visible = computed({
       </p>
     </div>
     <template #footer>
-      <el-button @click="visible = false">取消</el-button>
-      <el-button :loading="importing" @click="emit('confirm', false)"> 只导入文件 </el-button>
-      <el-button type="primary" :loading="importing" @click="emit('confirm', true)">
+      <el-button :disabled="importing" @click="visible = false">取消</el-button>
+      <el-button :loading="importing" :disabled="importing" @click="emit('confirm', false)">
+        只导入文件
+      </el-button>
+      <el-button
+        type="primary"
+        :loading="importing"
+        :disabled="importing"
+        @click="emit('confirm', true)"
+      >
         导入并加入当前方案
       </el-button>
     </template>

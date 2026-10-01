@@ -84,3 +84,11 @@ describe("configuration document", () => {
     expect(doc.selectedFile.value).toBeNull();
   });
 });
+
+it("does not permit saving after the first script/config read fails", async () => {
+  const write = vi.fn();
+  const doc = useConfigDocument(async () => undefined, write);
+  expect(await doc.load(file("lua/date.lua"))).toBe(false);
+  expect(await doc.save()).toBe(false);
+  expect(write).not.toHaveBeenCalled();
+});
