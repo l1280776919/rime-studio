@@ -1,5 +1,15 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onActivated,
+  onDeactivated,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  watch,
+} from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { useRoute, useRouter } from "vue-router";
 import { useThemePreview } from "../composables/useThemePreview";
@@ -321,6 +331,7 @@ const document = useSettingsDocument(
   (config) => withErrorHandling(() => api.saveAppearance(config)),
 );
 const { loading, ready, dirty } = document;
+const previewActive = ref(false);
 const route = useRoute();
 const router = useRouter();
 useThemePreview(
@@ -330,7 +341,7 @@ useThemePreview(
     presets.some((item) => item.name === route.query.previewTheme)
       ? route.query.previewTheme
       : undefined,
-  () => ready.value && !loading.value && !document.saving.value,
+  () => previewActive.value && ready.value && !loading.value && !document.saving.value,
   () => dirty.value,
   (name) => {
     const preset = presets.find((item) => item.name === name);
@@ -358,6 +369,13 @@ async function loadAppearance() {
   await document.load();
 }
 useConfigReload(() => props.env, loadAppearance);
+// Reactivation starts the clean-document reload before allowing a requested preview.
+onActivated(() => {
+  previewActive.value = true;
+});
+onDeactivated(() => {
+  previewActive.value = false;
+});
 onBeforeUnmount(document.dispose);
 
 async function previewAppearance() {
@@ -498,7 +516,7 @@ useSaveShortcut(() => saveAppearance(false));
           <span class="pulse-dot" />
           <strong class="capsule-name">{{ form.theme_name }}</strong>
           <span v-if="dirty" class="capsule-dirty-tag">未保存更改</span>
-          <span v-else class="capsule-tag">与文件一致</span>
+          <span v-else class="capsule-tag">{{ ready ? "与文件一致" : "尚未读取" }}</span>
         </div>
 
         <TypingSandbox :appearance="form" />
