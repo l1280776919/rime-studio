@@ -24,9 +24,13 @@ pub(crate) fn http_agent() -> &'static ureq::Agent {
 
 /// Create a new HTTP agent with system proxy and timeout configuration.
 fn create_http_agent() -> ureq::Agent {
+    http_agent_with_read_timeout(Duration::from_secs(30))
+}
+
+pub(crate) fn http_agent_with_read_timeout(timeout: Duration) -> ureq::Agent {
     let builder = ureq::AgentBuilder::new()
         .timeout_connect(Duration::from_secs(10))
-        .timeout_read(Duration::from_secs(30));
+        .timeout_read(timeout);
 
     // Configure proxy from system settings
     if let Some(proxy_url) = get_system_proxy() {

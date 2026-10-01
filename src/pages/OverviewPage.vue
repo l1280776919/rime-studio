@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
-import { ElMessage } from "element-plus";
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { api } from "../api";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
@@ -292,20 +293,72 @@ function onEntriesSearch() {
 // ── Onboarding / Git Install ──
 const downloadingRime = ref(false);
 const downloadStatus = ref("");
+const downloadError = ref("");
+const downloadPercent = ref<number>();
+let stopInstallerProgress: UnlistenFn | undefined;
+let disposed = false;
+
+onUnmounted(() => {
+  disposed = true;
+  stopInstallerProgress?.();
+  stopInstallerProgress = undefined;
+});
+
+async function specifyDeployer() {
+  try {
+    const { value } = await ElMessageBox.prompt(
+      "填写已安装的小狼毫目录中的 WeaselDeployer.exe 完整路径。可在开始菜单的重新部署快捷方式属性中查看目标。",
+      "指定小狼毫安装路径",
+      {
+        inputPlaceholder: "D:\\Rime\\weasel-0.17.4\\WeaselDeployer.exe",
+        confirmButtonText: "保存并重新扫描",
+        cancelButtonText: "取消",
+      },
+    );
+    await api.setWeaselDeployer(value);
+    ElMessage.success("已保存小狼毫路径");
+    emit("saved");
+  } catch (error) {
+    if (error !== "cancel" && error !== "close") {
+      ElMessage.error(`保存小狼毫路径失败: ${String(error)}`);
+    }
+  }
+}
+
 async function autoDownloadAndInstall() {
+  if (downloadingRime.value) return;
   downloadingRime.value = true;
   downloadStatus.value = "正在获取安装包...";
+  downloadError.value = "";
+  downloadPercent.value = undefined;
   try {
+    stopInstallerProgress = await listen<{
+      stage: string;
+      downloaded_bytes: number;
+      total_bytes: number | null;
+      percent: number | null;
+    }>("rime-installer-progress", ({ payload }) => {
+      downloadPercent.value = payload.percent ?? undefined;
+      downloadStatus.value =
+        payload.downloaded_bytes > 0
+          ? `${payload.stage} ${formatBytes(payload.downloaded_bytes)}${payload.total_bytes ? ` / ${formatBytes(payload.total_bytes)}` : ""}`
+          : payload.stage;
+    });
+    if (disposed) return;
     const result = await api.downloadRimeInstaller();
+    if (disposed) return;
     if (!result.success || !result.installer_path) {
-      await openUrl("https://rime.im/download/");
+      downloadError.value = result.message || "下载失败，请使用官网手动下载";
       return;
     }
+    downloadStatus.value = "正在启动安装程序，请确认管理员授权...";
     await api.launchRimeInstaller(result.installer_path);
-    ElMessage.success("安装程序已启动");
+    ElMessage.success("安装程序已启动，安装完成后请点击重新扫描");
   } catch (error) {
-    ElMessage.warning(`安装启动失败: ${String(error)}`);
+    downloadError.value = `下载安装失败: ${String(error)}`;
   } finally {
+    stopInstallerProgress?.();
+    stopInstallerProgress = undefined;
     downloadingRime.value = false;
   }
 }
@@ -347,7 +400,22 @@ watch(
           <el-button size="large" @click="openUrl('https://rime.im/download/')">
             官网手动下载
           </el-button>
+          <el-button size="large" @click="specifyDeployer">已安装，指定路径</el-button>
+          <el-button size="large" :loading="scanning" :icon="Refresh" @click="emit('saved')">
+            重新扫描
+          </el-button>
         </div>
+        <el-progress
+          v-if="downloadingRime && downloadPercent !== undefined"
+          :percentage="Math.round(downloadPercent)"
+        />
+        <el-alert
+          v-if="downloadError"
+          :title="downloadError"
+          type="error"
+          show-icon
+          :closable="false"
+        />
       </div>
     </div>
 

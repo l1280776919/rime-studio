@@ -44,6 +44,7 @@ import type {
 
 export const api = {
   scanEnvironment: () => invoke<RimeEnvironment>("scan_rime_environment"),
+  setWeaselDeployer: (path: string) => invoke<string>("set_weasel_deployer", { path }),
   scanDictionaryHealth: () => invoke<DictHealth | null>("scan_dictionary_health"),
   deploy: () => invoke<DeployResult>("deploy_rime"),
   cancelDeploy: () => invoke("cancel_deploy"),

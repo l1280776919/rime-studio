@@ -2658,9 +2658,18 @@ html[data-theme="dark"]
 
 .onboarding-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   justify-content: center;
   margin-bottom: 12px;
+}
+
+.onboarding-actions > .el-button {
+  max-width: 100%;
+  height: auto;
+  min-height: 40px;
+  white-space: normal;
+  margin-left: 0;
 }
 
 .onboarding-hint {

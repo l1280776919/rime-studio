@@ -166,40 +166,79 @@ pub(crate) fn normalize_color(value: Option<String>, fallback: &str) -> String {
 
 #[cfg(target_os = "windows")]
 pub(crate) fn weasel_root_from_registry() -> Vec<PathBuf> {
-    use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
+    use winreg::enums::{
+        HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_32KEY, KEY_WOW64_64KEY,
+    };
     use winreg::RegKey;
 
     let mut roots = Vec::new();
-    let subkeys = [
-        "Software\\Rime\\Weasel",
-        "Software\\WOW6432Node\\Rime\\Weasel",
-    ];
-
-    for key_path in subkeys {
-        for hive in [HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE] {
-            if let Ok(key) = RegKey::predef(hive).open_subkey(key_path) {
-                if let Ok(val) = key.get_value::<String, _>("WeaselRootPath") {
-                    let p = PathBuf::from(val.trim());
-                    if !p.as_os_str().is_empty() {
-                        roots.push(p);
-                    }
-                }
-                if let Ok(val) = key.get_value::<String, _>("WeaselDeployer") {
-                    let p = PathBuf::from(val.trim());
-                    if p.exists() {
-                        roots.push(p);
-                    }
-                }
-                if let Ok(val) = key.get_value::<String, _>("Execute") {
-                    let p = PathBuf::from(val.trim());
-                    if let Some(parent) = p.parent() {
-                        roots.push(parent.to_path_buf());
-                    }
-                }
+    // NSIS writes InstallDir to the 32-bit view, even on 64-bit Windows.
+    // Read both views explicitly instead of depending on our process bitness.
+    for hive in [HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE] {
+        for view in [KEY_WOW64_32KEY, KEY_WOW64_64KEY] {
+            if let Ok(key) = RegKey::predef(hive)
+                .open_subkey_with_flags("Software\\Rime\\Weasel", KEY_READ | view)
+            {
+                roots.extend(weasel_paths_from_key(&key));
             }
         }
     }
     roots
+}
+
+#[cfg(target_os = "windows")]
+fn weasel_paths_from_key(key: &winreg::RegKey) -> Vec<PathBuf> {
+    let mut roots: Vec<PathBuf> = [
+        "WeaselRoot",
+        "InstallDir",
+        "WeaselRootPath",
+        "WeaselDeployer",
+    ]
+    .into_iter()
+    .filter_map(|name| key.get_value::<String, _>(name).ok())
+    .filter_map(|value| weasel_registry_path(&value))
+    .collect();
+    if let Ok(value) = key.get_value::<String, _>("Execute") {
+        if let Some(path) = weasel_registry_path(&value) {
+            if let Some(parent) = path.parent() {
+                roots.push(parent.to_path_buf());
+            }
+        }
+    }
+    roots
+}
+
+fn weasel_registry_path(value: &str) -> Option<PathBuf> {
+    let value = value.trim().trim_matches('"');
+    (!value.is_empty()).then(|| PathBuf::from(value))
+}
+
+pub(crate) fn validate_weasel_deployer(path: &Path) -> bool {
+    path.is_file()
+        && path
+            .file_name()
+            .and_then(OsStr::to_str)
+            .is_some_and(|name| name.eq_ignore_ascii_case("WeaselDeployer.exe"))
+}
+
+pub(crate) fn set_weasel_deployer_sync(path: String) -> Result<String, RimeError> {
+    let path = weasel_registry_path(&path)
+        .filter(|path| path.is_absolute() && validate_weasel_deployer(path))
+        .ok_or_else(|| {
+            RimeError::DeployerNotFound(
+                "请选择已安装的小狼毫目录中的 WeaselDeployer.exe 完整路径".to_string(),
+            )
+        })?;
+    let path = path
+        .canonicalize()
+        .map_err(|err| RimeError::FileOperationError(format!("读取小狼毫路径失败: {err}")))?;
+    let app_dir = app_data_dir()?;
+    fs::create_dir_all(&app_dir)
+        .map_err(|err| RimeError::FileOperationError(format!("创建应用数据目录失败: {err}")))?;
+    let display_path = path.display().to_string();
+    fs::write(app_dir.join("weasel-deployer.txt"), &display_path)
+        .map_err(|err| RimeError::FileOperationError(format!("保存小狼毫路径失败: {err}")))?;
+    Ok(display_path)
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -208,13 +247,16 @@ pub(crate) fn weasel_root_from_registry() -> Vec<PathBuf> {
 }
 
 pub(crate) fn weasel_deployers_under(root: &Path) -> Vec<PathBuf> {
+    if validate_weasel_deployer(root) {
+        return vec![root.to_path_buf()];
+    }
     if !root.exists() {
         return Vec::new();
     }
 
     let mut deployers = Vec::new();
     let direct_deployer = root.join("WeaselDeployer.exe");
-    if direct_deployer.exists() {
+    if direct_deployer.is_file() {
         deployers.push(direct_deployer);
     }
 
@@ -228,7 +270,7 @@ pub(crate) fn weasel_deployers_under(root: &Path) -> Vec<PathBuf> {
                 && path
                     .file_name()
                     .and_then(OsStr::to_str)
-                    .map(|name| name.starts_with("weasel"))
+                    .map(|name| name.to_ascii_lowercase().starts_with("weasel"))
                     .unwrap_or(false)
         })
         .collect();
@@ -238,7 +280,7 @@ pub(crate) fn weasel_deployers_under(root: &Path) -> Vec<PathBuf> {
 
     for dir in subdirs {
         let deployer = dir.join("WeaselDeployer.exe");
-        if deployer.exists() {
+        if deployer.is_file() {
             deployers.push(deployer);
         }
     }
@@ -252,7 +294,7 @@ pub(crate) fn resolve_windows_shortcut(path: &Path) -> Option<PathBuf> {
     }
 
     let script = format!(
-        "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{}'); $s.TargetPath",
+        "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; $s=(New-Object -ComObject WScript.Shell).CreateShortcut('{}'); $s.TargetPath",
         path.display().to_string().replace('\'', "''")
     );
     let mut command = Command::new("powershell");
@@ -275,14 +317,19 @@ pub(crate) fn resolve_windows_shortcut(path: &Path) -> Option<PathBuf> {
 pub(crate) fn locate_deployer() -> Option<PathBuf> {
     let mut candidates = Vec::new();
 
+    // A stale manual path must not prevent automatic detection after an upgrade.
+    if let Ok(app_dir) = app_data_dir() {
+        let saved = read_to_string(&app_dir.join("weasel-deployer.txt"));
+        if let Some(path) = weasel_registry_path(&saved) {
+            if validate_weasel_deployer(&path) {
+                return Some(path);
+            }
+        }
+    }
+
     // 1. Check registry-discovered paths
     for root in weasel_root_from_registry() {
-        if root.is_file() && root.file_name().and_then(OsStr::to_str) == Some("WeaselDeployer.exe")
-        {
-            candidates.push(root);
-        } else {
-            candidates.extend(weasel_deployers_under(&root));
-        }
+        candidates.extend(weasel_deployers_under(&root));
     }
 
     // 2. Check standard Program Files installation paths
@@ -304,18 +351,32 @@ pub(crate) fn locate_deployer() -> Option<PathBuf> {
         candidates.extend(weasel_deployers_under(&parent));
     }
 
-    // 3. Start menu shortcut
-    let start_menu_shortcut = PathBuf::from(
-        r"C:\ProgramData\Microsoft\Windows\Start Menu\Programs\小狼毫输入法\【小狼毫】重新部署.lnk",
-    );
-    if start_menu_shortcut.exists() {
-        candidates.push(start_menu_shortcut);
+    // 3. Machine-wide and per-user shortcuts in all installer languages.
+    for base in ["PROGRAMDATA", "APPDATA"] {
+        if let Ok(base) = env::var(base) {
+            candidates.extend(weasel_shortcuts_under(
+                &PathBuf::from(base).join(r"Microsoft\Windows\Start Menu\Programs"),
+            ));
+        }
     }
 
     candidates
         .into_iter()
         .filter(|path| path.exists())
-        .find_map(|path| resolve_windows_shortcut(&path))
+        .find_map(|path| {
+            resolve_windows_shortcut(&path).filter(|target| validate_weasel_deployer(target))
+        })
+}
+
+fn weasel_shortcuts_under(programs: &Path) -> Vec<PathBuf> {
+    [
+        ("小狼毫输入法", "【小狼毫】重新部署.lnk"),
+        ("小狼毫輸入法", "【小狼毫】重新部署.lnk"),
+        ("Weasel", "Weasel Deploy.lnk"),
+    ]
+    .into_iter()
+    .map(|(folder, name)| programs.join(folder).join(name))
+    .collect()
 }
 
 pub(crate) fn locate_weasel_server() -> Option<PathBuf> {
@@ -427,4 +488,62 @@ pub(crate) fn locate_git_bash() -> Option<PathBuf> {
     candidates
         .into_iter()
         .find(|path| path.exists() && command_success(path, "--version"))
+}
+
+#[cfg(test)]
+mod weasel_detection_tests {
+    use super::*;
+
+    #[test]
+    fn detects_custom_install_dir_and_direct_deployer() {
+        let root = env::temp_dir().join(format!("rime-studio-weasel-test-{}", std::process::id()));
+        let version_dir = root.join("中文 自定义安装").join("Weasel-0.17.4");
+        fs::create_dir_all(&version_dir).expect("create installation");
+        let deployer = version_dir.join("WeaselDeployer.exe");
+        fs::write(&deployer, b"MZ").expect("write deployer fixture");
+        assert_eq!(
+            weasel_deployers_under(&root.join("中文 自定义安装")),
+            vec![deployer.clone()]
+        );
+        assert_eq!(weasel_deployers_under(&version_dir), vec![deployer.clone()]);
+        assert_eq!(weasel_deployers_under(&deployer), vec![deployer.clone()]);
+        assert!(validate_weasel_deployer(&deployer));
+        assert!(!validate_weasel_deployer(&version_dir));
+        fs::remove_dir_all(&root).expect("remove fixture");
+        assert!(!validate_weasel_deployer(&deployer));
+    }
+
+    #[test]
+    fn handles_quoted_registry_values_and_all_shortcut_languages() {
+        assert_eq!(
+            weasel_registry_path("  \"D:\\我的输入法\\weasel-0.17.4\"  "),
+            Some(PathBuf::from(r"D:\我的输入法\weasel-0.17.4"))
+        );
+        assert!(weasel_registry_path("  ").is_none());
+        let programs = Path::new("Programs");
+        let shortcuts = weasel_shortcuts_under(programs);
+        assert!(shortcuts.contains(&programs.join("小狼毫输入法").join("【小狼毫】重新部署.lnk")));
+        assert!(shortcuts.contains(&programs.join("小狼毫輸入法").join("【小狼毫】重新部署.lnk")));
+        assert!(shortcuts.contains(&programs.join("Weasel").join("Weasel Deploy.lnk")));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn reads_official_installer_registry_fields() {
+        use winreg::{enums::HKEY_CURRENT_USER, RegKey};
+        let hive = RegKey::predef(HKEY_CURRENT_USER);
+        let key_path = format!("Software\\RimeStudio\\DetectionTest-{}", std::process::id());
+        let (key, _) = hive
+            .create_subkey(&key_path)
+            .expect("create isolated test key");
+        key.set_value("InstallDir", &r"D:\输入法\Rime")
+            .expect("write official field");
+        key.set_value("WeaselRoot", &r"D:\输入法\Rime\weasel-0.17.4")
+            .expect("write official field");
+        let roots = weasel_paths_from_key(&key);
+        hive.delete_subkey_all(&key_path)
+            .expect("remove isolated test key");
+        assert!(roots.contains(&PathBuf::from(r"D:\输入法\Rime")));
+        assert!(roots.contains(&PathBuf::from(r"D:\输入法\Rime\weasel-0.17.4")));
+    }
 }
