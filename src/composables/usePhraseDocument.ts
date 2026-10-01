@@ -47,5 +47,11 @@ export function usePhraseDocument(
     loading.value = false;
   }
 
-  return { entries, loading, saving, ready, dirty, load, save, cancelLoad };
+  function reset() {
+    if (!ready.value || loading.value || saving.value) return false;
+    entries.value = JSON.parse(original.value);
+    return true;
+  }
+
+  return { entries, loading, saving, ready, dirty, load, save, reset, cancelLoad };
 }

@@ -11,6 +11,7 @@ defineProps<{
   hasDeployer: boolean;
   deploying: boolean;
   restartingServer: boolean;
+  busy: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -19,6 +20,7 @@ const emit = defineEmits<{
   restartServer: [];
   navigate: [key: string];
   createBackup: [];
+  previewTheme: [name: string];
 }>();
 
 const showPalette = ref(false);
@@ -28,7 +30,13 @@ function openCommandPalette() {
 }
 
 function handleGlobalKeydown(e: KeyboardEvent) {
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+  if (
+    !showPalette.value &&
+    e.target instanceof window.Element &&
+    e.target.closest(".el-dialog, .el-message-box")
+  )
+    return;
+  if (!e.isComposing && !e.repeat && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
     e.preventDefault();
     showPalette.value = !showPalette.value;
   }
@@ -48,7 +56,7 @@ onBeforeUnmount(() => {
     <!-- Clean integrated breadcrumb / title -->
     <div class="topbar-title-group">
       <div class="breadcrumb-pill">
-        <span class="weasel-chip">Weasel Studio</span>
+        <span class="weasel-chip">Rime Studio</span>
         <span class="breadcrumb-slash">/</span>
         <h2 class="title-text">{{ pageTitle }}</h2>
       </div>
@@ -58,20 +66,30 @@ onBeforeUnmount(() => {
     <button
       type="button"
       class="command-pill"
+      aria-label="打开快捷命令（Ctrl+K）"
+      aria-haspopup="dialog"
+      :aria-expanded="showPalette"
       title="快速搜索功能、直接跳转页面或切换主题 (Ctrl+K)"
       @click="openCommandPalette"
     >
       <el-icon :size="13" class="search-icon"><Search /></el-icon>
-      <span class="command-placeholder">快速搜索功能、方案、短语...</span>
-      <kbd class="shortcut-key">⌘K</kbd>
+      <span class="command-placeholder">搜索页面、操作、配色…</span>
+      <kbd class="shortcut-key">Ctrl+K</kbd>
     </button>
 
     <!-- Right toolbar action buttons -->
     <div class="toolbar-actions">
       <!-- Status pill -->
-      <div class="engine-status-dock">
-        <span class="pulse-dot" />
-        <span class="engine-text">小狼毫引擎</span>
+      <div
+        class="engine-status-dock"
+        :title="
+          hasDeployer ? '已找到部署工具；运行状态请通过输入测试确认' : '请检查小狼毫安装后刷新'
+        "
+      >
+        <span class="pulse-dot" :class="{ unavailable: !hasDeployer }" />
+        <span class="engine-text">{{
+          scanning ? "正在扫描" : hasDeployer ? "已检测到小狼毫" : "未检测到小狼毫"
+        }}</span>
       </div>
 
       <TypingSandbox />
@@ -82,11 +100,13 @@ onBeforeUnmount(() => {
         size="small"
         class="action-btn"
         title="刷新 Rime 状态"
+        aria-label="刷新 Rime 状态"
+        :disabled="scanning || busy"
         @click="$emit('refresh')"
       />
 
       <el-button
-        :disabled="!hasDeployer"
+        :disabled="!hasDeployer || busy"
         :loading="restartingServer"
         :icon="SwitchButton"
         size="small"
@@ -99,20 +119,23 @@ onBeforeUnmount(() => {
 
       <el-button
         type="primary"
-        :disabled="!hasDeployer"
+        :disabled="!hasDeployer || busy"
         :loading="deploying"
         :icon="UploadFilled"
         size="small"
         class="deploy-btn"
         @click="$emit('deploy')"
       >
-        部署生效
+        部署已保存配置
       </el-button>
     </div>
 
     <!-- Raycast Command Palette Modal -->
     <AppCommandPalette
       v-model:visible="showPalette"
+      :busy="busy"
+      :has-deployer="hasDeployer"
+      @preview-theme="emit('previewTheme', $event)"
       @navigate="emit('navigate', $event)"
       @deploy="emit('deploy')"
       @restart-server="emit('restartServer')"
@@ -124,6 +147,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .topbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   flex: 0 0 auto;
@@ -273,5 +297,41 @@ html[data-theme="dark"] .weasel-chip {
 .deploy-btn:hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);
+}
+</style>
+
+<style scoped>
+.command-pill:focus-visible {
+  outline: 2px solid var(--brand-500);
+  outline-offset: 3px;
+}
+.pulse-dot.unavailable {
+  background: var(--ink-400);
+  box-shadow: none;
+}
+@media (max-width: 1250px) {
+  .topbar {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .command-pill {
+    width: 220px;
+  }
+  .engine-status-dock {
+    display: none;
+  }
+}
+@media (max-width: 900px) {
+  .toolbar-actions {
+    flex-wrap: wrap;
+  }
+  .command-pill {
+    flex: 1;
+    min-width: 150px;
+  }
+  .weasel-chip,
+  .breadcrumb-slash {
+    display: none;
+  }
 }
 </style>

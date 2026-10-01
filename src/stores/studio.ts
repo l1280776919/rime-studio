@@ -343,6 +343,7 @@ export const useStudioStore = defineStore("studio", () => {
     restartingServer,
     syncing,
     hasDeployer,
+    mutationBusy,
     loadEnvironment,
     loadDictionaryHealth,
     deploy,

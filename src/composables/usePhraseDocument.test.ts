@@ -11,6 +11,26 @@ function deferred<T>() {
 }
 
 describe("phrase document", () => {
+  it("undoes unsaved changes to the last successful snapshot without creating another backup", async () => {
+    const pending = deferred<boolean>();
+    const write = vi.fn(() => pending.promise);
+    const read = vi.fn(async () => [phrase("a")]);
+    const document = usePhraseDocument(read, write);
+    expect(document.reset()).toBe(false);
+    await document.load();
+    document.entries.value[0].text = "saved";
+    const saving = document.save();
+    expect(document.reset()).toBe(false);
+    pending.resolve(true);
+    await saving;
+    document.entries.value.push(phrase("draft"));
+    document.entries.value[0].text = "changed";
+    expect(document.reset()).toBe(true);
+    expect(document.entries.value).toEqual([phrase("saved")]);
+    expect(document.dirty.value).toBe(false);
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(write).toHaveBeenCalledTimes(1);
+  });
   it("blocks saving before initial load and after failed initial reads", async () => {
     const write = vi.fn();
     const document = usePhraseDocument(async () => undefined, write);

@@ -40,6 +40,7 @@ const {
   deletingBackup,
   restartingServer,
   hasDeployer,
+  mutationBusy,
 } = storeToRefs(studio);
 
 const route = useRoute();
@@ -69,6 +70,9 @@ async function navigateTo(key: string) {
   if (key === "configs") key = "editor";
   if (!isPageKey(key) || key === activePage.value) return;
   await router.push({ name: key });
+}
+async function previewTheme(name: string) {
+  await router.push({ name: "appearance", query: { previewTheme: name } });
 }
 const elapsedSeconds = ref(0);
 let elapsedTimer: ReturnType<typeof setInterval> | undefined;
@@ -114,16 +118,7 @@ function refreshEnvironment() {
 }
 
 // ── Busy / Elapsed timer ──────────────────────────
-const isBusy = computed<boolean>(
-  () =>
-    !!(
-      scanning.value ||
-      deploying.value ||
-      backingUp.value ||
-      restoringBackup.value ||
-      installingRecipe.value
-    ),
-);
+const isBusy = computed(() => scanning.value || mutationBusy.value);
 
 function startElapsedTimer() {
   stopElapsedTimer();
@@ -198,10 +193,12 @@ onBeforeUnmount(() => {
           :has-deployer="hasDeployer"
           :deploying="deploying"
           :restarting-server="restartingServer"
+          :busy="mutationBusy"
           @refresh="studio.loadEnvironment"
           @deploy="studio.deploy"
           @restart-server="studio.restartWeaselServer"
           @navigate="navigateTo"
+          @preview-theme="previewTheme"
           @create-backup="studio.createManualBackup"
         />
 

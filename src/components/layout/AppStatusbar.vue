@@ -22,7 +22,7 @@ function formatElapsed(seconds: number): string {
   <footer class="statusbar" :class="{ busy: isBusy }">
     <div class="status-left">
       <span class="status-dot" :class="{ active: isBusy }"></span>
-      <span class="status-text">{{ status }}</span>
+      <span class="status-text" role="status" aria-live="polite" :title="status">{{ status }}</span>
       <span v-if="isBusy && elapsedSeconds" class="elapsed-badge">
         {{ formatElapsed(elapsedSeconds) }}
       </span>

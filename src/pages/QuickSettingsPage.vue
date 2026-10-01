@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import { api } from "../api";
+import SettingsSaveBar from "../components/common/SettingsSaveBar.vue";
+import { useSaveShortcut } from "../composables/useSaveShortcut";
 import { useSettingsDocument } from "../composables/useSettingsDocument";
 import { useConfigReload } from "../composables/useConfigReload";
 import { useStudioStore } from "../stores/studio";
 import { useErrorHandler } from "../composables/useErrorHandler";
-import { Check, Connection, FirstAidKit, UploadFilled, View } from "@element-plus/icons-vue";
+import { Connection, FirstAidKit, View } from "@element-plus/icons-vue";
 import type {
   ConfigHealthCheck,
   ConfigHealthReport,
@@ -263,7 +265,7 @@ const document = useSettingsDocument(
       return { quick, ice };
     }),
 );
-const { loading, ready } = document;
+const { loading, ready, dirty } = document;
 const loadQuickSettings = document.load;
 useConfigReload(() => props.env, loadQuickSettings);
 watch(
@@ -274,6 +276,7 @@ watch(
 );
 
 async function saveQuickSettings(shouldDeploy = false) {
+  if (studio.mutationBusy) return;
   if (
     !ready.value ||
     loading.value ||
@@ -282,6 +285,10 @@ async function saveQuickSettings(shouldDeploy = false) {
     repairingHealthItem.value
   )
     return;
+  if (ready.value && !loading.value && !document.saving.value && !dirty.value) {
+    if (shouldDeploy) emit("deploy");
+    return;
+  }
   saving.value = !shouldDeploy;
   deploying.value = shouldDeploy;
   try {
@@ -377,6 +384,26 @@ onBeforeUnmount(() => {
     clearTimeout(postDeployTimer);
   }
 });
+
+async function resetChanges() {
+  if (!dirty.value || loading.value || document.saving.value || studio.mutationBusy) return;
+  try {
+    await ElMessageBox.confirm(
+      "将撤销本页尚未保存的修改，恢复到上次读取或保存的内容。",
+      "撤销修改",
+      {
+        confirmButtonText: "撤销修改",
+        cancelButtonText: "继续编辑",
+        type: "warning",
+      },
+    );
+  } catch {
+    return;
+  }
+  document.reset();
+}
+
+useSaveShortcut(() => saveQuickSettings(false));
 </script>
 
 <template>
@@ -424,32 +451,21 @@ onBeforeUnmount(() => {
         <el-button size="small" :icon="View" :loading="previewing" @click="previewQuickSettings">
           变更 Diff
         </el-button>
-
-        <el-button
-          size="small"
-          type="primary"
-          plain
-          :icon="Check"
-          :loading="saving"
-          :disabled="!ready || loading || deploying"
-          @click="saveQuickSettings(false)"
-        >
-          保存
-        </el-button>
-
-        <el-button
-          size="small"
-          type="primary"
-          class="deploy-cta"
-          :icon="UploadFilled"
-          :loading="deploying"
-          :disabled="!ready || loading || saving"
-          @click="saveQuickSettings(true)"
-        >
-          保存并部署
-        </el-button>
       </div>
     </header>
+    <SettingsSaveBar
+      :ready="ready"
+      :dirty="dirty"
+      :loading="loading"
+      :saving="document.saving.value"
+      :deploying="studio.deploying"
+      :busy="studio.mutationBusy || repairingHealth || Boolean(repairingHealthItem)"
+      :has-deployer="studio.hasDeployer"
+      @save="saveQuickSettings(false)"
+      @deploy="saveQuickSettings(true)"
+      @reset="resetChanges"
+      @retry="loadQuickSettings"
+    />
 
     <!-- Interactive Live Candidate Window Simulation Sandbox -->
     <section class="live-sandbox-stage panel">
