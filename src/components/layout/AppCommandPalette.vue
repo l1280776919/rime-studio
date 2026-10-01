@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import {
   Brush,
   Collection,
@@ -17,6 +17,8 @@ import {
 import { presets } from "../../appearance/schemes";
 import { api } from "../../api";
 import { ElMessage } from "element-plus";
+import { quickSettingsCatalog } from "../../settings/quickSettingsCatalog";
+import { parseRecentCommands, rememberCommand, searchCommands } from "../../utils/commandSearch";
 
 const props = defineProps<{
   visible: boolean;
@@ -31,6 +33,7 @@ const emit = defineEmits<{
   restartServer: [];
   createBackup: [];
   previewTheme: [name: string];
+  navigateSetting: [id: string];
 }>();
 
 const searchInput = ref<HTMLInputElement>();
@@ -38,12 +41,40 @@ const query = ref("");
 const selectedIndex = ref(0);
 const resultsList = ref<HTMLDivElement>();
 const executing = ref(false);
+const recentCommands = ref<string[]>([]);
+const category = ref("all");
+const categories = [
+  { id: "all", label: "全部" },
+  { id: "navigation", label: "页面" },
+  { id: "setting", label: "设置" },
+  { id: "action", label: "操作" },
+  { id: "theme", label: "配色" },
+];
+const RECENT_KEY = "rime-studio:recent-commands:v1";
+function persistRecent() {
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(recentCommands.value));
+  } catch {
+    /* Search remains usable when storage is unavailable. */
+  }
+}
+onMounted(() => {
+  try {
+    recentCommands.value = parseRecentCommands(
+      localStorage.getItem(RECENT_KEY),
+      commands.value.filter((item) => item.category !== "action").map((item) => item.id),
+    );
+  } catch {
+    recentCommands.value = [];
+  }
+});
 
 interface CommandItem {
   id: string;
-  category: "navigation" | "action" | "theme";
+  category: "navigation" | "action" | "theme" | "setting";
   title: string;
   subtitle?: string;
+  keywords?: string;
   icon: unknown;
   action: () => unknown;
   unavailable?: string;
@@ -183,6 +214,15 @@ const commands = computed<CommandItem[]>(() => {
       },
     },
 
+    ...quickSettingsCatalog.map((setting) => ({
+      id: `setting-${setting.id}`,
+      category: "setting" as const,
+      title: setting.title,
+      subtitle: "打开快速设置并定位到此项",
+      keywords: setting.keywords,
+      icon: MagicStick,
+      action: () => emit("navigateSetting", setting.id),
+    })),
     // Themes
     ...presets.map((preset) => ({
       id: `theme-${preset.name}`,
@@ -197,24 +237,18 @@ const commands = computed<CommandItem[]>(() => {
   return list;
 });
 
-const filteredCommands = computed(() => {
-  const q = query.value.trim().toLowerCase();
-  if (!q) return commands.value;
-  return commands.value.filter(
-    (c) =>
-      c.title.toLowerCase().includes(q) ||
-      (c.subtitle && c.subtitle.toLowerCase().includes(q)) ||
-      c.category.includes(q),
-  );
-});
+const filteredCommands = computed(() =>
+  searchCommands(commands.value, query.value, recentCommands.value, category.value),
+);
 
-watch(query, () => {
+watch([query, category], () => {
   selectedIndex.value = 0;
 });
 
 function close() {
   emit("update:visible", false);
   query.value = "";
+  category.value = "all";
   selectedIndex.value = 0;
 }
 
@@ -224,6 +258,10 @@ async function selectAndExecute(item: CommandItem) {
   close();
   try {
     await item.action();
+    if (item.category !== "action") {
+      recentCommands.value = rememberCommand(recentCommands.value, item.id);
+      persistRecent();
+    }
   } catch (error) {
     ElMessage.error(`操作失败：${String(error)}`);
   } finally {
@@ -334,6 +372,29 @@ watch(selectedIndex, async () => {
         </button>
       </div>
 
+      <div class="palette-filters" role="group" aria-label="快捷命令分类">
+        <button
+          v-for="filter in categories"
+          :key="filter.id"
+          type="button"
+          :aria-pressed="category === filter.id"
+          :class="{ active: category === filter.id }"
+          @click="category = filter.id"
+        >
+          {{ filter.label }}
+        </button>
+        <button
+          v-if="!query && recentCommands.length"
+          type="button"
+          class="clear-recent"
+          @click="
+            recentCommands = [];
+            persistRecent();
+          "
+        >
+          清除最近使用
+        </button>
+      </div>
       <!-- Results Stream -->
       <div
         id="command-results"
@@ -370,8 +431,15 @@ watch(selectedIndex, async () => {
           </div>
 
           <div class="item-trailing">
+            <span v-if="!query && recentCommands.includes(item.id)" class="category-tag">最近</span>
             <span class="category-tag">{{
-              item.category === "navigation" ? "页面" : item.category === "action" ? "动作" : "主题"
+              item.category === "navigation"
+                ? "页面"
+                : item.category === "setting"
+                  ? "设置"
+                  : item.category === "action"
+                    ? "操作"
+                    : "配色"
             }}</span>
             <kbd v-if="item.shortcut" class="item-shortcut">{{ item.shortcut }}</kbd>
           </div>
@@ -598,5 +666,36 @@ html[data-theme="dark"] .palette-item.selected {
   padding: 0;
   height: 0;
   overflow: hidden;
+}
+</style>
+
+<style scoped>
+.palette-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--color-line-soft);
+}
+.palette-filters button {
+  border: 1px solid var(--color-line);
+  background: var(--color-surface);
+  color: var(--ink-600);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.palette-filters button.active {
+  background: var(--brand-50);
+  border-color: var(--brand-400);
+  color: var(--brand-700);
+}
+.palette-filters .clear-recent {
+  margin-left: auto;
+}
+.palette-filters button:focus-visible {
+  outline: 2px solid var(--brand-500);
+  outline-offset: 2px;
 }
 </style>

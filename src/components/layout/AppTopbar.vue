@@ -21,6 +21,7 @@ const emit = defineEmits<{
   navigate: [key: string];
   createBackup: [];
   previewTheme: [name: string];
+  navigateSetting: [id: string];
 }>();
 
 const showPalette = ref(false);
@@ -136,6 +137,7 @@ onBeforeUnmount(() => {
       :busy="busy"
       :has-deployer="hasDeployer"
       @preview-theme="emit('previewTheme', $event)"
+      @navigate-setting="emit('navigateSetting', $event)"
       @navigate="emit('navigate', $event)"
       @deploy="emit('deploy')"
       @restart-server="emit('restartServer')"
