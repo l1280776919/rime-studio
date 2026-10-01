@@ -256,7 +256,7 @@ pub(crate) fn write_appearance_config(
     fs::create_dir_all(user_dir)
         .map_err(|err| RimeError::FileOperationError(format!("创建 Rime 目录失败: {err}")))?;
     let path = user_dir.join("weasel.custom.yaml");
-    let existing = read_to_string(&path);
+    let existing = read_optional_config(&path)?;
     write_text_file(
         &path,
         &merge_weasel_custom(&existing, config)?,

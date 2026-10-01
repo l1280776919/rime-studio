@@ -14,6 +14,7 @@ import {
   Search,
   UploadFilled,
 } from "@element-plus/icons-vue";
+import { useConfigDocument } from "../composables/useConfigDocument";
 import { useErrorHandler } from "../composables/useErrorHandler";
 import type { FileStatus, RimeEnvironment } from "../types";
 
@@ -22,16 +23,16 @@ const emit = defineEmits<{ saved: []; deploy: []; dirtyChange: [dirty: boolean] 
 const { withErrorHandling } = useErrorHandler();
 
 const files = ref<FileStatus[]>([]);
-const selectedFile = ref<FileStatus | null>(null);
-const dirty = ref(false);
-const saving = ref(false);
-const loading = ref(false);
+const document = useConfigDocument(
+  (name) => withErrorHandling(() => api.readConfigFileContent(name)),
+  (name, content) => withErrorHandling(() => api.writeConfigFileContent(name, content)),
+);
+const { selectedFile, content, dirty, saving, loading } = document;
 const fileSearch = ref("");
 const sidebarTab = ref<"key" | "all">("key");
 
 const editorContainer = ref<HTMLDivElement>();
 let editorView: EditorView | null = null;
-let originalContent = "";
 
 type KeyConfigFile = {
   name: string;
@@ -113,7 +114,7 @@ function getEditorExtensions() {
     oneDark,
     EditorView.updateListener.of((update) => {
       if (update.docChanged) {
-        dirty.value = update.view.state.doc.toString() !== originalContent;
+        content.value = update.view.state.doc.toString();
       }
     }),
   ];
@@ -136,26 +137,19 @@ async function loadFiles() {
   }
 }
 
-async function readFileContent(file: FileStatus) {
-  loading.value = true;
-  const content = await withErrorHandling(() => api.readConfigFileContent(file.name));
-  loading.value = false;
-
-  if (content === undefined) {
-    return;
-  }
-
-  originalContent = content;
-  setEditorContent(content);
+async function readFileContent(file: FileStatus): Promise<boolean> {
+  if (!(await document.load(file))) return false;
+  setEditorContent(content.value);
+  return true;
 }
 
 async function selectFile(file: FileStatus) {
-  if (dirty.value && selectedFile.value && selectedFile.value.name !== file.name) {
+  if (saving.value) return;
+  if (dirty.value && selectedFile.value) {
     const confirmed = await confirmDiscard("切换文件", "切换");
     if (!confirmed) return;
   }
 
-  selectedFile.value = file;
   await readFileContent(file);
 }
 
@@ -165,27 +159,14 @@ async function handleSave(): Promise<boolean> {
     return false;
   }
 
-  const content = editorView?.state.doc.toString() ?? "";
-  saving.value = true;
-  let result: boolean | undefined;
-  try {
-    result = await withErrorHandling(() =>
-      api.writeConfigFileContent(selectedFile.value!.name, content),
-    );
-  } finally {
-    saving.value = false;
-  }
-
-  if (!result) return false;
-
-  originalContent = content;
-  dirty.value = false;
+  if (!(await document.save())) return false;
   ElMessage.success(`已保存 ${selectedFile.value.name}`);
   emit("saved");
   return true;
 }
 
 async function handleDeploy() {
+  if (loading.value || saving.value) return;
   if (dirty.value) {
     try {
       await ElMessageBox.confirm(
@@ -201,7 +182,7 @@ async function handleDeploy() {
       return;
     }
 
-    if (!(await handleSave())) return;
+    if (!(await handleSave()) || dirty.value) return;
   }
 
   emit("deploy");
@@ -212,18 +193,11 @@ async function handleRefresh() {
     return;
   }
 
-  const previousName = selectedFile.value?.name;
+  if (saving.value) return;
   await loadFiles();
-
-  if (previousName && selectedFile.value?.name !== previousName) {
-    const match = files.value.find((file) => file.name === previousName);
-    if (match) {
-      selectedFile.value = match;
-    }
-  }
-
   if (selectedFile.value) {
-    await readFileContent(selectedFile.value);
+    const file = files.value.find((item) => item.name === selectedFile.value?.name);
+    if (!(await readFileContent(file ?? selectedFile.value))) return;
   }
 
   ElMessage.success("配置文件已刷新");
@@ -313,6 +287,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  document.cancelLoad();
   destroyEditor();
 });
 </script>
@@ -418,7 +393,7 @@ onBeforeUnmount(() => {
             type="primary"
             :icon="UploadFilled"
             :loading="saving"
-            :disabled="!dirty || !selectedFile"
+            :disabled="loading || !dirty || !selectedFile"
             @click="handleSave"
           >
             保存 (Ctrl+S)

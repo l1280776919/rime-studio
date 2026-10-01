@@ -24,6 +24,19 @@ pub(crate) fn read_to_string(path: &Path) -> String {
     fs::read_to_string(path).unwrap_or_default()
 }
 
+// Missing custom files may be created, but unreadable existing files must never
+// be treated as empty during a read-modify-write operation.
+pub(crate) fn read_optional_config(path: &Path) -> Result<String, RimeError> {
+    match fs::read_to_string(path) {
+        Ok(contents) => Ok(contents),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        Err(err) => Err(RimeError::FileOperationError(format!(
+            "读取 {} 失败，已中止写入: {err}",
+            path.display()
+        ))),
+    }
+}
+
 pub(crate) fn yaml_mapping_get<'a>(mapping: &'a Mapping, key: &str) -> Option<&'a Value> {
     mapping.get(Value::String(key.to_string()))
 }
@@ -493,6 +506,18 @@ pub(crate) fn locate_git_bash() -> Option<PathBuf> {
 #[cfg(test)]
 mod weasel_detection_tests {
     use super::*;
+
+    #[test]
+    fn optional_config_distinguishes_missing_from_unreadable() {
+        let root = env::temp_dir().join(format!("rime-config-read-{}", std::process::id()));
+        fs::create_dir_all(&root).expect("create fixture");
+        let path = root.join("test.yaml");
+        assert_eq!(read_optional_config(&path).expect("missing file"), "");
+        fs::write(&path, [0xff]).expect("write invalid UTF-8");
+        assert!(read_optional_config(&path).is_err());
+        assert_eq!(fs::read(&path).expect("original retained"), vec![0xff]);
+        fs::remove_dir_all(root).expect("cleanup");
+    }
 
     #[test]
     fn detects_custom_install_dir_and_direct_deployer() {
