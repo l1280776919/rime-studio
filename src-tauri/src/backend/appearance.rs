@@ -126,7 +126,20 @@ fn appearance_as_scheme(config: &AppearanceConfig) -> ColorScheme {
 
 pub(crate) fn read_appearance_config(user_dir: &Path) -> AppearanceConfig {
     let weasel_custom = read_to_string(&user_dir.join("weasel.custom.yaml"));
-    let patch = parse_yaml_mapping(&weasel_custom)
+    let default_custom = read_to_string(&user_dir.join("default.custom.yaml"));
+    appearance_from_contents(&weasel_custom, &default_custom)
+}
+
+pub(crate) fn read_appearance_config_checked(
+    user_dir: &Path,
+) -> Result<AppearanceConfig, RimeError> {
+    let weasel = read_user_custom_config(user_dir, "weasel.custom.yaml")?;
+    let default = read_user_custom_config(user_dir, "default.custom.yaml")?;
+    Ok(appearance_from_contents(&weasel, &default))
+}
+
+fn appearance_from_contents(weasel_custom: &str, default_custom: &str) -> AppearanceConfig {
+    let patch = parse_yaml_mapping(weasel_custom)
         .ok()
         .and_then(|root| {
             root.get(yaml_str("patch"))
@@ -135,10 +148,9 @@ pub(crate) fn read_appearance_config(user_dir: &Path) -> AppearanceConfig {
         })
         .unwrap_or_default();
 
-    let theme_name = parse_string_after_key(&weasel_custom, "style/color_scheme")
-        .or_else(|| parse_quoted_value(&weasel_custom, "name:"))
+    let theme_name = parse_string_after_key(weasel_custom, "style/color_scheme")
+        .or_else(|| parse_quoted_value(weasel_custom, "name:"))
         .unwrap_or_else(|| "rime_studio_blue".to_string());
-    let default_custom = read_to_string(&user_dir.join("default.custom.yaml"));
     let current = read_scheme_from_patch(&patch, &theme_name);
     let custom_schemes = collect_color_scheme_names(&patch)
         .into_iter()
@@ -148,27 +160,26 @@ pub(crate) fn read_appearance_config(user_dir: &Path) -> AppearanceConfig {
 
     AppearanceConfig {
         theme_name,
-        font_point: parse_u32_after_key(&weasel_custom, "style/font_point").unwrap_or(11),
-        label_font_point: parse_u32_after_key(&weasel_custom, "style/label_font_point")
+        font_point: parse_u32_after_key(weasel_custom, "style/font_point").unwrap_or(11),
+        label_font_point: parse_u32_after_key(weasel_custom, "style/label_font_point")
             .unwrap_or(10),
-        font_face: parse_string_after_key(&weasel_custom, "style/font_face").unwrap_or_default(),
-        label_font_face: parse_string_after_key(&weasel_custom, "style/label_font_face")
+        font_face: parse_string_after_key(weasel_custom, "style/font_face").unwrap_or_default(),
+        label_font_face: parse_string_after_key(weasel_custom, "style/label_font_face")
             .unwrap_or_default(),
-        page_size: parse_u32_after_key(&weasel_custom, "style/page_size")
-            .or_else(|| parse_u32_after_key(&default_custom, "menu/page_size"))
+        page_size: parse_u32_after_key(weasel_custom, "style/page_size")
+            .or_else(|| parse_u32_after_key(default_custom, "menu/page_size"))
             .unwrap_or(7),
-        switch_key: parse_string_after_key(&default_custom, "ascii_composer/switch_key/Shift_L")
+        switch_key: parse_string_after_key(default_custom, "ascii_composer/switch_key/Shift_L")
             .unwrap_or_else(|| "shift".to_string()),
-        horizontal: parse_bool_after_key(&weasel_custom, "style/horizontal").unwrap_or(true),
-        inline_preedit: parse_bool_after_key(&weasel_custom, "style/inline_preedit")
-            .unwrap_or(true),
-        candidate_format: parse_string_after_key(&weasel_custom, "style/candidate_format")
+        horizontal: parse_bool_after_key(weasel_custom, "style/horizontal").unwrap_or(true),
+        inline_preedit: parse_bool_after_key(weasel_custom, "style/inline_preedit").unwrap_or(true),
+        candidate_format: parse_string_after_key(weasel_custom, "style/candidate_format")
             .unwrap_or_else(|| "%c. %@".to_string()),
-        corner_radius: parse_u32_after_key(&weasel_custom, "style/corner_radius").unwrap_or(8),
-        border_height: parse_u32_after_key(&weasel_custom, "style/border_height").unwrap_or(4),
-        border_width: parse_u32_after_key(&weasel_custom, "style/border_width").unwrap_or(4),
-        line_spacing: parse_u32_after_key(&weasel_custom, "style/line_spacing").unwrap_or(6),
-        spacing: parse_u32_after_key(&weasel_custom, "style/spacing").unwrap_or(8),
+        corner_radius: parse_u32_after_key(weasel_custom, "style/corner_radius").unwrap_or(8),
+        border_height: parse_u32_after_key(weasel_custom, "style/border_height").unwrap_or(4),
+        border_width: parse_u32_after_key(weasel_custom, "style/border_width").unwrap_or(4),
+        line_spacing: parse_u32_after_key(weasel_custom, "style/line_spacing").unwrap_or(6),
+        spacing: parse_u32_after_key(weasel_custom, "style/spacing").unwrap_or(8),
         back_color: current.back_color,
         border_color: current.border_color,
         text_color: current.text_color,
@@ -255,7 +266,7 @@ pub(crate) fn write_appearance_config(
 ) -> Result<(), RimeError> {
     fs::create_dir_all(user_dir)
         .map_err(|err| RimeError::FileOperationError(format!("创建 Rime 目录失败: {err}")))?;
-    let path = user_dir.join("weasel.custom.yaml");
+    let path = resolve_user_relative_path(user_dir, "weasel.custom.yaml", false)?;
     let existing = read_optional_config(&path)?;
     write_text_file(
         &path,

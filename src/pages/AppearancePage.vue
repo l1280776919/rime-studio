@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import {
   Brush,
@@ -18,6 +18,8 @@ import {
 } from "@element-plus/icons-vue";
 import type { AppearanceConfig, ColorScheme, ConfigPreview, RimeEnvironment } from "../types";
 import { api } from "../api";
+import { useSettingsDocument } from "../composables/useSettingsDocument";
+import { useConfigReload } from "../composables/useConfigReload";
 import { useErrorHandler } from "../composables/useErrorHandler";
 import TypingSandbox from "../components/common/TypingSandbox.vue";
 import { colorFields, presets } from "../appearance/schemes";
@@ -138,12 +140,20 @@ function loadCustomSchemes() {
       customSchemes.value = parsed.filter(isStoredCustomScheme);
     }
   } catch {
-    window.localStorage.removeItem(CUSTOM_SCHEMES_STORAGE_KEY);
+    try {
+      window.localStorage.removeItem(CUSTOM_SCHEMES_STORAGE_KEY);
+    } catch {
+      /* Storage can be unavailable. */
+    }
   }
 }
 
 function persistCustomSchemes() {
-  window.localStorage.setItem(CUSTOM_SCHEMES_STORAGE_KEY, JSON.stringify(customSchemes.value));
+  try {
+    window.localStorage.setItem(CUSTOM_SCHEMES_STORAGE_KEY, JSON.stringify(customSchemes.value));
+  } catch {
+    ElMessage.warning("主题草稿缓存不可用，配置文件的保存仍可继续");
+  }
 }
 
 function colorSchemeFromCustom(scheme: CustomScheme): ColorScheme {
@@ -293,37 +303,27 @@ function deleteCustomScheme(scheme: CustomScheme) {
 const isPreset = computed(() => presets.some((p) => p.name === form.theme_name));
 const isLocked = computed(() => isPreset.value);
 
-async function loadAppearance() {
-  const [config, fonts] = await Promise.all([
-    withErrorHandling(() => api.getAppearance()),
-    withErrorHandling(() => api.listSystemFonts(), { silent: true }),
-  ]);
-  if (fonts) systemFonts.value = fonts;
-  if (!config) return;
-
-  const fromYaml = (config.custom_schemes ?? []).map(customFromColorScheme);
-  const known = new Set(fromYaml.map((scheme) => scheme.name));
-  customSchemes.value = [
-    ...fromYaml,
-    ...customSchemes.value.filter((scheme) => !known.has(scheme.name)),
-  ];
-  persistCustomSchemes();
-
-  const matchPreset = presets.find((p) => p.name === config.theme_name);
-  if (matchPreset) {
-    applyConfig({
-      ...config,
-      theme_name: matchPreset.name,
-      ...matchPreset.colors,
-    });
-  } else {
+const document = useSettingsDocument(
+  payloadFromForm,
+  (config) => {
+    customSchemes.value = (config.custom_schemes ?? []).map(customFromColorScheme);
     upsertCustomScheme(config);
     applyConfig(config);
-  }
-  userEdited.value = false;
+    userEdited.value = false;
+    persistCustomSchemes();
+  },
+  () => withErrorHandling(() => api.getAppearance()),
+  (config) => withErrorHandling(() => api.saveAppearance(config)),
+);
+const { loading, ready } = document;
+async function loadAppearance() {
+  await document.load();
 }
+useConfigReload(() => props.env, loadAppearance);
+onBeforeUnmount(document.dispose);
 
 async function previewAppearance() {
+  if (!ready.value || loading.value || document.saving.value || previewing.value) return;
   previewing.value = true;
   const preview = await withErrorHandling(() => api.previewAppearance(payloadFromForm()));
   if (preview) {
@@ -340,17 +340,13 @@ function diffLineClass(line: string) {
 }
 
 async function saveAppearance(shouldDeploy = false) {
+  if (!ready.value || loading.value || document.saving.value) return;
   saving.value = !shouldDeploy;
   deploying.value = shouldDeploy;
   try {
-    const config = await withErrorHandling(() => api.saveAppearance(payloadFromForm()));
-    if (config) {
-      customSchemes.value = (config.custom_schemes ?? []).map(customFromColorScheme);
-      persistCustomSchemes();
-      upsertCustomScheme(config);
-      applyConfig(config);
+    if (await document.save()) {
       emit("saved");
-      ElMessage.success(shouldDeploy ? "已保存并部署生效" : "外观配置已保存");
+      ElMessage.success(shouldDeploy ? "外观配置已保存，开始部署" : "外观配置已保存");
       if (shouldDeploy) emit("deploy");
     }
   } finally {
@@ -422,13 +418,16 @@ watch(
 );
 
 onMounted(() => {
+  void withErrorHandling(() => api.listSystemFonts(), { silent: true }).then((fonts) => {
+    if (fonts) systemFonts.value = fonts;
+  });
   loadCustomSchemes();
   void loadAppearance();
 });
 </script>
 
 <template>
-  <div class="appearance-workshop">
+  <div v-loading="loading" class="appearance-workshop">
     <!-- Header Hero Bar -->
     <header class="appearance-hero-header panel">
       <div class="hero-left">
@@ -467,6 +466,7 @@ onMounted(() => {
           plain
           :icon="Check"
           :loading="saving"
+          :disabled="!ready || loading || deploying"
           @click="saveAppearance(false)"
         >
           保存
@@ -477,6 +477,7 @@ onMounted(() => {
           class="deploy-cta"
           :icon="UploadFilled"
           :loading="deploying"
+          :disabled="!ready || loading || saving"
           @click="saveAppearance(true)"
         >
           {{ isLocked ? "一键部署生效" : "保存并部署" }}

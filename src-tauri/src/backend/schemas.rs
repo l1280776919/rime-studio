@@ -139,6 +139,7 @@ pub(crate) fn list_schemas_sync() -> Result<Vec<SchemaInfo>, RimeError> {
 }
 
 pub(crate) fn copy_schema_sync(schema_id: String) -> Result<String, RimeError> {
+    let _config_guard = lock_config_write()?;
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir)
         .map_err(|err| RimeError::FileOperationError(format!("创建 Rime 目录失败: {err}")))?;
@@ -271,6 +272,13 @@ pub(crate) fn merge_default_custom(
 pub(crate) fn save_active_schema_list_sync(
     schema_ids: Vec<String>,
 ) -> Result<QuickSettingsConfig, RimeError> {
+    let _config_guard = lock_config_write()?;
+    save_active_schema_list_sync_unlocked(schema_ids)
+}
+
+fn save_active_schema_list_sync_unlocked(
+    schema_ids: Vec<String>,
+) -> Result<QuickSettingsConfig, RimeError> {
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir)
         .map_err(|err| RimeError::FileOperationError(format!("创建 Rime 目录失败: {err}")))?;
@@ -284,7 +292,7 @@ pub(crate) fn save_active_schema_list_sync(
 
     let mut config = get_quick_settings_sync()?;
     config.schema_id = safe_schema_ids[0].clone();
-    let default_custom_path = user_dir.join("default.custom.yaml");
+    let default_custom_path = resolve_user_relative_path(&user_dir, "default.custom.yaml", false)?;
     let existing = read_optional_config(&default_custom_path)?;
     write_text_file(
         &default_custom_path,
@@ -296,6 +304,7 @@ pub(crate) fn save_active_schema_list_sync(
 }
 
 pub(crate) fn set_active_schema_sync(schema_id: String) -> Result<QuickSettingsConfig, RimeError> {
+    let _config_guard = lock_config_write()?;
     let safe_id = sanitize_schema_id(&schema_id)?;
     if safe_id.is_empty() {
         return Err(RimeError::SchemaError("方案 ID 不能为空".to_string()));
@@ -307,7 +316,7 @@ pub(crate) fn set_active_schema_sync(schema_id: String) -> Result<QuickSettingsC
     )?);
     schema_ids.retain(|id| id != &safe_id);
     schema_ids.insert(0, safe_id);
-    save_active_schema_list_sync(schema_ids)
+    save_active_schema_list_sync_unlocked(schema_ids)
 }
 
 pub(crate) fn validate_schema_path(path: String) -> Result<PathBuf, RimeError> {

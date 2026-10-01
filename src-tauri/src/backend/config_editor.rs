@@ -128,6 +128,7 @@ pub(crate) fn write_config_file_content_sync(
     filename: String,
     content: String,
 ) -> Result<(), RimeError> {
+    let _config_guard = lock_config_write()?;
     validate_config_content(&filename, &content)?;
     let path = resolve_config_path(&filename, false)?;
     let user_dir = rime_user_dir()?;

@@ -9,6 +9,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import AppSidebar from "./components/layout/AppSidebar.vue";
 import AppTopbar from "./components/layout/AppTopbar.vue";
 import AppStatusbar from "./components/layout/AppStatusbar.vue";
+import { guardUnsavedNavigation } from "./composables/guardUnsavedNavigation";
 import { useTheme } from "./composables/useTheme";
 import { useStudioStore } from "./stores/studio";
 import { isPageKey, type PageKey } from "./navigation";
@@ -50,23 +51,23 @@ const activePage = computed<PageKey>(() => {
   return isPageKey(name) ? name : "overview";
 });
 
+const removeNavigationGuard = guardUnsavedNavigation(
+  router,
+  () => editorDirty.value,
+  async () => {
+    await ElMessageBox.confirm("配置编辑器中有未保存的修改，确定要离开吗？", "未保存的修改", {
+      confirmButtonText: "放弃修改并离开",
+      cancelButtonText: "继续编辑",
+      type: "warning",
+    });
+    editorDirty.value = false;
+    return true;
+  },
+);
+
 async function navigateTo(key: string) {
   if (key === "configs") key = "editor";
   if (!isPageKey(key) || key === activePage.value) return;
-
-  if (activePage.value === "editor" && editorDirty.value) {
-    try {
-      await ElMessageBox.confirm("配置编辑器中有未保存的修改，确定要离开吗？", "未保存的修改", {
-        confirmButtonText: "放弃修改并离开",
-        cancelButtonText: "继续编辑",
-        type: "warning",
-      });
-    } catch {
-      return;
-    }
-    editorDirty.value = false;
-  }
-
   await router.push({ name: key });
 }
 const elapsedSeconds = ref(0);
@@ -149,6 +150,7 @@ watch(isBusy, (busy) => {
 });
 
 let hideNotified = false;
+let disposed = false;
 
 // ── Lifecycle ──────────────────────────────────────
 onMounted(async () => {
@@ -156,7 +158,7 @@ onMounted(async () => {
   void studio.loadEnvironment();
 
   try {
-    unlistenCloseRequested = await getCurrentWindow().onCloseRequested(async (event) => {
+    const unlisten = await getCurrentWindow().onCloseRequested(async (event) => {
       event.preventDefault();
       await getCurrentWindow().hide();
       if (!hideNotified) {
@@ -167,12 +169,17 @@ onMounted(async () => {
         });
       }
     });
+    if (disposed) unlisten();
+    else unlistenCloseRequested = unlisten;
   } catch (err) {
     console.error("Failed to register close requested listener:", err);
   }
 });
 
 onBeforeUnmount(() => {
+  disposed = true;
+  removeNavigationGuard();
+  stopElapsedTimer();
   if (envRefreshTimer) clearTimeout(envRefreshTimer);
   unlistenCloseRequested?.();
 });
@@ -200,7 +207,7 @@ onBeforeUnmount(() => {
 
         <div class="page-container">
           <Transition name="page" mode="out-in">
-            <KeepAlive>
+            <KeepAlive exclude="ConfigEditorPage">
               <OverviewPage
                 v-if="activePage === 'overview'"
                 key="overview"

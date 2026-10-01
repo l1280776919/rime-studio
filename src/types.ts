@@ -119,6 +119,7 @@ export type AppearanceConfig = {
 };
 
 export type QuickSettingsConfig = {
+  schema_list?: string[];
   schema_id: string;
   page_size: number;
   switch_key: string;
@@ -290,6 +291,7 @@ export type AppUpdateInfo = {
   release_url: string;
   asset_name?: string;
   asset_url?: string;
+  asset_size?: number;
   update_available: boolean;
 };
 

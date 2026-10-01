@@ -1,4 +1,4 @@
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, onDeactivated, onMounted, onUnmounted, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { api } from "../api";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -533,6 +533,13 @@ export function useDictionaries(emit: EmitFn) {
         if (!disposed) ElMessage.error(`下载进度监听失败: ${String(error)}`);
       });
     void Promise.all([loadAllStats(), loadOnlineDictionaries(), loadCategoryDictionaries()]);
+  });
+
+  onDeactivated(() => {
+    if (!confirmingImport) {
+      cancelPreview();
+      showImportPreviewDialog.value = false;
+    }
   });
 
   onUnmounted(() => {

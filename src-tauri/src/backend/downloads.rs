@@ -128,6 +128,7 @@ pub(crate) fn copy_lmdg_dictionaries(
     source_dir: &Path,
     target_dir: &Path,
 ) -> Result<usize, RimeError> {
+    let _config_guard = lock_config_write()?;
     fs::create_dir_all(target_dir)
         .map_err(|err| RimeError::FileOperationError(format!("创建万象词库目录失败: {err}")))?;
     let mut installed = 0usize;
@@ -365,6 +366,7 @@ pub(crate) fn import_dictionary_sync(
     source_name: String,
     data: Vec<u8>,
 ) -> Result<DictionaryImportResult, RimeError> {
+    let _config_guard = lock_config_write()?;
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir)
         .map_err(|err| RimeError::FileOperationError(format!("创建 Rime 目录失败: {err}")))?;

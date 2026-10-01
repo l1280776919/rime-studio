@@ -17,6 +17,7 @@ import {
 } from "@element-plus/icons-vue";
 import type { PhraseEntry, RimeEnvironment } from "../types";
 import { useErrorHandler } from "../composables/useErrorHandler";
+import { useConfigReload } from "../composables/useConfigReload";
 import { usePhraseDocument } from "../composables/usePhraseDocument";
 import {
   countDuplicatePhrases,
@@ -271,6 +272,12 @@ async function cleanDuplicatePhrases() {
 }
 
 onMounted(loadPhrases);
+useConfigReload(
+  () => props.env,
+  () => {
+    if (!dirty.value && !editingEntry.value) void document.load();
+  },
+);
 onUnmounted(document.cancelLoad);
 </script>
 

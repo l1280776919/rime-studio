@@ -27,52 +27,88 @@ export const useStudioStore = defineStore("studio", () => {
   const restartingServer = ref(false);
   const syncing = ref(false);
 
+  let scanVersion = 0;
+  let healthVersion = 0;
+  let backupsVersion = 0;
+  const mutationBusy = computed(
+    () =>
+      deploying.value ||
+      !!installingRecipe.value ||
+      backingUp.value ||
+      !!restoringBackup.value ||
+      !!deletingBackup.value ||
+      restartingServer.value ||
+      syncing.value,
+  );
+
   const hasDeployer = computed(() => Boolean(env.value?.deployer_path));
 
   async function loadBackups() {
-    backups.value = await api.listBackups();
+    const version = ++backupsVersion;
+    try {
+      const result = await api.listBackups();
+      if (version === backupsVersion) backups.value = result;
+    } catch (error) {
+      if (version === backupsVersion) ElMessage.warning(`刷新备份列表失败: ${String(error)}`);
+    }
   }
 
   async function loadEnvironment() {
+    const version = ++scanVersion;
     scanning.value = true;
-    status.value = "正在扫描 Rime 配置...";
+    if (!mutationBusy.value) status.value = "正在扫描 Rime 配置...";
     try {
-      env.value = await api.scanEnvironment();
+      const result = await api.scanEnvironment();
+      if (version !== scanVersion) return;
+      env.value = result;
       await loadBackups();
-      status.value = "扫描完成";
+      if (version !== scanVersion) return;
+      if (!mutationBusy.value) status.value = "扫描完成";
       void loadDictionaryHealth();
     } catch (error) {
-      status.value = String(error);
-      ElMessage.error(String(error));
+      if (version === scanVersion) {
+        if (!mutationBusy.value) status.value = String(error);
+        ElMessage.error(String(error));
+      }
     } finally {
-      scanning.value = false;
+      if (version === scanVersion) scanning.value = false;
     }
   }
 
   async function loadDictionaryHealth() {
+    const version = ++healthVersion;
+    const environment = env.value;
     detailsLoading.value = true;
     try {
       const health = await api.scanDictionaryHealth();
-      if (env.value) {
-        env.value = { ...env.value, sogou_health: health ?? undefined };
+      if (version === healthVersion && env.value === environment && environment) {
+        env.value = { ...environment, sogou_health: health ?? undefined };
       }
     } catch (error) {
-      log.value = String(error);
+      if (version === healthVersion && env.value === environment) log.value = String(error);
     } finally {
-      detailsLoading.value = false;
+      if (version === healthVersion) detailsLoading.value = false;
     }
   }
 
   async function deploy() {
+    if (mutationBusy.value) return;
     deploying.value = true;
+    lastDeploy.value = undefined;
     status.value = "正在重新部署小狼毫...";
     let unlisten: UnlistenFn | undefined;
     try {
-      unlisten = await listen<DeployProgress>("deploy-progress", (event) => {
-        status.value = event.payload.stage;
-        if (event.payload.log) log.value = event.payload.log;
-      });
+      try {
+        unlisten = await listen<DeployProgress>("deploy-progress", (event) => {
+          status.value = event.payload.stage;
+          if (event.payload.log) log.value = event.payload.log;
+        });
+      } catch (error) {
+        ElMessage.warning(`部署进度监听不可用，将继续部署: ${String(error)}`);
+      }
       const result = await api.deploy();
+      unlisten?.();
+      unlisten = undefined;
       lastDeploy.value = result;
       if (result.log) log.value = result.log;
       const hintText = result.hints?.length ? ` ${result.hints[0]}` : "";
@@ -87,7 +123,7 @@ export const useStudioStore = defineStore("studio", () => {
     } catch (error) {
       status.value = String(error);
       ElMessage.error(String(error));
-      throw error;
+      return undefined;
     } finally {
       unlisten?.();
       deploying.value = false;
@@ -104,6 +140,7 @@ export const useStudioStore = defineStore("studio", () => {
   }
 
   async function installRimeIce(recipe: string) {
+    if (mutationBusy.value) return;
     installingRecipe.value = recipe;
     log.value = "正在准备安装器...";
     status.value = `正在安装 ${recipe}...`;
@@ -121,42 +158,45 @@ export const useStudioStore = defineStore("studio", () => {
       log.value = String(error);
       status.value = String(error);
       ElMessage.error(String(error));
-      throw error;
+      return undefined;
     } finally {
       installingRecipe.value = undefined;
     }
   }
 
   async function createManualBackup() {
-    let note: string | undefined;
-    try {
-      const { value } = await ElMessageBox.prompt(
-        "可选：为这次备份写一句备注，方便以后识别。",
-        "创建备份",
-        {
-          confirmButtonText: "创建",
-          cancelButtonText: "取消",
-          inputPlaceholder: "例如：改主题前、导入词库后",
-          inputValue: "",
-        },
-      );
-      note = value.trim() || undefined;
-    } catch {
-      return;
-    }
-
+    if (mutationBusy.value) return;
     backingUp.value = true;
-    status.value = "正在创建配置备份...";
     try {
-      const backup = await api.createBackup(note);
-      await loadBackups();
-      ElMessage.success(note ? "备份已创建（含备注）" : "备份已创建");
-      status.value = `已创建备份：${backup.name}`;
-      return backup;
-    } catch (error) {
-      status.value = String(error);
-      ElMessage.error(String(error));
-      throw error;
+      let note: string | undefined;
+      try {
+        const { value } = await ElMessageBox.prompt(
+          "可选：为这次备份写一句备注，方便以后识别。",
+          "创建备份",
+          {
+            confirmButtonText: "创建",
+            cancelButtonText: "取消",
+            inputPlaceholder: "例如：改主题前、导入词库后",
+            inputValue: "",
+          },
+        );
+        note = value.trim() || undefined;
+      } catch {
+        return;
+      }
+
+      status.value = "正在创建配置备份...";
+      try {
+        const backup = await api.createBackup(note);
+        await loadBackups();
+        ElMessage.success(note ? "备份已创建（含备注）" : "备份已创建");
+        status.value = `已创建备份：${backup.name}`;
+        return backup;
+      } catch (error) {
+        status.value = String(error);
+        ElMessage.error(String(error));
+        return undefined;
+      }
     } finally {
       backingUp.value = false;
     }
@@ -180,55 +220,61 @@ export const useStudioStore = defineStore("studio", () => {
   }
 
   async function restoreBackup(backup: BackupEntry) {
-    try {
-      await ElMessageBox.confirm(
-        `将恢复备份 ${backup.name} 中的 ${backup.files} 个文件。${backup.scope ?? ""} 恢复前会先为当前配置创建一份安全备份。`,
-        "恢复备份",
-        {
-          confirmButtonText: "恢复",
-          cancelButtonText: "取消",
-          type: "warning",
-        },
-      );
-    } catch {
-      return;
-    }
-
+    if (mutationBusy.value) return;
     restoringBackup.value = backup.name;
-    status.value = `正在恢复备份：${backup.name}`;
     try {
-      const result = await api.restoreBackup(backup.name);
-      ElMessage.success("备份已恢复");
-      status.value = "备份已恢复";
-      await loadEnvironment();
-      return result;
-    } catch (error) {
-      status.value = String(error);
-      ElMessage.error(String(error));
-      throw error;
+      try {
+        await ElMessageBox.confirm(
+          `将恢复备份 ${backup.name} 中的 ${backup.files} 个文件。${backup.scope ?? ""} 恢复前会先为当前配置创建一份安全备份。`,
+          "恢复备份",
+          {
+            confirmButtonText: "恢复",
+            cancelButtonText: "取消",
+            type: "warning",
+          },
+        );
+      } catch {
+        return;
+      }
+
+      status.value = `正在恢复备份：${backup.name}`;
+      try {
+        const result = await api.restoreBackup(backup.name);
+        ElMessage.success("备份已恢复");
+        status.value = "备份已恢复";
+        await loadEnvironment();
+        return result;
+      } catch (error) {
+        status.value = String(error);
+        ElMessage.error(String(error));
+        return undefined;
+      }
     } finally {
       restoringBackup.value = undefined;
     }
   }
 
   async function deleteBackupEntry(backup: BackupEntry) {
-    try {
-      await ElMessageBox.confirm(
-        `确定删除备份 ${backup.name}（${backup.files} 个文件）？此操作不可恢复。`,
-        "删除备份",
-        { confirmButtonText: "删除", cancelButtonText: "取消", type: "warning" },
-      );
-    } catch {
-      return;
-    }
-
+    if (mutationBusy.value) return;
     deletingBackup.value = backup.name;
     try {
-      await api.deleteBackup(backup.name);
-      await loadBackups();
-      ElMessage.success("备份已删除");
-    } catch (error) {
-      ElMessage.error(String(error));
+      try {
+        await ElMessageBox.confirm(
+          `确定删除备份 ${backup.name}（${backup.files} 个文件）？此操作不可恢复。`,
+          "删除备份",
+          { confirmButtonText: "删除", cancelButtonText: "取消", type: "warning" },
+        );
+      } catch {
+        return;
+      }
+
+      try {
+        await api.deleteBackup(backup.name);
+        await loadBackups();
+        ElMessage.success("备份已删除");
+      } catch (error) {
+        ElMessage.error(String(error));
+      }
     } finally {
       deletingBackup.value = undefined;
     }
@@ -249,6 +295,7 @@ export const useStudioStore = defineStore("studio", () => {
   }
 
   async function restartWeaselServer() {
+    if (mutationBusy.value) return;
     restartingServer.value = true;
     status.value = "正在重启小狼毫输入法服务...";
     try {
@@ -264,6 +311,7 @@ export const useStudioStore = defineStore("studio", () => {
   }
 
   async function syncUserdb() {
+    if (mutationBusy.value) return;
     syncing.value = true;
     status.value = "正在同步 Rime 用户词库...";
     try {

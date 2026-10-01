@@ -354,6 +354,8 @@ pub(crate) struct AppearanceConfig {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct QuickSettingsConfig {
+    #[serde(default)]
+    pub(crate) schema_list: Vec<String>,
     pub(crate) schema_id: String,
     pub(crate) page_size: u32,
     pub(crate) switch_key: String,
@@ -534,6 +536,7 @@ pub(crate) struct AppUpdateInfo {
     pub(crate) release_url: String,
     pub(crate) asset_name: Option<String>,
     pub(crate) asset_url: Option<String>,
+    pub(crate) asset_size: Option<u64>,
     pub(crate) update_available: bool,
 }
 

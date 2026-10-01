@@ -38,9 +38,13 @@ fn emit_installer_progress(
     }
 }
 
-fn is_installer_filename(name: &str) -> bool {
-    !name.contains(['/', '\\', ':'])
-        && Path::new(name).extension().and_then(OsStr::to_str) == Some("exe")
+pub(crate) fn is_installer_filename(name: &str) -> bool {
+    valid_user_relative_path(name)
+        && !name.contains('/')
+        && Path::new(name)
+            .extension()
+            .and_then(OsStr::to_str)
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("exe"))
 }
 
 fn copy_installer<R: Read, W: Write>(
@@ -142,9 +146,6 @@ fn download_github_release_installer(
     asset_filter: impl Fn(&str) -> bool,
     app: Option<&AppHandle>,
 ) -> Result<RimeDownloadResult, RimeError> {
-    let _download_guard = INSTALLER_DOWNLOAD.try_lock().map_err(|_| {
-        RimeError::CommandExecutionFailed("已有安装包正在下载，请等待完成后再试".to_string())
-    })?;
     // Allow slower installer transfers without changing timeouts for other APIs.
     let agent = http_agent_with_read_timeout(Duration::from_secs(90));
     retry_installer_download(
@@ -183,51 +184,7 @@ fn download_github_release_installer(
                 .as_str()
                 .ok_or_else(|| RimeError::DownloadError("发布资源缺少下载地址".to_string()))?;
             let expected_size = asset["size"].as_u64();
-            let dest_dir = app_data_dir()?;
-            fs::create_dir_all(&dest_dir)
-                .map_err(|err| RimeError::FileOperationError(format!("创建下载目录失败: {err}")))?;
-            let destination = dest_dir.join(filename);
-            let partial = destination.with_extension("exe.part");
-            let response = agent
-                .get(url)
-                .set(
-                    "User-Agent",
-                    concat!("RimeStudio/", env!("CARGO_PKG_VERSION")),
-                )
-                .set("Accept", "application/octet-stream")
-                .call()
-                .map_err(installer_http_error)?;
-            let total = expected_size.or_else(|| {
-                response
-                    .header("Content-Length")
-                    .and_then(|value| value.parse().ok())
-            });
-            let result = (|| {
-                let file = fs::File::create(&partial).map_err(|err| {
-                    RimeError::FileOperationError(format!("创建安装包失败: {err}"))
-                })?;
-                copy_installer(response.into_reader(), file, total, |downloaded, total| {
-                    emit_installer_progress(app, "正在下载安装包", downloaded, total);
-                })?;
-                // Only publish a complete, validated download as an executable.
-                if destination.exists() {
-                    fs::remove_file(&destination).map_err(|err| {
-                        RimeError::FileOperationError(format!("替换旧安装包失败: {err}"))
-                    })?;
-                }
-                fs::rename(&partial, &destination).map_err(|err| {
-                    RimeError::FileOperationError(format!("保存安装包失败: {err}"))
-                })?;
-                Ok(RimeDownloadResult {
-                    success: true,
-                    installer_path: Some(destination.display().to_string()),
-                    message: format!("已下载 {filename}"),
-                })
-            })();
-            if result.is_err() {
-                let _ = fs::remove_file(&partial);
-            }
-            result
+            download_installer_asset(filename, url, expected_size, app)
         },
         |number, err| {
             log::warn!("Installer download attempt {number} failed: {err}");
@@ -246,6 +203,64 @@ fn download_github_release_installer(
         } else {
             err
         }
+    })
+}
+
+pub(crate) fn save_installer<R: Read>(
+    reader: R,
+    destination: &Path,
+    total: Option<u64>,
+    progress: impl FnMut(u64, Option<u64>),
+) -> Result<(), RimeError> {
+    write_file_atomically(destination, "保存安装包失败", |file| {
+        copy_installer(reader, file, total, progress)
+    })
+}
+
+pub(crate) fn download_installer_asset(
+    filename: &str,
+    url: &str,
+    expected_size: Option<u64>,
+    app: Option<&AppHandle>,
+) -> Result<RimeDownloadResult, RimeError> {
+    if !is_installer_filename(filename) {
+        return Err(RimeError::DownloadError(
+            "安装包文件名无效或不支持该格式，请手动下载".into(),
+        ));
+    }
+    let _guard = INSTALLER_DOWNLOAD.try_lock().map_err(|_| {
+        RimeError::CommandExecutionFailed("已有安装包正在下载，请等待完成后再试".into())
+    })?;
+    let dest_dir = app_data_dir()?;
+    fs::create_dir_all(&dest_dir)
+        .map_err(|err| RimeError::FileOperationError(format!("创建下载目录失败: {err}")))?;
+    let destination = resolve_user_relative_path(&dest_dir, filename, false)?;
+    let response = http_agent_with_read_timeout(Duration::from_secs(90))
+        .get(url)
+        .set(
+            "User-Agent",
+            concat!("RimeStudio/", env!("CARGO_PKG_VERSION")),
+        )
+        .set("Accept", "application/octet-stream")
+        .call()
+        .map_err(installer_http_error)?;
+    let total = expected_size.or_else(|| {
+        response
+            .header("Content-Length")
+            .and_then(|value| value.parse().ok())
+    });
+    save_installer(
+        response.into_reader(),
+        &destination,
+        total,
+        |downloaded, total| {
+            emit_installer_progress(app, "正在下载安装包", downloaded, total);
+        },
+    )?;
+    Ok(RimeDownloadResult {
+        success: true,
+        installer_path: Some(destination.display().to_string()),
+        message: format!("已下载 {filename}"),
     })
 }
 

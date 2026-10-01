@@ -65,7 +65,7 @@ const updateState = computed(() => {
   return {
     tone: "current",
     title: "当前已是最新正式版本",
-    detail: "本机版本与 GitHub 最新 Release 完全一致，无需更新。",
+    detail: "未发现比本机版本更新的正式发布版本。",
     tagType: "success" as const,
     tagText: "最新版",
     actionText: "重新检查",
@@ -78,7 +78,7 @@ function formatPublishedAt(value?: string) {
 }
 
 async function checkUpdate() {
-  if (checkingUpdate.value) return;
+  if (checkingUpdate.value || downloadingUpdate.value) return;
   checkingUpdate.value = true;
   updateCheckFailed.value = false;
   try {
@@ -107,11 +107,16 @@ async function openReleasePage() {
 }
 
 async function handleUpdateAction() {
+  if (checkingUpdate.value || downloadingUpdate.value) return;
   if (!updateInfo.value || !updateInfo.value.update_available) {
     await checkUpdate();
     return;
   }
 
+  if (!updateInfo.value.asset_url) {
+    await openReleasePage();
+    return;
+  }
   downloadingUpdate.value = true;
   downloadStatus.value = "正在下载更新...";
 

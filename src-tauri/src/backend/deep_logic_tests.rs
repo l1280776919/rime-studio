@@ -31,6 +31,7 @@ fn isolated(name: &str, run: impl FnOnce()) {
 
 fn quick() -> QuickSettingsConfig {
     QuickSettingsConfig {
+        schema_list: Vec::new(),
         schema_id: "rime_ice".into(),
         page_size: 9,
         switch_key: "shift".into(),
@@ -619,6 +620,232 @@ fn lua_and_phrase_operations_reject_linked_paths_outside_user_root() {
             assert_eq!(
                 fs::read_to_string(outside.join("date.lua")).expect("read"),
                 "private"
+            );
+        },
+    );
+}
+
+#[test]
+fn settings_reads_reject_corrupt_files_without_repairing_from_defaults() {
+    isolated(
+        "settings_reads_reject_corrupt_files_without_repairing_from_defaults",
+        || {
+            let user = rime_user_dir().expect("user");
+            let default = "patch:\n  schema_list:\n    - schema: z_last\n    - schema: a_first\n    - schema: missing\n";
+            fs::write(user.join("default.custom.yaml"), default).expect("fixture");
+            fs::write(user.join("weasel.custom.yaml"), "patch: {}\n").expect("fixture");
+            assert_eq!(
+                get_quick_settings_sync().expect("read").schema_list,
+                vec!["z_last", "a_first", "missing"]
+            );
+            fs::write(user.join("weasel.custom.yaml"), "patch: [").expect("fixture");
+            assert!(get_quick_settings_sync().is_err());
+            assert!(get_appearance_config_sync().is_err());
+            assert!(repair_config_health_sync().is_err());
+            assert_eq!(
+                fs::read_to_string(user.join("default.custom.yaml")).expect("read"),
+                default
+            );
+            assert_eq!(
+                fs::read_to_string(user.join("weasel.custom.yaml")).expect("read"),
+                "patch: ["
+            );
+            fs::write(user.join("rime_ice.custom.yaml"), [0xff]).expect("fixture");
+            assert!(get_rime_ice_settings_sync().is_err());
+        },
+    );
+}
+
+#[test]
+fn settings_and_backup_commands_reject_external_directory_links() {
+    isolated(
+        "settings_and_backup_commands_reject_external_directory_links",
+        || {
+            let user = rime_user_dir().expect("user");
+            let outside = user.parent().expect("parent").join("outside-settings");
+            fs::create_dir_all(&outside).expect("directory");
+            fs::write(outside.join("private.yaml"), "private").expect("fixture");
+            directory_link(&outside, &user.join("weasel.custom.yaml"));
+            assert!(save_quick_settings_sync(quick()).is_err());
+            assert!(get_appearance_config_sync().is_err());
+            let app = app_data_dir().expect("app");
+            fs::create_dir_all(&app).expect("directory");
+            directory_link(&outside, &app.join("backup-rime-studio-manual-external"));
+            assert!(validated_backup_dir(&user, "backup-rime-studio-manual-external").is_err());
+            assert!(delete_backup_sync("backup-rime-studio-manual-external".into()).is_err());
+            assert!(list_backups_sync().expect("list").is_empty());
+            let original = app.join("backup-rime-studio-manual-original");
+            fs::create_dir_all(&original).expect("directory");
+            fs::write(original.join("default.custom.yaml"), "patch: {}\n").expect("fixture");
+            directory_link(&original, &app.join("backup-rime-studio-manual-alias"));
+            assert!(delete_backup_sync("backup-rime-studio-manual-alias".into()).is_err());
+            assert!(original.join("default.custom.yaml").is_file());
+            assert_eq!(
+                fs::read_to_string(outside.join("private.yaml")).expect("read"),
+                "private"
+            );
+        },
+    );
+}
+
+#[test]
+fn installer_failures_preserve_the_previous_complete_executable() {
+    isolated(
+        "installer_failures_preserve_the_previous_complete_executable",
+        || {
+            let user = rime_user_dir().expect("user");
+            let path = user.join("setup.exe");
+            fs::write(&path, "MZprevious executable").expect("fixture");
+            for (body, total) in [
+                (b"MZpartial".as_slice(), Some(100)),
+                (b"<html>error".as_slice(), None),
+                (b"".as_slice(), None),
+            ] {
+                assert!(save_installer(body, &path, total, |_, _| {}).is_err());
+                assert_eq!(
+                    fs::read_to_string(&path).expect("read"),
+                    "MZprevious executable"
+                );
+            }
+            save_installer(b"MZcomplete".as_slice(), &path, Some(10), |_, _| {}).expect("download");
+            assert_eq!(fs::read_to_string(path).expect("read"), "MZcomplete");
+            assert_eq!(fs::read_dir(user).expect("list").count(), 1);
+        },
+    );
+}
+
+#[test]
+fn setting_writers_wait_for_the_configuration_operation_lock() {
+    isolated(
+        "setting_writers_wait_for_the_configuration_operation_lock",
+        || {
+            use std::{
+                sync::{mpsc, Arc, Barrier},
+                thread,
+                time::Duration,
+            };
+            let guard = lock_config_write().expect("lock");
+            let barrier = Arc::new(Barrier::new(2));
+            let worker_barrier = barrier.clone();
+            let (sender, receiver) = mpsc::channel();
+            let worker = thread::spawn(move || {
+                worker_barrier.wait();
+                sender
+                    .send(save_quick_settings_sync(quick()))
+                    .expect("result");
+            });
+            barrier.wait();
+            assert!(matches!(
+                receiver.recv_timeout(Duration::from_millis(150)),
+                Err(mpsc::RecvTimeoutError::Timeout)
+            ));
+            drop(guard);
+            receiver
+                .recv_timeout(Duration::from_secs(10))
+                .expect("completion")
+                .expect("save");
+            worker.join().expect("worker");
+        },
+    );
+}
+
+#[test]
+fn manual_backups_wait_for_configuration_writes() {
+    isolated("manual_backups_wait_for_configuration_writes", || {
+        use std::{
+            sync::{mpsc, Arc, Barrier},
+            thread,
+            time::Duration,
+        };
+        let user = rime_user_dir().expect("user");
+        let path = user.join("default.custom.yaml");
+        fs::write(&path, "patch: {}\n").expect("fixture");
+        let guard = lock_config_write().expect("lock");
+        let barrier = Arc::new(Barrier::new(2));
+        let worker_barrier = barrier.clone();
+        let (sender, receiver) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            worker_barrier.wait();
+            sender
+                .send(create_backup_with_note_sync(None))
+                .expect("result");
+        });
+        barrier.wait();
+        assert!(matches!(
+            receiver.recv_timeout(Duration::from_millis(150)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        ));
+        fs::write(&path, "patch:\n  menu/page_size: 7\n").expect("finish write");
+        drop(guard);
+        let backup = receiver
+            .recv_timeout(Duration::from_secs(10))
+            .expect("completion")
+            .expect("backup");
+        assert_eq!(
+            fs::read_to_string(Path::new(&backup.path).join("default.custom.yaml")).expect("read"),
+            "patch:\n  menu/page_size: 7\n"
+        );
+        worker.join().expect("worker");
+    });
+}
+
+#[test]
+fn creating_a_snapshot_waits_for_backup_operations_to_finish() {
+    isolated(
+        "creating_a_snapshot_waits_for_backup_operations_to_finish",
+        || {
+            use std::{
+                sync::{mpsc, Arc, Barrier},
+                thread,
+                time::Duration,
+            };
+            let user = rime_user_dir().expect("user");
+            fs::write(user.join("default.custom.yaml"), "patch: {}\n").expect("fixture");
+            let guard = lock_backup_operation().expect("lock");
+            let barrier = Arc::new(Barrier::new(2));
+            let worker_barrier = barrier.clone();
+            let (sender, receiver) = mpsc::channel();
+            let worker = thread::spawn(move || {
+                worker_barrier.wait();
+                sender
+                    .send(backup_user_config(&user, BackupKind::BeforeSave))
+                    .expect("result");
+            });
+            barrier.wait();
+            assert!(matches!(
+                receiver.recv_timeout(Duration::from_millis(150)),
+                Err(mpsc::RecvTimeoutError::Timeout)
+            ));
+            drop(guard);
+            let backup = receiver
+                .recv_timeout(Duration::from_secs(10))
+                .expect("completion")
+                .expect("backup");
+            assert!(backup.join("default.custom.yaml").is_file());
+            worker.join().expect("worker");
+        },
+    );
+}
+
+#[test]
+fn quick_settings_do_not_materialize_or_overwrite_appearance_defaults() {
+    isolated(
+        "quick_settings_do_not_materialize_or_overwrite_appearance_defaults",
+        || {
+            let user = rime_user_dir().expect("user");
+            fs::write(user.join("weasel.custom.yaml"), "patch:\n  style/color_scheme: native_theme\n  style/font_point: 19\n  style/layout/corner_radius: 23\n").expect("fixture");
+            save_quick_settings_sync(quick()).expect("save");
+            let saved = fs::read_to_string(user.join("weasel.custom.yaml")).expect("read");
+            assert_eq!(
+                parse_string_after_key(&saved, "style/color_scheme").as_deref(),
+                Some("native_theme")
+            );
+            assert_eq!(parse_u32_after_key(&saved, "style/font_point"), Some(19));
+            assert!(yaml_lookup(&saved, "preset_color_schemes").is_none());
+            assert!(yaml_lookup(&saved, "style/corner_radius").is_none());
+            assert_eq!(
+                parse_u32_after_key(&saved, "style/layout/corner_radius"),
+                Some(23)
             );
         },
     );
