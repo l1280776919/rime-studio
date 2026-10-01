@@ -1,6 +1,9 @@
 use crate::backend::*;
 use crate::*;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Mutex,
+};
 use std::{
     ffi::OsStr,
     fs,
@@ -8,6 +11,8 @@ use std::{
     process,
 };
 use tauri::Emitter;
+
+static LMDG_OPERATION: Mutex<()> = Mutex::new(());
 
 pub(crate) fn github_release_asset_url(
     api_url: &str,
@@ -47,11 +52,22 @@ pub(crate) fn github_release_asset_url(
 }
 
 pub(crate) fn unique_temp_dir(prefix: &str) -> Result<PathBuf, RimeError> {
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|err| RimeError::CommandExecutionFailed(format!("读取系统时间失败: {err}")))?
-        .as_millis();
-    Ok(app_data_dir()?.join(format!("{prefix}-{}-{millis}", process::id())))
+    static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+    let root = app_data_dir()?;
+    fs::create_dir_all(&root)?;
+    loop {
+        let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+        let path = root.join(format!("{prefix}-{}-{id}", process::id()));
+        match fs::create_dir(&path) {
+            Ok(()) => return Ok(path),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(err) => {
+                return Err(RimeError::FileOperationError(format!(
+                    "创建临时目录失败: {err}"
+                )))
+            }
+        }
+    }
 }
 
 pub(crate) fn expand_zip_archive(zip_path: &Path, destination: &Path) -> Result<(), RimeError> {
@@ -73,6 +89,9 @@ pub(crate) fn expand_zip_archive(zip_path: &Path, destination: &Path) -> Result<
             None => continue, // Skip insecure paths (Zip Slip protection)
         };
 
+        if !valid_user_relative_path(&enclosed_name.to_string_lossy().replace('\\', "/")) {
+            continue;
+        }
         let out_path = destination.join(enclosed_name);
 
         if zip_file.is_dir() {
@@ -140,7 +159,11 @@ pub(crate) fn copy_lmdg_dictionaries(
             if !safe_relative_path(relative) {
                 continue;
             }
-            let target = target_dir.join(relative);
+            let target = resolve_user_relative_path(
+                target_dir,
+                &relative.to_string_lossy().replace('\\', "/"),
+                false,
+            )?;
             if let Some(parent) = target.parent() {
                 fs::create_dir_all(parent).map_err(|err| {
                     RimeError::FileOperationError(format!("创建万象词库子目录失败: {err}"))
@@ -168,8 +191,9 @@ pub(crate) fn emit_download_progress(
     downloaded_bytes: u64,
     total_bytes: Option<u64>,
 ) {
-    let percent =
-        total_bytes.map(|total| ((downloaded_bytes as f64 / total as f64) * 100.0).min(100.0));
+    let percent = total_bytes
+        .filter(|total| *total > 0)
+        .map(|total| ((downloaded_bytes as f64 / total as f64) * 100.0).min(100.0));
     let _ = window.emit(
         "lmdg-download-progress",
         DownloadProgressPayload {
@@ -188,36 +212,40 @@ pub(crate) fn install_lmdg_dicts_sync_with_progress<F>(
 where
     F: FnMut(u64, Option<u64>),
 {
+    let _guard = LMDG_OPERATION.try_lock().map_err(|_| {
+        RimeError::CommandExecutionFailed("已有万象安装或卸载任务正在运行".to_string())
+    })?;
     let (download_url, release_name) = github_release_asset_url(
         "https://api.github.com/repos/amzxyz/RIME-LMDG/releases",
         "dicts.zip",
     )?;
-    let app_dir = app_data_dir()?;
-    fs::create_dir_all(&app_dir)
-        .map_err(|err| RimeError::FileOperationError(format!("创建下载目录失败: {err}")))?;
-    let zip_path = app_dir.join("RIME-LMDG-dicts.zip");
-    download_url_to_file_with_progress(
-        &download_url,
-        &zip_path,
-        MAX_LMDG_DOWNLOAD_BYTES,
-        "万象词库下载结果为空",
-        "万象词库包超过 256MB，已取消安装",
-        progress,
-    )?;
-
-    let extract_dir = unique_temp_dir("lmdg-dicts")?;
-    expand_zip_archive(&zip_path, &extract_dir)?;
-
-    let target_dir = rime_user_dir()?.join("wanxiang");
-    let installed_count = copy_lmdg_dictionaries(&extract_dir, &target_dir)?;
-    let _ = fs::remove_dir_all(&extract_dir);
-
-    Ok(LmdgInstallResult {
-        installed_count,
-        target_dir: target_dir.display().to_string(),
-        source_url: download_url,
-        message: format!("已安装 {installed_count} 个万象词库文件（{release_name}）"),
-    })
+    let temporary = unique_temp_dir("lmdg-dicts")?;
+    let result = (|| {
+        let zip_path = temporary.join("dicts.zip");
+        download_url_to_file_with_progress(
+            &download_url,
+            &zip_path,
+            MAX_LMDG_DOWNLOAD_BYTES,
+            "万象词库下载结果为空",
+            "万象词库包超过 256MB，已取消安装",
+            progress,
+        )?;
+        let extract_dir = temporary.join("contents");
+        expand_zip_archive(&zip_path, &extract_dir)?;
+        let user_dir = rime_user_dir()?;
+        fs::create_dir_all(&user_dir)?;
+        let target_dir = resolve_user_relative_path(&user_dir, "wanxiang", false)?;
+        backup_user_config(&user_dir, BackupKind::BeforeInstall)?;
+        let installed_count = copy_lmdg_dictionaries(&extract_dir, &target_dir)?;
+        Ok(LmdgInstallResult {
+            installed_count,
+            target_dir: target_dir.display().to_string(),
+            source_url: download_url,
+            message: format!("已安装 {installed_count} 个万象词库文件（{release_name}）"),
+        })
+    })();
+    let _ = fs::remove_dir_all(&temporary);
+    result
 }
 
 pub(crate) fn install_lmdg_grammar_sync_with_progress<F>(
@@ -226,6 +254,9 @@ pub(crate) fn install_lmdg_grammar_sync_with_progress<F>(
 where
     F: FnMut(u64, Option<u64>),
 {
+    let _guard = LMDG_OPERATION.try_lock().map_err(|_| {
+        RimeError::CommandExecutionFailed("已有万象安装或卸载任务正在运行".to_string())
+    })?;
     let model_name = "wanxiang-lts-zh-hans";
     let asset_name = format!("{model_name}.gram");
     let (download_url, release_name) = github_release_asset_url(
@@ -236,9 +267,12 @@ where
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir)
         .map_err(|err| RimeError::FileOperationError(format!("创建 Rime 目录失败: {err}")))?;
-    let model_path = user_dir.join(&asset_name);
-    let patch_path = user_dir.join("rime_ice.custom.yaml");
+    let model_path = resolve_user_relative_path(&user_dir, &asset_name, false)?;
+    let patch_path = resolve_user_relative_path(&user_dir, "rime_ice.custom.yaml", false)?;
 
+    let settings = get_rime_ice_settings_sync()?;
+    let existing = read_optional_config(&patch_path)?;
+    let rendered = merge_rime_ice_custom(&existing, &settings, LmdgPatchAction::Enable)?;
     backup_user_config(&user_dir, BackupKind::BeforeSave)?;
     download_url_to_file_with_progress(
         &download_url,
@@ -249,13 +283,7 @@ where
         progress,
     )?;
 
-    let settings = get_rime_ice_settings_sync()?;
-    let existing = read_to_string(&patch_path);
-    write_text_file(
-        &patch_path,
-        &merge_rime_ice_custom(&existing, &settings, LmdgPatchAction::Enable)?,
-        "写入 rime_ice.custom.yaml 失败",
-    )?;
+    write_text_file(&patch_path, &rendered, "写入 rime_ice.custom.yaml 失败")?;
 
     Ok(LmdgGrammarInstallResult {
         model_name: model_name.to_string(),
@@ -267,15 +295,22 @@ where
 }
 
 pub(crate) fn uninstall_lmdg_grammar_sync() -> Result<LmdgGrammarUninstallResult, RimeError> {
+    let _guard = LMDG_OPERATION.try_lock().map_err(|_| {
+        RimeError::CommandExecutionFailed("已有万象安装或卸载任务正在运行".to_string())
+    })?;
     let model_name = "wanxiang-lts-zh-hans";
     let asset_name = format!("{model_name}.gram");
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir)
         .map_err(|err| RimeError::FileOperationError(format!("创建 Rime 目录失败: {err}")))?;
-    let model_path = user_dir.join(&asset_name);
-    let patch_path = user_dir.join("rime_ice.custom.yaml");
+    let model_path = resolve_user_relative_path(&user_dir, &asset_name, false)?;
+    let patch_path = resolve_user_relative_path(&user_dir, "rime_ice.custom.yaml", false)?;
 
+    let settings = get_rime_ice_settings_sync()?;
+    let existing = read_optional_config(&patch_path)?;
+    let rendered = merge_rime_ice_custom(&existing, &settings, LmdgPatchAction::Disable)?;
     backup_user_config(&user_dir, BackupKind::BeforeSave)?;
+    write_text_file(&patch_path, &rendered, "写入 rime_ice.custom.yaml 失败")?;
     let removed_model = if model_path.exists() {
         fs::remove_file(&model_path)
             .map_err(|err| RimeError::FileOperationError(format!("删除万象语言模型失败: {err}")))?;
@@ -283,14 +318,6 @@ pub(crate) fn uninstall_lmdg_grammar_sync() -> Result<LmdgGrammarUninstallResult
     } else {
         false
     };
-
-    let settings = get_rime_ice_settings_sync()?;
-    let existing = read_to_string(&patch_path);
-    write_text_file(
-        &patch_path,
-        &merge_rime_ice_custom(&existing, &settings, LmdgPatchAction::Disable)?,
-        "写入 rime_ice.custom.yaml 失败",
-    )?;
 
     Ok(LmdgGrammarUninstallResult {
         model_name: model_name.to_string(),
@@ -344,7 +371,8 @@ pub(crate) fn import_dictionary_sync(
 
     let (dict_name, reference, entries, skipped_entries, rendered_contents) =
         parse_dictionary_import_payload(source_name, data)?;
-    let path = user_dir.join(&dict_name);
+    let path = resolve_user_relative_path(&user_dir, &dict_name, false)?;
+    backup_user_config(&user_dir, BackupKind::BeforeSave)?;
     write_text_file(&path, &rendered_contents, "写入导入词库失败")?;
 
     Ok(DictionaryImportResult {
@@ -372,4 +400,26 @@ pub(crate) fn export_dictionary_sync(
             .to_string(),
         contents,
     })
+}
+
+#[cfg(test)]
+mod operation_tests {
+    use super::*;
+
+    #[test]
+    fn concurrent_lmdg_operations_are_rejected_before_network_or_file_changes() {
+        let _guard = LMDG_OPERATION.lock().expect("hold operation lock");
+        assert!(install_lmdg_dicts_sync_with_progress(|_, _| {})
+            .expect_err("reject concurrent install")
+            .to_string()
+            .contains("已有万象"));
+        assert!(install_lmdg_grammar_sync_with_progress(|_, _| {})
+            .expect_err("reject concurrent install")
+            .to_string()
+            .contains("已有万象"));
+        assert!(uninstall_lmdg_grammar_sync()
+            .expect_err("reject concurrent uninstall")
+            .to_string()
+            .contains("已有万象"));
+    }
 }

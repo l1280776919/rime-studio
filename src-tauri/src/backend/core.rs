@@ -99,6 +99,70 @@ pub(crate) fn join_user_rel(user_dir: &Path, rel: &str) -> PathBuf {
     path
 }
 
+/// Validate Windows-relative paths even when regression tests run on Linux.
+pub(crate) fn valid_user_relative_path(relative: &str) -> bool {
+    !relative.is_empty()
+        && relative.split('/').all(|part| {
+            let stem = part
+                .split('.')
+                .next()
+                .unwrap_or_default()
+                .to_ascii_uppercase();
+            !part.is_empty()
+                && part != "."
+                && part != ".."
+                && !part.ends_with(['.', ' '])
+                && !part
+                    .chars()
+                    .any(|ch| ch.is_control() || "\\:<>\"|?*".contains(ch))
+                && !matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+                && !((stem.starts_with("COM") || stem.starts_with("LPT"))
+                    && stem.len() == 4
+                    && matches!(stem.as_bytes()[3], b'1'..=b'9'))
+        })
+}
+
+pub(crate) fn resolve_user_relative_path(
+    user_dir: &Path,
+    relative: &str,
+    must_exist: bool,
+) -> Result<PathBuf, RimeError> {
+    if !valid_user_relative_path(relative) {
+        return Err(RimeError::FileOperationError(
+            "用户目录相对路径无效".to_string(),
+        ));
+    }
+    let root = fs::canonicalize(user_dir)
+        .map_err(|err| RimeError::FileOperationError(format!("读取用户目录失败: {err}")))?;
+    let path = root.join(relative);
+    // Check the nearest existing ancestor, including the target itself. This
+    // covers junctions/symlinks followed by not-yet-created subdirectories.
+    let mut ancestor = path.as_path();
+    loop {
+        match fs::symlink_metadata(ancestor) {
+            Ok(_) => break,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound && !must_exist => {
+                ancestor = ancestor
+                    .parent()
+                    .ok_or_else(|| RimeError::FileOperationError("路径无效".to_string()))?;
+            }
+            Err(err) => {
+                return Err(RimeError::FileOperationError(format!(
+                    "读取路径失败: {err}"
+                )))
+            }
+        }
+    }
+    let canonical = fs::canonicalize(ancestor)
+        .map_err(|err| RimeError::FileOperationError(format!("解析路径失败: {err}")))?;
+    if !canonical.starts_with(&root) {
+        return Err(RimeError::FileOperationError(
+            "路径越出 Rime 用户目录，已中止操作".to_string(),
+        ));
+    }
+    Ok(if must_exist { canonical } else { path })
+}
+
 pub(crate) fn file_status(user_dir: &Path, name: &str) -> FileStatus {
     let path = join_user_rel(user_dir, name);
     let metadata = fs::metadata(&path).ok();

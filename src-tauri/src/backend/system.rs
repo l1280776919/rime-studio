@@ -4,11 +4,16 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    sync::atomic::{AtomicBool, Ordering},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex,
+    },
     thread,
     time::{Duration, Instant},
 };
 use tauri::{AppHandle, Emitter};
+
+static DEPLOY_LOCK: Mutex<()> = Mutex::new(());
 
 static CANCEL_DEPLOY: AtomicBool = AtomicBool::new(false);
 
@@ -38,6 +43,13 @@ fn directory_size(path: &Path) -> u64 {
         .flatten()
         .map(|entry| {
             let child = entry.path();
+            if entry
+                .file_type()
+                .map(|kind| kind.is_symlink())
+                .unwrap_or(true)
+            {
+                return 0;
+            }
             if child.is_dir() {
                 directory_size(&child)
             } else {
@@ -245,6 +257,9 @@ fn diagnose_yaml_files(user_dir: &Path, hints: &mut Vec<String>) {
 }
 
 pub(crate) fn deploy_rime_internal(app: Option<&AppHandle>) -> Result<DeployResult, RimeError> {
+    let _guard = DEPLOY_LOCK.try_lock().map_err(|_| {
+        RimeError::CommandExecutionFailed("已有部署正在进行，请等待完成".to_string())
+    })?;
     CANCEL_DEPLOY.store(false, Ordering::SeqCst);
     let started = Instant::now();
     let mut hints = Vec::new();
@@ -534,15 +549,20 @@ pub(crate) fn restart_weasel_server_sync() -> Result<String, RimeError> {
 pub(crate) fn get_sync_config_sync() -> Result<RimeSyncConfig, RimeError> {
     let user_dir = rime_user_dir()?;
     let install_file = user_dir.join("installation.yaml");
-    let content = fs::read_to_string(&install_file).unwrap_or_default();
-
-    let yaml: serde_yaml::Value = serde_yaml::from_str(&content).unwrap_or(serde_yaml::Value::Null);
+    let content = read_optional_config(&install_file)?;
+    let yaml = serde_yaml::Value::Mapping(parse_yaml_mapping(&content)?);
 
     let installation_id = yaml
         .get("installation_id")
         .and_then(|v| v.as_str())
         .unwrap_or("rime-desktop")
         .to_string();
+
+    if !valid_user_relative_path(&installation_id) || installation_id.contains('/') {
+        return Err(RimeError::SettingsError(
+            "同步设备 ID 必须是有效的单个目录名".to_string(),
+        ));
+    }
 
     let sync_dir = yaml
         .get("sync_dir")
@@ -617,14 +637,17 @@ pub(crate) fn save_sync_config_sync(
 ) -> Result<(), RimeError> {
     let user_dir = rime_user_dir()?;
     let install_file = user_dir.join("installation.yaml");
-    let content = fs::read_to_string(&install_file).unwrap_or_default();
-
-    let mut root: serde_yaml::Value = serde_yaml::from_str(&content)
-        .unwrap_or_else(|_| serde_yaml::Value::Mapping(serde_yaml::Mapping::new()));
+    let content = read_optional_config(&install_file)?;
+    let mut root = serde_yaml::Value::Mapping(parse_yaml_mapping(&content)?);
 
     if let serde_yaml::Value::Mapping(ref mut map) = root {
         if let Some(id) = installation_id {
             let id = id.trim();
+            if !valid_user_relative_path(id) || id.contains('/') {
+                return Err(RimeError::SettingsError(
+                    "同步设备 ID 必须是有效的单个目录名".to_string(),
+                ));
+            }
             if !id.is_empty() {
                 map.insert(
                     serde_yaml::Value::String("installation_id".to_string()),
@@ -648,11 +671,23 @@ pub(crate) fn save_sync_config_sync(
     let serialized = serde_yaml::to_string(&root).map_err(|err| {
         RimeError::FileOperationError(format!("序列化 installation.yaml 失败: {err}"))
     })?;
-    fs::write(&install_file, serialized).map_err(|err| {
-        RimeError::FileOperationError(format!("写入 installation.yaml 失败: {err}"))
-    })?;
+    fs::create_dir_all(&user_dir)?;
+    // Keep an installation.yaml snapshot before changing sync settings.
+    backup_user_config(&user_dir, BackupKind::BeforeSave)?;
+    write_text_file(&install_file, &serialized, "写入 installation.yaml 失败")?;
 
     Ok(())
+}
+
+fn sync_completion(status: std::process::ExitStatus) -> Result<String, RimeError> {
+    if status.success() {
+        Ok("词库同步完成".to_string())
+    } else {
+        Err(RimeError::CommandExecutionFailed(format!(
+            "词库同步失败（状态码: {:?}）",
+            status.code()
+        )))
+    }
 }
 
 pub(crate) fn sync_rime_sync() -> Result<String, RimeError> {
@@ -681,11 +716,7 @@ pub(crate) fn sync_rime_sync() -> Result<String, RimeError> {
     loop {
         match child.try_wait() {
             Ok(Some(status)) => {
-                if status.success() {
-                    return Ok("词库同步完成".to_string());
-                } else {
-                    return Ok(format!("同步完成（状态码: {:?}）", status.code()));
-                }
+                return sync_completion(status);
             }
             Ok(None) if started.elapsed() > timeout => {
                 let _ = child.kill();
@@ -713,9 +744,18 @@ pub(crate) fn list_userdb_entries_sync(
     query: Option<String>,
 ) -> Result<UserdbEntriesResult, RimeError> {
     let sync_cfg = get_sync_config_sync()?;
-    let target_file = PathBuf::from(&sync_cfg.resolved_sync_dir)
-        .join(&sync_cfg.installation_id)
-        .join(&filename);
+    if !valid_user_relative_path(&sync_cfg.installation_id)
+        || sync_cfg.installation_id.contains('/')
+        || !valid_user_relative_path(&filename)
+        || filename.contains('/')
+        || !filename.ends_with(".txt")
+    {
+        return Err(RimeError::ConfigNotFound(
+            "同步快照名称或设备 ID 无效".to_string(),
+        ));
+    }
+    let target_dir = PathBuf::from(&sync_cfg.resolved_sync_dir).join(&sync_cfg.installation_id);
+    let target_file = resolve_user_relative_path(&target_dir, &filename, true)?;
 
     if !target_file.exists() {
         return Err(RimeError::ConfigNotFound(format!(
@@ -768,4 +808,34 @@ pub(crate) fn list_userdb_entries_sync(
     let entries = all_entries.into_iter().skip(offset).take(limit).collect();
 
     Ok(UserdbEntriesResult { entries, total })
+}
+
+#[cfg(test)]
+mod deep_system_tests {
+    use super::*;
+
+    #[test]
+    fn failed_sync_process_is_an_error_and_success_is_reported() {
+        for code in [0, 7] {
+            #[cfg(windows)]
+            let status = Command::new("cmd")
+                .args(["/C", &format!("exit {code}")])
+                .status()
+                .expect("run fixture");
+            #[cfg(not(windows))]
+            let status = Command::new("sh")
+                .args(["-c", &format!("exit {code}")])
+                .status()
+                .expect("run fixture");
+            assert_eq!(sync_completion(status).is_ok(), code == 0);
+        }
+    }
+
+    #[test]
+    fn second_deploy_is_rejected_without_resetting_cancellation() {
+        let _guard = DEPLOY_LOCK.lock().expect("hold deployment lock");
+        request_cancel_deploy();
+        assert!(deploy_rime_internal(None).is_err());
+        assert!(CANCEL_DEPLOY.swap(false, Ordering::SeqCst));
+    }
 }

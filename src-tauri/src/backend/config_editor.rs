@@ -10,12 +10,7 @@ pub(crate) fn is_editable_config_name(name: &str) -> bool {
 }
 
 pub(crate) fn validate_config_relpath(filename: &str) -> Result<(), RimeError> {
-    let invalid = filename.is_empty()
-        || filename.contains('\\')
-        || filename.contains("..")
-        || filename.starts_with('/')
-        || filename.chars().nth(1) == Some(':');
-    if invalid || !is_editable_config_name(filename) {
+    if !valid_user_relative_path(filename) || !is_editable_config_name(filename) {
         return Err(RimeError::ConfigNotFound(
             "只能访问 Rime 用户目录中的 YAML、TXT 或 Lua 文件".to_string(),
         ));
@@ -26,7 +21,13 @@ pub(crate) fn validate_config_relpath(filename: &str) -> Result<(), RimeError> {
 
 fn validate_config_content(filename: &str, content: &str) -> Result<(), RimeError> {
     if filename.ends_with(".yaml") || filename.ends_with(".yml") {
-        serde_yaml::from_str::<serde_yaml::Value>(content).map_err(|err| {
+        // Rime dictionaries have a YAML header followed by tab-separated data.
+        let yaml_content = if filename.ends_with(".dict.yaml") {
+            split_dictionary_header(content).0
+        } else {
+            content
+        };
+        serde_yaml::from_str::<serde_yaml::Value>(yaml_content).map_err(|err| {
             let location = err
                 .location()
                 .map(|location| format!("第 {} 行，第 {} 列", location.line(), location.column()))
@@ -62,6 +63,13 @@ fn collect_config_files(user_dir: &Path, dir: &Path, files: &mut Vec<FileStatus>
 
     for entry in entries.flatten() {
         let path = entry.path();
+        if entry
+            .file_type()
+            .map(|kind| kind.is_symlink())
+            .unwrap_or(true)
+        {
+            continue;
+        }
         if path.is_dir() {
             collect_config_files(user_dir, &path, files);
             continue;
@@ -87,41 +95,11 @@ fn collect_config_files(user_dir: &Path, dir: &Path, files: &mut Vec<FileStatus>
 fn resolve_config_path(filename: &str, must_exist: bool) -> Result<PathBuf, RimeError> {
     validate_config_relpath(filename)?;
     let user_dir = rime_user_dir()?;
-    if !user_dir.exists() {
-        if must_exist {
-            return Err(RimeError::ConfigNotFound(format!(
-                "配置文件不存在: {filename}"
-            )));
-        }
-        return Ok(join_user_rel(&user_dir, filename));
+    if !must_exist {
+        fs::create_dir_all(&user_dir)
+            .map_err(|err| RimeError::FileOperationError(format!("创建用户目录失败: {err}")))?;
     }
-
-    let user_dir = fs::canonicalize(&user_dir).unwrap_or(user_dir);
-    let path = join_user_rel(&user_dir, filename);
-
-    if must_exist {
-        let canonical = fs::canonicalize(&path)
-            .map_err(|_| RimeError::ConfigNotFound(format!("配置文件不存在: {filename}")))?;
-        if !canonical.starts_with(&user_dir) {
-            return Err(RimeError::ConfigNotFound(
-                "只能访问 Rime 用户目录中的 YAML、TXT 或 Lua 文件".to_string(),
-            ));
-        }
-        return Ok(canonical);
-    }
-
-    if let Some(parent) = path.parent() {
-        if parent.exists() {
-            let parent = fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf());
-            if !parent.starts_with(&user_dir) {
-                return Err(RimeError::ConfigNotFound(
-                    "只能访问 Rime 用户目录中的 YAML、TXT 或 Lua 文件".to_string(),
-                ));
-            }
-        }
-    }
-
-    Ok(path)
+    resolve_user_relative_path(&user_dir, filename, must_exist)
 }
 
 pub(crate) fn list_yaml_config_files_sync() -> Result<Vec<FileStatus>, RimeError> {

@@ -42,3 +42,6 @@ pub(crate) use self::schemas::*;
 pub(crate) use self::settings::*;
 pub(crate) use self::system::*;
 pub(crate) use self::yaml_patch::*;
+
+#[cfg(test)]
+mod deep_logic_tests;

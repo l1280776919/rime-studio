@@ -42,6 +42,9 @@ pub(crate) fn list_schemas_sync() -> Result<Vec<SchemaInfo>, RimeError> {
         if let Ok(entries) = fs::read_dir(data_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
+                if !entry.file_type().is_ok_and(|kind| kind.is_file()) {
+                    continue;
+                }
                 let Some(name) = path.file_name().and_then(OsStr::to_str) else {
                     continue;
                 };
@@ -79,6 +82,9 @@ pub(crate) fn list_schemas_sync() -> Result<Vec<SchemaInfo>, RimeError> {
         if let Ok(entries) = fs::read_dir(&user_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
+                if !entry.file_type().is_ok_and(|kind| kind.is_file()) {
+                    continue;
+                }
                 let Some(name) = path.file_name().and_then(OsStr::to_str) else {
                     continue;
                 };
@@ -90,15 +96,16 @@ pub(crate) fn list_schemas_sync() -> Result<Vec<SchemaInfo>, RimeError> {
                     continue;
                 }
                 let id = name.replace(".custom.yaml", "").replace(".schema.yaml", "");
-                if seen.contains(&id) {
-                    // Already listed as system; mark as having user override
-                    if name.ends_with(".custom.yaml") {
-                        if let Some(s) = schemas.iter_mut().find(|s| s.id == id) {
-                            s.is_system = false;
-                        }
+                if name.ends_with(".custom.yaml") {
+                    // A customization patch alone is not an installed schema.
+                    if let Some(schema) = schemas.iter_mut().find(|schema| schema.id == id) {
+                        schema.is_system = false;
                     }
                     continue;
                 }
+                // User schema sources override system sources regardless of
+                // directory enumeration order.
+                schemas.retain(|schema| schema.id != id);
                 seen.insert(id.clone());
 
                 let contents = fs::read_to_string(&path).unwrap_or_default();
@@ -136,41 +143,19 @@ pub(crate) fn copy_schema_sync(schema_id: String) -> Result<String, RimeError> {
     fs::create_dir_all(&user_dir)
         .map_err(|err| RimeError::FileOperationError(format!("创建 Rime 目录失败: {err}")))?;
 
-    let safe_id = schema_id.replace(['/', '\\'], "").replace("..", "");
+    let safe_id = sanitize_schema_id(&schema_id)?;
 
-    // Find the source schema file
-    let system_dirs = [
-        locate_deployer().and_then(|d| d.parent().map(|p| p.join("data"))),
-        Some(PathBuf::from(r"C:\Program Files\Rime\weasel-0.17.4\data")),
-        Some(PathBuf::from(
-            r"C:\Program Files (x86)\Rime\weasel-0.17.4\data",
-        )),
-    ];
-
-    let mut source: Option<PathBuf> = None;
-    for dir in system_dirs.iter().flatten() {
-        let candidate = dir.join(format!("{safe_id}.schema.yaml"));
-        if candidate.exists() {
-            source = Some(candidate);
-            break;
-        }
-    }
-
-    // Also check user dir
-    let user_candidate = user_dir.join(format!("{safe_id}.schema.yaml"));
-    if user_candidate.exists() {
-        source = Some(user_candidate);
-    }
-
-    let source = source.ok_or_else(|| RimeError::SchemaError("未找到源方案文件".to_string()))?;
+    let source = resolve_schema_path(&user_dir, &safe_id)
+        .ok_or_else(|| RimeError::SchemaError("未找到源方案文件".to_string()))?;
 
     // Read source and create a custom copy
     let contents = fs::read_to_string(&source)
         .map_err(|err| RimeError::FileOperationError(format!("读取方案文件失败: {err}")))?;
+    parse_yaml_mapping(&contents)?;
 
     // Write as .custom.yaml in user dir
     let dest_name = format!("{safe_id}.custom.yaml");
-    let dest = user_dir.join(&dest_name);
+    let dest = resolve_user_relative_path(&user_dir, &dest_name, false)?;
 
     if dest.exists() {
         return Err(RimeError::SchemaError(format!(
@@ -180,53 +165,66 @@ pub(crate) fn copy_schema_sync(schema_id: String) -> Result<String, RimeError> {
 
     // Add a header comment
     let patched = format!(
-        "# {} — 从系统方案复制，由 Rime Studio 管理\n# 在此文件中添加 patch 配置即可自定义方案\n\n{}",
-        safe_id, contents
+        "# {} — 方案自定义补丁，由 Rime Studio 管理\n# 在此文件中添加 patch 配置即可自定义方案\n\npatch: {{}}\n",
+        safe_id
     );
 
     write_text_file(&dest, &patched, "写入方案文件失败")?;
     Ok(dest.display().to_string())
 }
 
-pub(crate) fn sanitize_schema_id(schema_id: &str) -> String {
-    schema_id
-        .replace(['/', '\\'], "")
-        .replace("..", "")
-        .trim()
-        .to_string()
+pub(crate) fn sanitize_schema_id(schema_id: &str) -> Result<String, RimeError> {
+    let id = schema_id.trim();
+    if !valid_user_relative_path(id) || id.contains('/') {
+        return Err(RimeError::SchemaError(
+            "方案 ID 必须是有效的文件名，不能包含路径".to_string(),
+        ));
+    }
+    Ok(id.to_string())
 }
 
-pub(crate) fn sanitize_schema_ids(schema_ids: Vec<String>) -> Vec<String> {
+pub(crate) fn sanitize_schema_ids(schema_ids: Vec<String>) -> Result<Vec<String>, RimeError> {
     let mut seen = std::collections::HashSet::new();
-    schema_ids
-        .into_iter()
-        .map(|schema_id| sanitize_schema_id(&schema_id))
-        .filter(|schema_id| !schema_id.is_empty())
-        .filter(|schema_id| seen.insert(schema_id.clone()))
-        .collect()
+    let mut result = Vec::new();
+    for schema_id in schema_ids {
+        let id = sanitize_schema_id(&schema_id)?;
+        if seen.insert(id.clone()) {
+            result.push(id);
+        }
+    }
+    Ok(result)
+}
+
+pub(crate) fn promoted_schema_ids(
+    existing: &str,
+    schema_id: &str,
+) -> Result<Vec<String>, RimeError> {
+    let id = sanitize_schema_id(schema_id)?;
+    let mut ids = parse_schema_list(existing);
+    ids.retain(|entry| entry != &id);
+    ids.insert(0, id);
+    sanitize_schema_ids(ids)
 }
 
 pub(crate) fn managed_key_bindings(config: &QuickSettingsConfig) -> Vec<Value> {
-    let mut bindings = Vec::new();
-    let arrow_paging = config.paging_keys == "arrow_keys";
-    let left_right_nav = config.navigation_keys == "left_right";
-
-    if arrow_paging && left_right_nav {
-        bindings.push(binding_value("paging", "Up", "Page_Up"));
-        bindings.push(binding_value("has_menu", "Down", "Page_Down"));
+    let mut bindings = match config.paging_keys.as_str() {
+        "arrow_keys" => vec![
+            binding_value("paging", "Up", "Page_Up"),
+            binding_value("has_menu", "Down", "Page_Down"),
+        ],
+        "minus_equal" => vec![
+            binding_value("paging", "minus", "Page_Up"),
+            binding_value("has_menu", "equal", "Page_Down"),
+        ],
+        _ => vec![
+            binding_value("paging", "comma", "Page_Up"),
+            binding_value("has_menu", "period", "Page_Down"),
+        ],
+    };
+    if config.navigation_keys == "left_right" {
         bindings.push(binding_value("has_menu", "Left", "Up"));
         bindings.push(binding_value("has_menu", "Right", "Down"));
-    } else if arrow_paging {
-        bindings.push(binding_value("paging", "Up", "Page_Up"));
-        bindings.push(binding_value("has_menu", "Down", "Page_Down"));
-    } else if left_right_nav {
-        bindings.push(binding_value("has_menu", "Left", "Page_Up"));
-        bindings.push(binding_value("has_menu", "Right", "Page_Down"));
-    } else if config.paging_keys == "minus_equal" {
-        bindings.push(binding_value("paging", "minus", "Page_Up"));
-        bindings.push(binding_value("has_menu", "equal", "Page_Down"));
     }
-
     bindings
 }
 
@@ -276,7 +274,7 @@ pub(crate) fn save_active_schema_list_sync(
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir)
         .map_err(|err| RimeError::FileOperationError(format!("创建 Rime 目录失败: {err}")))?;
-    let safe_schema_ids = sanitize_schema_ids(schema_ids);
+    let safe_schema_ids = sanitize_schema_ids(schema_ids)?;
     if safe_schema_ids.is_empty() {
         return Err(RimeError::SchemaError(
             "至少需要启用一个输入方案".to_string(),
@@ -298,7 +296,7 @@ pub(crate) fn save_active_schema_list_sync(
 }
 
 pub(crate) fn set_active_schema_sync(schema_id: String) -> Result<QuickSettingsConfig, RimeError> {
-    let safe_id = sanitize_schema_id(&schema_id);
+    let safe_id = sanitize_schema_id(&schema_id)?;
     if safe_id.is_empty() {
         return Err(RimeError::SchemaError("方案 ID 不能为空".to_string()));
     }

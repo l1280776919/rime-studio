@@ -2,7 +2,7 @@ use crate::backend::*;
 use crate::*;
 
 pub(crate) fn read_u16_le(data: &[u8], offset: usize) -> Option<u16> {
-    let bytes = data.get(offset..offset + 2)?;
+    let bytes = data.get(offset..offset.checked_add(2)?)?;
     Some(u16::from_le_bytes([bytes[0], bytes[1]]))
 }
 
@@ -75,18 +75,17 @@ pub(crate) fn parse_scel_entries(data: &[u8]) -> Result<(Vec<DictionaryEntry>, u
             break;
         }
 
-        let pinyin_indexes = data[offset..offset + pinyin_byte_len]
-            .chunks(2)
-            .filter_map(|chunk| {
-                if chunk.len() == 2 {
-                    let index = u16::from_le_bytes([chunk[0], chunk[1]]);
-                    pinyin_table.get(&index).cloned()
-                } else {
-                    None
-                }
+        let code = data[offset..offset + pinyin_byte_len]
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|chunk| {
+                pinyin_table
+                    .get(&u16::from_le_bytes([chunk[0], chunk[1]]))
+                    .cloned()
             })
-            .collect::<Vec<_>>();
-        let code = pinyin_indexes.join(" ");
+            .collect::<Option<Vec<_>>>()
+            .map(|syllables| syllables.join(" "));
         offset += pinyin_byte_len;
 
         for _ in 0..same_pinyin_count {
@@ -112,10 +111,14 @@ pub(crate) fn parse_scel_entries(data: &[u8]) -> Result<(Vec<DictionaryEntry>, u
             }
             offset += ext_len;
 
-            if word.is_empty() {
-                skipped += 1;
+            if !word.is_empty() && word_byte_len.is_multiple_of(2) {
+                if let Some(code) = &code {
+                    entries.push((word, code.clone(), 1));
+                } else {
+                    skipped += 1;
+                }
             } else {
-                entries.push((word, code.clone(), 1));
+                skipped += 1;
             }
         }
     }

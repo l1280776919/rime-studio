@@ -29,13 +29,6 @@ pub(crate) fn timestamp() -> String {
         .unwrap_or_else(|_| "unknown-time".to_string())
 }
 
-pub(crate) fn copy_if_exists(source: &Path, target: &Path) -> io::Result<()> {
-    if source.exists() {
-        fs::copy(source, target)?;
-    }
-    Ok(())
-}
-
 #[derive(Clone, Copy)]
 pub(crate) enum BackupKind {
     Manual,
@@ -152,6 +145,17 @@ pub(crate) fn prune_old_auto_backups(
 }
 
 pub(crate) fn write_text_file(path: &Path, contents: &str, context: &str) -> Result<(), RimeError> {
+    write_file_atomically(path, context, |file| {
+        file.write_all(contents.as_bytes())
+            .map_err(|err| RimeError::FileOperationError(format!("{context}: {err}")))
+    })
+}
+
+pub(crate) fn write_file_atomically(
+    path: &Path,
+    context: &str,
+    write: impl FnOnce(&mut fs::File) -> Result<(), RimeError>,
+) -> Result<(), RimeError> {
     let parent = path
         .parent()
         .ok_or_else(|| RimeError::FileOperationError(format!("{context}: 目标路径无效")))?;
@@ -176,13 +180,15 @@ pub(crate) fn write_text_file(path: &Path, contents: &str, context: &str) -> Res
             Err(err) => return Err(RimeError::FileOperationError(format!("{context}: {err}"))),
         }
     };
-    let write_result = temp_file
-        .write_all(contents.as_bytes())
-        .and_then(|()| temp_file.sync_all());
+    let write_result = write(&mut temp_file).and_then(|()| {
+        temp_file
+            .sync_all()
+            .map_err(|err| RimeError::FileOperationError(format!("{context}: {err}")))
+    });
     drop(temp_file);
     if let Err(err) = write_result {
         let _ = fs::remove_file(&temp_path);
-        return Err(RimeError::FileOperationError(format!("{context}: {err}")));
+        return Err(err);
     }
     // rename replaces files on Windows too. Never delete the original on failure:
     // a locked or inaccessible target must remain intact.
@@ -203,20 +209,11 @@ pub(crate) fn is_managed_config_file(name: &str) -> bool {
 }
 
 pub(crate) fn is_manual_backup_file(name: &str) -> bool {
-    is_managed_config_file(name)
-        || name.ends_with(".schema.yaml")
-        || name.ends_with(".lua")
-        || name == "installation.yaml"
-        || name == "user.yaml"
+    is_managed_config_file(name) || is_editable_config_name(name)
 }
 
-pub(crate) fn backup_scope_label(kind: &str) -> String {
-    if kind == "manual" {
-        "配置快照：*.custom.yaml、词库、短语、方案、Lua、installation.yaml。不含 build/、sync/、*.userdb。"
-            .to_string()
-    } else {
-        "配置快照：*.custom.yaml、词库、短语。不含方案源文件、Lua、用户词库和 build/。".to_string()
-    }
+pub(crate) fn backup_scope_label(_kind: &str) -> String {
+    "配置快照（含子目录）：YAML、YML、TXT、Lua 配置、词库、短语、方案、installation.yaml。不含 build/、sync/、*.userdb 和链接目录。".to_string()
 }
 
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -252,6 +249,45 @@ fn read_backup_meta(dir: &Path) -> BackupMeta {
         .unwrap_or_default()
 }
 
+/// Snapshot files keep their relative paths; generated data and links are excluded.
+pub(crate) fn collect_snapshot_files(root: &Path) -> Result<Vec<PathBuf>, RimeError> {
+    let mut files = Vec::new();
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        for entry in fs::read_dir(&dir)
+            .map_err(|err| RimeError::BackupError(format!("读取快照目录失败: {err}")))?
+        {
+            let entry =
+                entry.map_err(|err| RimeError::BackupError(format!("读取快照文件失败: {err}")))?;
+            let file_type = entry.file_type()?;
+            if file_type.is_symlink() {
+                continue;
+            }
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            if file_type.is_dir() {
+                if name.eq_ignore_ascii_case("build")
+                    || name.eq_ignore_ascii_case("sync")
+                    || name.ends_with(".userdb")
+                    || name.starts_with('.')
+                    || name.starts_with("backup-")
+                {
+                    continue;
+                }
+                pending.push(path);
+            } else if file_type.is_file() && is_manual_backup_file(&name) {
+                files.push(
+                    path.strip_prefix(root)
+                        .map_err(|err| RimeError::BackupError(err.to_string()))?
+                        .to_path_buf(),
+                );
+            }
+        }
+    }
+    files.sort();
+    Ok(files)
+}
+
 pub(crate) fn backup_user_config(user_dir: &Path, kind: BackupKind) -> Result<PathBuf, RimeError> {
     backup_user_config_with_note(user_dir, kind, None)
 }
@@ -266,29 +302,21 @@ pub(crate) fn backup_user_config_with_note(
         .map_err(|err| RimeError::BackupError(format!("创建备份根目录失败: {err}")))?;
     let backup_dir = create_unique_backup_dir(&backup_root, kind)?;
 
-    for entry in fs::read_dir(user_dir)
-        .map_err(|err| RimeError::BackupError(format!("读取 Rime 目录失败: {err}")))?
-    {
-        let entry =
-            entry.map_err(|err| RimeError::BackupError(format!("检查 Rime 文件失败: {err}")))?;
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
+    let snapshot_result = (|| {
+        for relative in collect_snapshot_files(user_dir)? {
+            let target = backup_dir.join(&relative);
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::copy(user_dir.join(&relative), target).map_err(|err| {
+                RimeError::BackupError(format!("备份 {} 失败: {err}", relative.display()))
+            })?;
         }
-
-        let Some(name) = path.file_name().and_then(OsStr::to_str) else {
-            continue;
-        };
-
-        let include = if matches!(kind, BackupKind::Manual) {
-            is_manual_backup_file(name)
-        } else {
-            is_managed_config_file(name)
-        };
-        if include {
-            copy_if_exists(&path, &backup_dir.join(name))
-                .map_err(|err| RimeError::BackupError(format!("备份 {name} 失败: {err}")))?;
-        }
+        Ok::<(), RimeError>(())
+    })();
+    if let Err(err) = snapshot_result {
+        let _ = fs::remove_dir_all(&backup_dir);
+        return Err(err);
     }
 
     write_backup_meta(&backup_dir, kind, note)?;
@@ -332,17 +360,7 @@ pub(crate) fn list_backup_dirs(_user_dir: &Path) -> Result<Vec<BackupEntry>, Rim
             .and_then(|metadata| metadata.modified().ok())
             .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|duration| duration.as_secs());
-        let files = fs::read_dir(&path)
-            .map(|entries| {
-                entries
-                    .filter_map(Result::ok)
-                    .filter(|item| {
-                        item.path().is_file()
-                            && item.file_name().to_string_lossy() != "backup-meta.json"
-                    })
-                    .count()
-            })
-            .unwrap_or(0);
+        let files = collect_snapshot_files(&path)?.len();
 
         let kind = backup_kind_from_name(name);
         let meta = read_backup_meta(&path);
@@ -386,38 +404,25 @@ pub(crate) fn restore_backup_dir(
     user_dir: &Path,
     backup_dir: &Path,
 ) -> Result<RestoreResult, RimeError> {
+    fs::create_dir_all(user_dir)?;
+    let mut copies = Vec::new();
+    for relative in collect_snapshot_files(backup_dir)? {
+        let rel = relative.to_string_lossy().replace('\\', "/");
+        let target = resolve_user_relative_path(user_dir, &rel, false)?;
+        copies.push((backup_dir.join(relative), target));
+    }
+    // Include schema, Lua and installation files that restoration may replace.
+    // Do not prune the source or safety snapshot while restoring.
     let safety_backup_dir = backup_user_config(user_dir, BackupKind::BeforeRestore)?;
-    let mut restored_files = 0usize;
-
-    for entry in fs::read_dir(backup_dir)
-        .map_err(|err| RimeError::BackupError(format!("读取备份失败: {err}")))?
-    {
-        let entry =
-            entry.map_err(|err| RimeError::BackupError(format!("检查备份文件失败: {err}")))?;
-        let source = entry.path();
-        if !source.is_file() {
-            continue;
+    for (source, target) in &copies {
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent)?;
         }
-
-        let Some(name) = source.file_name().and_then(OsStr::to_str) else {
-            continue;
-        };
-        if name == "backup-meta.json"
-            || name.contains("..")
-            || name.contains('/')
-            || name.contains('\\')
-        {
-            continue;
-        }
-
-        fs::copy(&source, user_dir.join(name))
-            .map_err(|err| RimeError::BackupError(format!("恢复 {name} 失败: {err}")))?;
-        restored_files += 1;
+        fs::copy(source, target).map_err(|err| {
+            RimeError::BackupError(format!("恢复 {} 失败: {err}", source.display()))
+        })?;
     }
-
-    if let Some(backup_root) = safety_backup_dir.parent() {
-        let _ = prune_old_auto_backups(backup_root, AUTO_BACKUP_KEEP_LIMIT);
-    }
+    let restored_files = copies.len();
 
     Ok(RestoreResult {
         restored_files,
