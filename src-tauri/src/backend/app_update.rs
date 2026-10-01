@@ -1,6 +1,5 @@
 use crate::backend::*;
 use crate::*;
-use std::{fs, io};
 
 const APP_RELEASE_API_URL: &str =
     "https://api.github.com/repos/l1280776919/rime-studio/releases/latest";
@@ -10,44 +9,33 @@ pub(crate) fn normalize_version(value: &str) -> &str {
     value.trim().trim_start_matches('v').trim_start_matches('V')
 }
 
-pub(crate) fn parse_semver(value: &str) -> Option<(u64, u64, u64, Vec<String>)> {
-    let normalized = normalize_version(value);
-    let (core, suffix) = normalized.split_once('-').unwrap_or((normalized, ""));
-    let mut parts = core.split('.');
-    let major = parts.next()?.parse::<u64>().ok()?;
-    let minor = parts.next().unwrap_or("0").parse::<u64>().ok()?;
-    let patch = parts.next().unwrap_or("0").parse::<u64>().ok()?;
-    let suffix_parts = if suffix.is_empty() {
-        Vec::new()
-    } else {
-        suffix.split('.').map(str::to_string).collect()
-    };
-    Some((major, minor, patch, suffix_parts))
+pub(crate) fn version_is_newer(latest: &str, current: &str) -> bool {
+    match (
+        semver::Version::parse(normalize_version(latest)),
+        semver::Version::parse(normalize_version(current)),
+    ) {
+        (Ok(latest), Ok(current)) => latest.cmp_precedence(&current).is_gt(),
+        _ => false,
+    }
 }
 
-pub(crate) fn version_is_newer(latest: &str, current: &str) -> bool {
-    let Some((latest_major, latest_minor, latest_patch, latest_suffix)) = parse_semver(latest)
-    else {
-        return false;
-    };
-    let Some((current_major, current_minor, current_patch, current_suffix)) = parse_semver(current)
-    else {
-        return false;
-    };
-
-    (latest_major, latest_minor, latest_patch) > (current_major, current_minor, current_patch)
-        || ((latest_major, latest_minor, latest_patch)
-            == (current_major, current_minor, current_patch)
-            && !current_suffix.is_empty()
-            && latest_suffix.is_empty())
+fn matches_installer_architecture(name: &str, arch: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    let arm = name.contains("arm64") || name.contains("aarch64");
+    let x64 = name.contains("x64") || name.contains("x86_64") || name.contains("amd64");
+    let x86 = !x64 && (name.contains("x86") || name.contains("i686") || name.contains("win32"));
+    match arch {
+        "aarch64" => !x64 && !x86,
+        "x86_64" => !arm && !x86,
+        "x86" => !arm && !x64,
+        _ => !arm && !x64 && !x86,
+    }
 }
 
 pub(crate) fn release_asset_score(name: &str) -> i32 {
-    let lower = name.to_ascii_lowercase();
-    if lower.ends_with(".exe") {
+    // Automatic launch currently supports EXE; unsupported formats remain available on the release page.
+    if is_installer_filename(name) && matches_installer_architecture(name, std::env::consts::ARCH) {
         30
-    } else if lower.ends_with(".msi") {
-        20
     } else {
         0
     }
@@ -92,16 +80,20 @@ pub(crate) fn check_app_update_sync() -> Result<AppUpdateInfo, RimeError> {
                     score,
                     name.to_string(),
                     asset["browser_download_url"].as_str()?.to_string(),
+                    asset["size"].as_u64(),
                 ))
             })
-            .max_by_key(|(score, name, _)| {
-                (*score, name.contains("setup") || name.contains("install"))
+            .max_by_key(|(score, name, _, _)| {
+                (*score, {
+                    let name = name.to_ascii_lowercase();
+                    name.contains("setup") || name.contains("install")
+                })
             })
     });
 
-    let (asset_name, asset_url) = selected_asset
-        .map(|(_, name, url)| (Some(name), Some(url)))
-        .unwrap_or((None, None));
+    let (asset_name, asset_url, asset_size) = selected_asset
+        .map(|(_, name, url, size)| (Some(name), Some(url), size))
+        .unwrap_or((None, None, None));
 
     Ok(AppUpdateInfo {
         current_version,
@@ -112,6 +104,7 @@ pub(crate) fn check_app_update_sync() -> Result<AppUpdateInfo, RimeError> {
         release_url,
         asset_name,
         asset_url,
+        asset_size,
         update_available,
     })
 }
@@ -125,36 +118,42 @@ pub(crate) fn download_app_update_sync() -> Result<RimeDownloadResult, RimeError
         .asset_name
         .unwrap_or_else(|| "RimeStudio-Installer.exe".to_string());
 
-    let dest_dir = app_data_dir()?;
-    fs::create_dir_all(&dest_dir)
-        .map_err(|err| RimeError::FileOperationError(format!("创建下载目录失败: {err}")))?;
-    let dest_path = dest_dir.join(&filename);
-
-    // Remove partially downloaded file first
-    let _ = fs::remove_file(&dest_path);
-
-    let response = http_agent()
-        .get(&download_url)
-        .set("User-Agent", "RimeStudio/0.4")
-        .call()
-        .map_err(|err| RimeError::DownloadError(format!("下载失败: {err}")))?;
-
-    let mut reader = response.into_reader();
-    let mut file = fs::File::create(&dest_path)
-        .map_err(|err| RimeError::FileOperationError(format!("创建文件失败: {err}")))?;
-    io::copy(&mut reader, &mut file)
-        .map_err(|err| RimeError::FileOperationError(format!("保存文件失败: {err}")))?;
-
-    Ok(RimeDownloadResult {
-        success: true,
-        installer_path: Some(dest_path.display().to_string()),
-        message: format!("已下载 {filename}"),
-    })
+    download_installer_asset(&filename, &download_url, info.asset_size, None)
 }
 
 #[cfg(test)]
 mod app_update_tests {
     use super::version_is_newer;
+
+    #[test]
+    fn compares_prerelease_identifiers_and_ignores_build_metadata() {
+        assert!(super::version_is_newer("1.0.0-rc.10", "1.0.0-rc.9"));
+        assert!(super::version_is_newer("1.0.0-beta", "1.0.0-alpha.9"));
+        assert!(super::version_is_newer("1.0.1+build.2", "1.0.0+build.9"));
+        assert!(!super::version_is_newer("1.0.0+build.2", "1.0.0+build.1"));
+        for invalid in ["1.0.0.2", "1.0.0-01", "01.0.0", "1.0.0-", ""] {
+            assert!(!super::version_is_newer(invalid, "1.0.0"));
+        }
+    }
+
+    #[test]
+    fn selects_supported_installers_for_the_current_architecture() {
+        assert!(super::release_asset_score("RimeStudio_SETUP.EXE") > 0);
+        assert_eq!(super::release_asset_score("../setup.exe"), 0);
+        assert_eq!(super::release_asset_score("setup.msi"), 0);
+        assert!(!super::matches_installer_architecture(
+            "setup-arm64.exe",
+            "x86_64"
+        ));
+        assert!(!super::matches_installer_architecture(
+            "setup-x64.exe",
+            "aarch64"
+        ));
+        assert!(super::matches_installer_architecture(
+            "setup-arm64.exe",
+            "aarch64"
+        ));
+    }
 
     #[test]
     pub(crate) fn compares_release_versions() {

@@ -46,6 +46,7 @@ pub(crate) fn get_custom_phrases_sync() -> Result<Vec<PhraseEntry>, RimeError> {
 }
 
 pub(crate) fn save_custom_phrases_sync(phrases: Vec<PhraseEntry>) -> Result<(), RimeError> {
+    let _config_guard = lock_config_write()?;
     for phrase in &phrases {
         if is_phrase_metadata(&phrase.text)
             || phrase.text.contains(['\t', '\r', '\n', '\0'])

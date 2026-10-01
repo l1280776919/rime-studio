@@ -8,6 +8,14 @@ use std::{
     process::Command,
 };
 
+static CONFIG_WRITES: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+pub(crate) fn lock_config_write() -> Result<std::sync::MutexGuard<'static, ()>, RimeError> {
+    CONFIG_WRITES
+        .lock()
+        .map_err(|_| RimeError::FileOperationError("配置写入锁不可用".into()))
+}
+
 pub(crate) fn rime_user_dir() -> Result<PathBuf, RimeError> {
     let appdata = env::var("APPDATA")
         .map_err(|_| RimeError::EnvVarNotFound("APPDATA 环境变量不可用".to_string()))?;
@@ -35,6 +43,16 @@ pub(crate) fn read_optional_config(path: &Path) -> Result<String, RimeError> {
             path.display()
         ))),
     }
+}
+
+pub(crate) fn read_user_custom_config(user_dir: &Path, name: &str) -> Result<String, RimeError> {
+    if !user_dir.exists() {
+        return Ok(String::new());
+    }
+    let path = resolve_user_relative_path(user_dir, name, false)?;
+    let contents = read_optional_config(&path)?;
+    crate::backend::merge_custom_yaml(&contents, |_| {})?;
+    Ok(contents)
 }
 
 pub(crate) fn yaml_mapping_get<'a>(mapping: &'a Mapping, key: &str) -> Option<&'a Value> {

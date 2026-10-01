@@ -18,10 +18,11 @@ import {
   UploadFilled,
 } from "@element-plus/icons-vue";
 import type { CommunitySchema, QuickSettingsConfig, RimeEnvironment, SchemaInfo } from "../types";
+import { useConfigReload } from "../composables/useConfigReload";
 import { useErrorHandler } from "../composables/useErrorHandler";
 import DoublePinyinVisualizer from "../components/schemas/DoublePinyinVisualizer.vue";
 
-defineProps<{
+const props = defineProps<{
   env?: RimeEnvironment;
 }>();
 
@@ -43,6 +44,8 @@ const currentConfig = ref<QuickSettingsConfig>();
 const selectedId = ref<string>();
 const menuIds = ref<string[]>([]);
 const installingRecipe = ref<string>();
+const originalMenu = ref("[]");
+const menuDirty = computed(() => JSON.stringify(menuIds.value) !== originalMenu.value);
 
 const { withErrorHandling } = useErrorHandler();
 
@@ -87,7 +90,9 @@ function getSchemaBadgeLetter(schema: SchemaInfo): string {
   return name.slice(0, 1).toUpperCase();
 }
 
-async function loadSchemas() {
+async function loadSchemas(force = false) {
+  if (loading.value || (!force && (activating.value || savingMenu.value || menuDirty.value)))
+    return;
   loading.value = true;
   try {
     const result = await withErrorHandling(() =>
@@ -98,24 +103,45 @@ async function loadSchemas() {
       schemas.value = schemaList;
       currentConfig.value = config;
       communitySchemas.value = communityList;
-      menuIds.value = schemaList.filter((schema) => schema.is_enabled).map((schema) => schema.id);
+      menuIds.value = config.schema_list
+        ? [...config.schema_list]
+        : schemaList.filter((schema) => schema.is_enabled).map((schema) => schema.id);
       if (menuIds.value.length === 0 && config.schema_id) {
         menuIds.value = [config.schema_id];
       }
-      selectedId.value = schemaList.find((schema) => schema.is_active)?.id ?? schemaList[0]?.id;
+      originalMenu.value = JSON.stringify(menuIds.value);
+      if (!schemaList.some((schema) => schema.id === selectedId.value)) {
+        selectedId.value = schemaList.find((schema) => schema.is_active)?.id ?? schemaList[0]?.id;
+      }
     }
   } finally {
     loading.value = false;
   }
 }
 
+async function refreshSchemas() {
+  if (menuDirty.value) {
+    try {
+      await ElMessageBox.confirm("刷新会丢弃尚未保存的方案菜单修改，确定刷新？", "刷新方案", {
+        confirmButtonText: "刷新",
+        cancelButtonText: "保留修改",
+        type: "warning",
+      });
+    } catch {
+      return;
+    }
+  }
+  await loadSchemas(true);
+}
+
 async function activateSchema(schema: SchemaInfo, shouldDeploy = false) {
+  if (activating.value || savingMenu.value || loading.value) return;
   activating.value = schema.id;
   try {
     const config = await withErrorHandling(() => api.setActiveSchema(schema.id));
     if (config) {
       currentConfig.value = config;
-      await loadSchemas();
+      await loadSchemas(true);
       emit("saved");
       ElMessage.success(shouldDeploy ? "当前方案已切换，开始部署" : "当前方案已切换");
       if (shouldDeploy) {
@@ -128,6 +154,7 @@ async function activateSchema(schema: SchemaInfo, shouldDeploy = false) {
 }
 
 function setMenuMembership(schema: SchemaInfo, inMenu: boolean) {
+  if (loading.value || activating.value || savingMenu.value) return;
   if (!inMenu && schema.is_active) {
     ElMessage.warning("当前方案必须保留在 Rime 方案菜单里");
     return;
@@ -144,6 +171,7 @@ function setMenuMembership(schema: SchemaInfo, inMenu: boolean) {
 }
 
 async function saveSchemaMenu(shouldDeploy = false) {
+  if (activating.value || savingMenu.value || loading.value) return;
   if (menuIds.value.length === 0) {
     ElMessage.warning("方案菜单里至少需要保留一个输入方案");
     return;
@@ -151,10 +179,10 @@ async function saveSchemaMenu(shouldDeploy = false) {
 
   savingMenu.value = true;
   try {
-    const config = await withErrorHandling(() => api.saveActiveSchemaList(menuIds.value));
+    const config = await withErrorHandling(() => api.saveActiveSchemaList([...menuIds.value]));
     if (config) {
       currentConfig.value = config;
-      await loadSchemas();
+      await loadSchemas(true);
       emit("saved");
       ElMessage.success(shouldDeploy ? "方案菜单已保存，开始部署" : "方案菜单已保存");
       if (shouldDeploy) {
@@ -171,7 +199,7 @@ async function copySchema(schema: SchemaInfo) {
   try {
     const path = await withErrorHandling(() => api.copySchema(schema.id));
     if (path) {
-      await loadSchemas();
+      await loadSchemas(true);
       ElMessage.success(`已复制到 ${path}`);
     }
   } finally {
@@ -232,7 +260,11 @@ async function openSchemaDir(schema: SchemaInfo) {
   await withErrorHandling(() => api.openSchemaDir(schema.path));
 }
 
-onMounted(loadSchemas);
+onMounted(() => loadSchemas());
+useConfigReload(
+  () => props.env,
+  () => loadSchemas(),
+);
 </script>
 
 <template>
@@ -340,7 +372,7 @@ onMounted(loadSchemas);
               <span class="match-count"
                 >匹配 <strong>{{ filteredSchemas.length }}</strong> / {{ schemas.length }}</span
               >
-              <el-button :icon="Refresh" :loading="loading" @click="loadSchemas">
+              <el-button :icon="Refresh" :loading="loading" @click="refreshSchemas">
                 刷新列表
               </el-button>
             </div>
@@ -546,7 +578,9 @@ onMounted(loadSchemas);
               同步及安装全网高星输入方案（全拼、双拼、形码等）。
             </p>
           </div>
-          <el-button :icon="Refresh" :loading="loading" @click="loadSchemas">刷新生态库</el-button>
+          <el-button :icon="Refresh" :loading="loading" @click="refreshSchemas"
+            >刷新生态库</el-button
+          >
         </div>
 
         <div class="community-grid">

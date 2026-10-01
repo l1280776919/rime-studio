@@ -283,6 +283,7 @@ pub(crate) fn toggle_lua_plugin_sync(
     plugin_id: String,
     enabled: bool,
 ) -> Result<Vec<LuaPluginInfo>, RimeError> {
+    let _config_guard = lock_config_write()?;
     let _guard = LUA_WRITE_LOCK
         .lock()
         .map_err(|_| RimeError::FileOperationError("Lua 写入锁不可用".into()))?;
@@ -349,6 +350,7 @@ pub(crate) fn save_lua_script_content_sync(
     plugin_id: String,
     content: String,
 ) -> Result<(), RimeError> {
+    let _config_guard = lock_config_write()?;
     let _guard = LUA_WRITE_LOCK
         .lock()
         .map_err(|_| RimeError::FileOperationError("Lua 写入锁不可用".into()))?;

@@ -2,6 +2,7 @@
 import { computed, ref } from "vue";
 import { formatBytes, formatTime } from "../utils";
 import { paginateItems } from "../utils/phrases";
+import { useConfigReload } from "../composables/useConfigReload";
 import { useDictionaries } from "../composables/useDictionaries";
 import DictionaryImportPreviewDialog from "../components/dictionaries/DictionaryImportPreviewDialog.vue";
 import DictionaryUrlImportDialog from "../components/dictionaries/DictionaryUrlImportDialog.vue";
@@ -24,7 +25,7 @@ import {
 } from "@element-plus/icons-vue";
 import type { DictionaryReference, DictInfo, RimeEnvironment } from "../types";
 
-const _props = defineProps<{
+const props = defineProps<{
   env?: RimeEnvironment;
 }>();
 
@@ -92,6 +93,8 @@ const {
   totalSize,
   enabledCount,
 } = useDictionaries(emit);
+
+useConfigReload(() => props.env, loadAllStats);
 
 const availablePage = ref(1);
 const availablePageSize = ref(40);

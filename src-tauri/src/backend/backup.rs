@@ -9,6 +9,14 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
+static BACKUP_OPERATIONS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+pub(crate) fn lock_backup_operation() -> Result<std::sync::MutexGuard<'static, ()>, RimeError> {
+    BACKUP_OPERATIONS
+        .lock()
+        .map_err(|_| RimeError::BackupError("备份操作锁不可用".into()))
+}
+
 pub(crate) fn is_dictionary_entry_line(trimmed: &str) -> bool {
     !trimmed.is_empty()
         && !trimmed.starts_with('#')
@@ -116,7 +124,7 @@ pub(crate) fn prune_old_auto_backups(
         let entry =
             entry.map_err(|err| RimeError::BackupError(format!("检查备份目录失败: {err}")))?;
         let path = entry.path();
-        if !path.is_dir() {
+        if fs::symlink_metadata(&path)?.file_type().is_symlink() || !path.is_dir() {
             continue;
         }
 
@@ -297,6 +305,15 @@ pub(crate) fn backup_user_config_with_note(
     kind: BackupKind,
     note: Option<&str>,
 ) -> Result<PathBuf, RimeError> {
+    let _guard = lock_backup_operation()?;
+    backup_user_config_with_note_unlocked(user_dir, kind, note)
+}
+
+fn backup_user_config_with_note_unlocked(
+    user_dir: &Path,
+    kind: BackupKind,
+    note: Option<&str>,
+) -> Result<PathBuf, RimeError> {
     let backup_root = app_data_dir()?;
     fs::create_dir_all(&backup_root)
         .map_err(|err| RimeError::BackupError(format!("创建备份根目录失败: {err}")))?;
@@ -343,7 +360,7 @@ pub(crate) fn list_backup_dirs(_user_dir: &Path) -> Result<Vec<BackupEntry>, Rim
         let entry =
             entry.map_err(|err| RimeError::BackupError(format!("检查 Rime 文件失败: {err}")))?;
         let path = entry.path();
-        if !path.is_dir() {
+        if fs::symlink_metadata(&path)?.file_type().is_symlink() || !path.is_dir() {
             continue;
         }
 
@@ -392,7 +409,14 @@ pub(crate) fn validated_backup_dir(
     }
 
     let backup_root = app_data_dir()?;
-    let backup_dir = backup_root.join(backup_name);
+    if fs::symlink_metadata(backup_root.join(backup_name))?
+        .file_type()
+        .is_symlink()
+    {
+        return Err(RimeError::BackupError("备份目录不能是链接".into()));
+    }
+    let backup_dir = resolve_user_relative_path(&backup_root, backup_name, true)
+        .map_err(|err| RimeError::BackupError(format!("备份路径无效: {err}")))?;
     if !backup_dir.is_dir() {
         return Err(RimeError::BackupError(format!("备份不存在: {backup_name}")));
     }
@@ -404,6 +428,8 @@ pub(crate) fn restore_backup_dir(
     user_dir: &Path,
     backup_dir: &Path,
 ) -> Result<RestoreResult, RimeError> {
+    let _config_guard = lock_config_write()?;
+    let _backup_guard = lock_backup_operation()?;
     fs::create_dir_all(user_dir)?;
     let mut copies = Vec::new();
     for relative in collect_snapshot_files(backup_dir)? {
@@ -413,13 +439,16 @@ pub(crate) fn restore_backup_dir(
     }
     // Include schema, Lua and installation files that restoration may replace.
     // Do not prune the source or safety snapshot while restoring.
-    let safety_backup_dir = backup_user_config(user_dir, BackupKind::BeforeRestore)?;
+    let safety_backup_dir =
+        backup_user_config_with_note_unlocked(user_dir, BackupKind::BeforeRestore, None)?;
     for (source, target) in &copies {
         if let Some(parent) = target.parent() {
             fs::create_dir_all(parent)?;
         }
-        fs::copy(source, target).map_err(|err| {
-            RimeError::BackupError(format!("恢复 {} 失败: {err}", source.display()))
+        write_file_atomically(target, "恢复备份文件失败", |destination| {
+            let mut input = fs::File::open(source)?;
+            std::io::copy(&mut input, destination)?;
+            Ok(())
         })?;
     }
     let restored_files = copies.len();

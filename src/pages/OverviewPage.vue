@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
+import { computed, onDeactivated, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { useSettingsDocument } from "../composables/useSettingsDocument";
+import { useConfigReload } from "../composables/useConfigReload";
+import { useErrorHandler } from "../composables/useErrorHandler";
 import { api } from "../api";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
@@ -62,7 +65,6 @@ const hasRimeIce = computed(() => {
 const foundFiles = computed(() => customFiles.value.filter((file) => file.exists).length);
 
 // ── Quick Settings & Ice Settings State in Cockpit ──
-const loadingQuick = ref(false);
 const deployingCockpit = ref(false);
 const schemas = ref<SchemaInfo[]>([]);
 
@@ -94,51 +96,62 @@ const activeSchema = computed(() => {
   );
 });
 
-async function loadCockpitSettings() {
-  loadingQuick.value = true;
-  try {
-    const [cfg, schemaList, iceCfg] = await Promise.all([
-      api.getQuickSettings(),
-      api.listSchemas(),
-      api.getRimeIceSettings().catch(() => null),
-    ]);
-    if (cfg) Object.assign(quickConfig, cfg);
-    if (schemaList) schemas.value = schemaList;
-    if (iceCfg) Object.assign(iceSettings, iceCfg);
-  } catch (err) {
-    console.error("加载指挥舱配置失败:", err);
-  } finally {
-    loadingQuick.value = false;
-  }
-}
+const { withErrorHandling } = useErrorHandler();
+const document = useSettingsDocument(
+  () => ({ quick: { ...quickConfig }, ice: { ...iceSettings } }),
+  (value) => {
+    Object.assign(quickConfig, value.quick);
+    Object.assign(iceSettings, value.ice);
+  },
+  () =>
+    withErrorHandling(async () => {
+      const [quick, schemaList, ice] = await Promise.all([
+        api.getQuickSettings(),
+        api.listSchemas(),
+        api.getRimeIceSettings(),
+      ]);
+      schemas.value = schemaList;
+      return { quick, ice };
+    }),
+  (value) =>
+    withErrorHandling(async () => {
+      await Promise.all([
+        api.previewQuickSettings(value.quick),
+        hasRimeIce.value ? api.previewRimeIceSettings(value.ice) : Promise.resolve(null),
+      ]);
+      const quick = await api.saveQuickSettings(value.quick);
+      const ice = hasRimeIce.value ? await api.saveRimeIceSettings(value.ice) : value.ice;
+      return { quick, ice };
+    }),
+);
+const { loading: loadingQuick, ready: quickReady } = document;
+const loadCockpitSettings = document.load;
+useConfigReload(
+  () => props.env,
+  () => {
+    void loadCockpitSettings();
+    void loadSyncConfig();
+  },
+);
 
 async function quickSaveAndDeploy() {
+  if (deployingCockpit.value || document.saving.value) return;
   deployingCockpit.value = true;
   try {
-    await Promise.all([
-      api.saveQuickSettings({ ...quickConfig }),
-      hasRimeIce.value ? api.saveRimeIceSettings({ ...iceSettings }) : Promise.resolve(null),
-    ]);
-    emit("saved");
-    emit("deploy");
-    ElMessage.success("配置已保存，已发送小狼毫重新部署指令！");
-  } catch (err) {
-    ElMessage.error(`保存失败: ${String(err)}`);
+    if (await document.save()) {
+      emit("saved");
+      emit("deploy");
+      ElMessage.success("配置已保存，已发送小狼毫重新部署指令！");
+    }
   } finally {
     deployingCockpit.value = false;
   }
 }
 
 async function onTileToggle() {
-  try {
-    if (hasRimeIce.value) {
-      await api.saveRimeIceSettings({ ...iceSettings });
-    }
-    await api.saveQuickSettings({ ...quickConfig });
+  if (await document.save()) {
     emit("saved");
     ElMessage.success("特性已更新 (点击「一键部署」可立即对小狼毫生效)");
-  } catch (err) {
-    ElMessage.error(`更新特性失败: ${String(err)}`);
   }
 }
 
@@ -210,6 +223,7 @@ const entriesPageSize = ref(50);
 const entriesTotal = ref(0);
 
 async function loadSyncConfig() {
+  if (showSyncDialog.value || savingSyncConfig.value) return;
   try {
     syncConfig.value = await api.getSyncConfig();
     syncForm.installation_id = syncConfig.value.installation_id ?? "";
@@ -219,7 +233,12 @@ async function loadSyncConfig() {
   }
 }
 
-function openSyncSettings() {
+async function openSyncSettings() {
+  if (!syncConfig.value) await loadSyncConfig();
+  if (!syncConfig.value) {
+    ElMessage.warning("同步配置尚未读取成功，请重新扫描后重试");
+    return;
+  }
   if (syncConfig.value) {
     syncForm.installation_id = syncConfig.value.installation_id ?? "";
     syncForm.sync_dir = syncConfig.value.sync_dir ?? "";
@@ -228,6 +247,7 @@ function openSyncSettings() {
 }
 
 async function saveSyncSettings() {
+  if (savingSyncConfig.value || !syncConfig.value) return;
   savingSyncConfig.value = true;
   try {
     await api.saveSyncConfig(
@@ -265,10 +285,13 @@ async function inspectSnapshotEntries(snapshot: UserdbSnapshotInfo) {
   await fetchEntries();
 }
 
+let entriesVersion = 0;
 async function fetchEntries() {
+  const version = ++entriesVersion;
   if (!currentSnapshot.value) return;
   loadingEntries.value = true;
   try {
+    snapshotEntries.value = [];
     const offset = (entriesPage.value - 1) * entriesPageSize.value;
     const result = await api.listUserdbEntries(
       currentSnapshot.value.name,
@@ -276,12 +299,13 @@ async function fetchEntries() {
       offset,
       entriesSearchQuery.value || undefined,
     );
+    if (version !== entriesVersion || !showEntriesDialog.value) return;
     snapshotEntries.value = result.entries;
     entriesTotal.value = result.total;
   } catch (error) {
     ElMessage.error(`读取词条失败: ${String(error)}`);
   } finally {
-    loadingEntries.value = false;
+    if (version === entriesVersion) loadingEntries.value = false;
   }
 }
 
@@ -299,6 +323,7 @@ let stopInstallerProgress: UnlistenFn | undefined;
 let disposed = false;
 
 onUnmounted(() => {
+  document.dispose();
   disposed = true;
   stopInstallerProgress?.();
   stopInstallerProgress = undefined;
@@ -369,12 +394,18 @@ onMounted(() => {
 });
 
 watch(
-  () => props.env,
-  () => {
-    void loadCockpitSettings();
-    void loadSyncConfig();
+  showEntriesDialog,
+  (visible) => {
+    if (!visible) {
+      ++entriesVersion;
+      loadingEntries.value = false;
+    }
   },
+  { flush: "sync" },
 );
+onDeactivated(() => {
+  showEntriesDialog.value = false;
+});
 </script>
 
 <template>
@@ -476,7 +507,7 @@ watch(
           <button
             type="button"
             class="deploy-giant-btn el-button el-button--primary"
-            :disabled="deployingCockpit"
+            :disabled="deployingCockpit || !quickReady || loadingQuick || document.saving.value"
             @click="quickSaveAndDeploy"
           >
             <el-icon class="mr-1"><UploadFilled /></el-icon>
@@ -555,6 +586,7 @@ watch(
                   v-for="n in [5, 7, 9, 10]"
                   :key="n"
                   type="button"
+                  :disabled="!quickReady || loadingQuick || document.saving.value"
                   class="knob-pill-btn"
                   :class="{ active: quickConfig.page_size === n }"
                   @click="
@@ -573,6 +605,7 @@ watch(
               <div class="knob-pill-group">
                 <button
                   type="button"
+                  :disabled="!quickReady || loadingQuick || document.saving.value"
                   class="knob-pill-btn"
                   :class="{ active: quickConfig.horizontal }"
                   @click="
@@ -584,6 +617,7 @@ watch(
                 </button>
                 <button
                   type="button"
+                  :disabled="!quickReady || loadingQuick || document.saving.value"
                   class="knob-pill-btn"
                   :class="{ active: !quickConfig.horizontal }"
                   @click="
@@ -602,6 +636,7 @@ watch(
               <div class="knob-pill-group">
                 <button
                   type="button"
+                  :disabled="!quickReady || loadingQuick || document.saving.value"
                   class="knob-pill-btn"
                   :class="{ active: quickConfig.inline_preedit }"
                   @click="
@@ -613,6 +648,7 @@ watch(
                 </button>
                 <button
                   type="button"
+                  :disabled="!quickReady || loadingQuick || document.saving.value"
                   class="knob-pill-btn"
                   :class="{ active: !quickConfig.inline_preedit }"
                   @click="
@@ -629,6 +665,7 @@ watch(
           <div class="stage-actions-right">
             <el-select
               v-model="quickConfig.schema_id"
+              :disabled="!quickReady || loadingQuick || document.saving.value"
               size="small"
               placeholder="切换输入方案"
               style="width: 170px"
@@ -666,7 +703,11 @@ watch(
               </div>
             </div>
             <div class="bento-tile-action">
-              <el-switch v-model="iceSettings.emoji" @change="onTileToggle" />
+              <el-switch
+                v-model="iceSettings.emoji"
+                :disabled="!quickReady || loadingQuick || document.saving.value"
+                @change="onTileToggle"
+              />
             </div>
           </div>
 
@@ -680,7 +721,11 @@ watch(
               </div>
             </div>
             <div class="bento-tile-action">
-              <el-switch v-model="iceSettings.traditionalization" @change="onTileToggle" />
+              <el-switch
+                v-model="iceSettings.traditionalization"
+                :disabled="!quickReady || loadingQuick || document.saving.value"
+                @change="onTileToggle"
+              />
             </div>
           </div>
 
@@ -694,7 +739,11 @@ watch(
               </div>
             </div>
             <div class="bento-tile-action">
-              <el-switch v-model="iceSettings.ascii_punct" @change="onTileToggle" />
+              <el-switch
+                v-model="iceSettings.ascii_punct"
+                :disabled="!quickReady || loadingQuick || document.saving.value"
+                @change="onTileToggle"
+              />
             </div>
           </div>
 
@@ -708,7 +757,11 @@ watch(
               </div>
             </div>
             <div class="bento-tile-action">
-              <el-switch v-model="iceSettings.full_shape" @change="onTileToggle" />
+              <el-switch
+                v-model="iceSettings.full_shape"
+                :disabled="!quickReady || loadingQuick || document.saving.value"
+                @change="onTileToggle"
+              />
             </div>
           </div>
 
@@ -722,7 +775,11 @@ watch(
               </div>
             </div>
             <div class="bento-tile-action">
-              <el-switch v-model="iceSettings.fuzzy_pinyin" @change="onTileToggle" />
+              <el-switch
+                v-model="iceSettings.fuzzy_pinyin"
+                :disabled="!quickReady || loadingQuick || document.saving.value"
+                @change="onTileToggle"
+              />
             </div>
           </div>
 

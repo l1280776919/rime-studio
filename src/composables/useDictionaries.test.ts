@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => ({
   warning: vi.fn(),
   listen: vi.fn(),
   mounted: [] as (() => void)[],
+  deactivated: [] as (() => void)[],
   unmounted: [] as (() => void)[],
 }));
 vi.mock("../api", () => ({ api: mocks.api }));
@@ -41,6 +42,7 @@ vi.mock("element-plus", () => ({
 vi.mock("@tauri-apps/api/event", () => ({ listen: mocks.listen }));
 vi.mock("vue", async (importOriginal) => ({
   ...(await importOriginal<typeof import("vue")>()),
+  onDeactivated: (callback: () => void) => mocks.deactivated.push(callback),
   onMounted: (callback: () => void) => mocks.mounted.push(callback),
   onUnmounted: (callback: () => void) => mocks.unmounted.push(callback),
 }));
@@ -80,6 +82,7 @@ const tick = async () => {
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.mounted.length = 0;
+  mocks.deactivated.length = 0;
   mocks.unmounted.length = 0;
   mocks.api.listDictionaries.mockResolvedValue([]);
   mocks.api.getDictionaryConfig.mockResolvedValue(config());
@@ -280,4 +283,16 @@ it("does not start another resource operation while installation is running", as
   result.resolve({ message: "installed" });
   await first;
   expect(state.lmdgInstalling.value).toBe(false);
+});
+
+it("does not open a late import preview after its cached page is deactivated", async () => {
+  const result = deferred<DictionaryImportPreview>();
+  mocks.api.previewDictionaryUrlImport.mockReturnValue(result.promise);
+  const state = useDictionaries(vi.fn());
+  const pending = state.previewOnlineDictionary(online("a"));
+  mocks.deactivated[0]();
+  result.resolve(preview("a"));
+  await pending;
+  expect(state.showImportPreviewDialog.value).toBe(false);
+  expect(state.importPreview.value).toBeUndefined();
 });

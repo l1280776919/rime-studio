@@ -5,7 +5,7 @@ use std::{ffi::OsStr, fs, path::Path};
 
 pub(crate) fn get_appearance_config_sync() -> Result<AppearanceConfig, RimeError> {
     let user_dir = rime_user_dir()?;
-    Ok(read_appearance_config(&user_dir))
+    read_appearance_config_checked(&user_dir)
 }
 
 fn binding_accept_send(contents: &str) -> Vec<(String, String)> {
@@ -58,8 +58,8 @@ pub(crate) fn detect_navigation_keys(contents: &str) -> String {
 
 pub(crate) fn get_quick_settings_sync() -> Result<QuickSettingsConfig, RimeError> {
     let user_dir = rime_user_dir()?;
-    let default_custom = read_to_string(&user_dir.join("default.custom.yaml"));
-    let appearance = read_appearance_config(&user_dir);
+    let default_custom = read_user_custom_config(&user_dir, "default.custom.yaml")?;
+    let appearance = read_appearance_config_checked(&user_dir)?;
     let switch_left = parse_string_after_key(&default_custom, "ascii_composer/switch_key/Shift_L")
         .unwrap_or_else(|| "commit_code".to_string());
     let switch_key = if switch_left == "commit_code" {
@@ -73,6 +73,7 @@ pub(crate) fn get_quick_settings_sync() -> Result<QuickSettingsConfig, RimeError
 
     Ok(QuickSettingsConfig {
         schema_id: parse_schema(&default_custom).unwrap_or_default(),
+        schema_list: parse_schema_list(&default_custom),
         page_size: parse_u32_after_key(&default_custom, "menu/page_size")
             .unwrap_or(appearance.page_size),
         switch_key: switch_key.to_string(),
@@ -120,18 +121,29 @@ pub(crate) fn preview_file(user_dir: &Path, name: &str, new_contents: String) ->
     }
 }
 
+fn merge_weasel_quick_settings(
+    existing: &str,
+    config: &QuickSettingsConfig,
+) -> Result<String, RimeError> {
+    // Quick settings own only these three keys; changing paging must not rewrite themes or geometry.
+    merge_custom_yaml(existing, |patch| {
+        set_patch_path(patch, "style/page_size", Value::from(config.page_size));
+        set_patch_path(patch, "style/horizontal", Value::from(config.horizontal));
+        set_patch_path(
+            patch,
+            "style/inline_preedit",
+            Value::from(config.inline_preedit),
+        );
+    })
+}
+
 pub(crate) fn preview_quick_settings_sync(
     config: QuickSettingsConfig,
 ) -> Result<ConfigPreview, RimeError> {
     let user_dir = rime_user_dir()?;
-    let mut appearance = read_appearance_config(&user_dir);
-    appearance.page_size = config.page_size;
-    appearance.switch_key = config.switch_key.clone();
-    appearance.horizontal = config.horizontal;
-    appearance.inline_preedit = config.inline_preedit;
 
-    let default_existing = read_optional_config(&user_dir.join("default.custom.yaml"))?;
-    let weasel_existing = read_optional_config(&user_dir.join("weasel.custom.yaml"))?;
+    let default_existing = read_user_custom_config(&user_dir, "default.custom.yaml")?;
+    let weasel_existing = read_user_custom_config(&user_dir, "weasel.custom.yaml")?;
 
     Ok(ConfigPreview {
         files: vec![
@@ -147,7 +159,7 @@ pub(crate) fn preview_quick_settings_sync(
             preview_file(
                 &user_dir,
                 "weasel.custom.yaml",
-                merge_weasel_custom(&weasel_existing, &appearance)?,
+                merge_weasel_quick_settings(&weasel_existing, &config)?,
             ),
         ],
     })
@@ -156,22 +168,18 @@ pub(crate) fn preview_quick_settings_sync(
 pub(crate) fn save_quick_settings_sync(
     config: QuickSettingsConfig,
 ) -> Result<QuickSettingsConfig, RimeError> {
+    let _config_guard = lock_config_write()?;
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir)
         .map_err(|err| RimeError::SettingsError(format!("创建 Rime 目录失败: {err}")))?;
-    let default_path = user_dir.join("default.custom.yaml");
-    let weasel_path = user_dir.join("weasel.custom.yaml");
+    let default_path = resolve_user_relative_path(&user_dir, "default.custom.yaml", false)?;
+    let weasel_path = resolve_user_relative_path(&user_dir, "weasel.custom.yaml", false)?;
     let existing_default = read_optional_config(&default_path)?;
     let existing_weasel = read_optional_config(&weasel_path)?;
     let schemas = promoted_schema_ids(&existing_default, &config.schema_id)?;
-    let mut appearance = read_appearance_config(&user_dir);
-    appearance.page_size = config.page_size;
-    appearance.switch_key = config.switch_key.clone();
-    appearance.horizontal = config.horizontal;
-    appearance.inline_preedit = config.inline_preedit;
     // Validate and render both documents before changing either one.
     let default_contents = merge_default_custom(&existing_default, &config, &schemas)?;
-    let weasel_contents = merge_weasel_custom(&existing_weasel, &appearance)?;
+    let weasel_contents = merge_weasel_quick_settings(&existing_weasel, &config)?;
     backup_user_config(&user_dir, BackupKind::BeforeSave)?;
     write_text_file(
         &default_path,
@@ -517,21 +525,24 @@ pub(crate) fn inspect_config_health_sync() -> Result<ConfigHealthReport, RimeErr
     Ok(ConfigHealthReport { summary, checks })
 }
 
+fn ensure_repair_deployed() -> Result<(), RimeError> {
+    let result = deploy_rime_internal(None)?;
+    if !result.success {
+        return Err(RimeError::SettingsError(format!(
+            "配置已保存，但修复部署失败: {}",
+            result.message
+        )));
+    }
+    Ok(())
+}
+
 pub(crate) fn repair_config_health_sync() -> Result<ConfigHealthReport, RimeError> {
-    let quick = get_quick_settings_sync().unwrap_or(QuickSettingsConfig {
-        schema_id: "luna_pinyin_simp".to_string(),
-        page_size: 5,
-        switch_key: "shift".to_string(),
-        paging_keys: "comma_period".to_string(),
-        navigation_keys: "up_down".to_string(),
-        horizontal: true,
-        inline_preedit: true,
-    });
+    let quick = get_quick_settings_sync()?;
     let appearance = get_appearance_config_sync()?;
 
     save_quick_settings_sync(quick)?;
     save_appearance_config_sync(appearance)?;
-    let _ = deploy_rime_internal(None);
+    ensure_repair_deployed()?;
 
     inspect_config_health_sync()
 }
@@ -542,25 +553,17 @@ pub(crate) fn repair_config_health_item_sync(
     let name = name.trim();
     match name {
         "default.custom.yaml" | "方案列表" | "候选数量合并" => {
-            let quick = get_quick_settings_sync().unwrap_or(QuickSettingsConfig {
-                schema_id: "luna_pinyin_simp".to_string(),
-                page_size: 5,
-                switch_key: "shift".to_string(),
-                paging_keys: "comma_period".to_string(),
-                navigation_keys: "up_down".to_string(),
-                horizontal: true,
-                inline_preedit: true,
-            });
+            let quick = get_quick_settings_sync()?;
             save_quick_settings_sync(quick)?;
             if name == "候选数量合并" {
-                let _ = deploy_rime_internal(None);
+                ensure_repair_deployed()?;
             }
         }
         "weasel.custom.yaml" | "主题配置" | "主题合并" => {
             let appearance = get_appearance_config_sync()?;
             save_appearance_config_sync(appearance)?;
             if name == "主题合并" {
-                let _ = deploy_rime_internal(None);
+                ensure_repair_deployed()?;
             }
         }
         "雾凇组件配置" | "繁体预设" => {
@@ -586,7 +589,7 @@ pub(crate) fn parse_patch_bool(contents: &str, key: &str, fallback: bool) -> boo
 
 pub(crate) fn get_rime_ice_settings_sync() -> Result<RimeIceSettings, RimeError> {
     let user_dir = rime_user_dir()?;
-    let custom = read_to_string(&user_dir.join("rime_ice.custom.yaml"));
+    let custom = read_user_custom_config(&user_dir, "rime_ice.custom.yaml")?;
     let detected_pairs = detect_fuzzy_pinyin_pairs(&custom);
     let has_fuzzy = !detected_pairs.is_empty() || has_fuzzy_pinyin_patch(&custom);
     Ok(RimeIceSettings {
@@ -861,10 +864,11 @@ pub(crate) fn merge_rime_ice_custom(
 pub(crate) fn save_rime_ice_settings_sync(
     settings: RimeIceSettings,
 ) -> Result<RimeIceSettings, RimeError> {
+    let _config_guard = lock_config_write()?;
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir)
         .map_err(|err| RimeError::SettingsError(format!("创建 Rime 目录失败: {err}")))?;
-    let custom_path = user_dir.join("rime_ice.custom.yaml");
+    let custom_path = resolve_user_relative_path(&user_dir, "rime_ice.custom.yaml", false)?;
     let custom = read_optional_config(&custom_path)?;
     backup_user_config(&user_dir, BackupKind::BeforeSave)?;
     write_text_file(
@@ -879,7 +883,7 @@ pub(crate) fn preview_appearance_config_sync(
     config: AppearanceConfig,
 ) -> Result<ConfigPreview, RimeError> {
     let user_dir = rime_user_dir()?;
-    let existing = read_optional_config(&user_dir.join("weasel.custom.yaml"))?;
+    let existing = read_user_custom_config(&user_dir, "weasel.custom.yaml")?;
     Ok(ConfigPreview {
         files: vec![preview_file(
             &user_dir,
@@ -893,7 +897,7 @@ pub(crate) fn preview_rime_ice_settings_sync(
     settings: RimeIceSettings,
 ) -> Result<ConfigPreview, RimeError> {
     let user_dir = rime_user_dir()?;
-    let existing = read_optional_config(&user_dir.join("rime_ice.custom.yaml"))?;
+    let existing = read_user_custom_config(&user_dir, "rime_ice.custom.yaml")?;
     Ok(ConfigPreview {
         files: vec![preview_file(
             &user_dir,
@@ -906,13 +910,14 @@ pub(crate) fn preview_rime_ice_settings_sync(
 pub(crate) fn save_appearance_config_sync(
     config: AppearanceConfig,
 ) -> Result<AppearanceConfig, RimeError> {
+    let _config_guard = lock_config_write()?;
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir)
         .map_err(|err| RimeError::SettingsError(format!("创建 Rime 目录失败: {err}")))?;
     backup_user_config(&user_dir, BackupKind::BeforeSave)?;
     write_appearance_config(&user_dir, &config)?;
 
-    Ok(read_appearance_config(&user_dir))
+    read_appearance_config_checked(&user_dir)
 }
 
 pub(crate) fn list_backups_sync() -> Result<Vec<BackupEntry>, RimeError> {
@@ -993,6 +998,7 @@ pub(crate) fn restore_backup_sync(backup_name: String) -> Result<RestoreResult, 
 }
 
 pub(crate) fn delete_backup_sync(backup_name: String) -> Result<(), RimeError> {
+    let _backup_guard = lock_backup_operation()?;
     let user_dir = rime_user_dir()?;
     let backup_dir = validated_backup_dir(&user_dir, &backup_name)?;
     fs::remove_dir_all(&backup_dir)
@@ -1000,6 +1006,7 @@ pub(crate) fn delete_backup_sync(backup_name: String) -> Result<(), RimeError> {
 }
 
 pub(crate) fn delete_dictionary_sync(dict_name: String) -> Result<(), RimeError> {
+    let _config_guard = lock_config_write()?;
     let user_dir = rime_user_dir()?;
     let path = validate_dictionary_path(&user_dir, &dict_name)?;
     fs::remove_file(&path)

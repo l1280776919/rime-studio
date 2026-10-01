@@ -2773,6 +2773,7 @@ name = "rime-studio"
 version = "0.8.0"
 dependencies = [
  "log",
+ "semver",
  "serde",
  "serde_json",
  "serde_yaml",

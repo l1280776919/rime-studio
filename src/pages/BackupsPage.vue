@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onDeactivated, ref, watch } from "vue";
 import {
   Clock,
   Delete,
@@ -42,14 +42,33 @@ const showPreview = ref(false);
 const previewingBackup = ref<string>();
 const backupPreview = ref<ConfigPreview>();
 
+let previewVersion = 0;
 async function previewBackup(backup: BackupEntry) {
+  const version = ++previewVersion;
   previewingBackup.value = backup.name;
   const preview = await studio.previewBackupEntry(backup);
+  if (version !== previewVersion) return;
   previewingBackup.value = undefined;
   if (!preview) return;
   backupPreview.value = preview;
   showPreview.value = true;
 }
+
+watch(
+  showPreview,
+  (visible) => {
+    if (!visible) {
+      ++previewVersion;
+      previewingBackup.value = undefined;
+    }
+  },
+  { flush: "sync" },
+);
+onDeactivated(() => {
+  ++previewVersion;
+  previewingBackup.value = undefined;
+  showPreview.value = false;
+});
 
 const visibleBackups = computed(() => {
   if (activeFilter.value === "manual") {

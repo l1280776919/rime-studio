@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { api } from "../api";
+import { useSettingsDocument } from "../composables/useSettingsDocument";
+import { useConfigReload } from "../composables/useConfigReload";
+import { useStudioStore } from "../stores/studio";
 import { useErrorHandler } from "../composables/useErrorHandler";
 import { Check, Connection, FirstAidKit, UploadFilled, View } from "@element-plus/icons-vue";
 import type {
@@ -27,7 +30,6 @@ const emit = defineEmits<{
   install: [recipe: string];
 }>();
 
-const loading = ref(false);
 const saving = ref(false);
 const deploying = ref(false);
 const checkingHealth = ref(false);
@@ -40,6 +42,7 @@ const showHealthDialog = ref(false);
 const schemas = ref<SchemaInfo[]>([]);
 const healthReport = ref<ConfigHealthReport>();
 const configPreview = ref<ConfigPreview>();
+let disposed = false;
 let postDeployTimer: ReturnType<typeof setTimeout> | undefined;
 
 const { withErrorHandling } = useErrorHandler();
@@ -211,6 +214,7 @@ function schedulePostDeployCheck() {
   postDeployChecking.value = true;
   postDeployTimer = setTimeout(async () => {
     const report = await withErrorHandling(() => api.inspectConfigHealth());
+    if (disposed) return;
     if (report) {
       healthReport.value = report;
       const hasError = report.checks.some((check) => check.status === "error");
@@ -228,55 +232,72 @@ function schedulePostDeployCheck() {
   }, 3000);
 }
 
-async function loadQuickSettings() {
-  loading.value = true;
-  const result = await withErrorHandling(() =>
-    Promise.all([
-      api.getQuickSettings(),
-      api.listSchemas(),
-      api.inspectConfigHealth(),
-      api.getRimeIceSettings(),
-    ]),
-  );
-  if (result) {
-    const [config, schemaList, report, rimeIceSettings] = result;
-    applyConfig(config);
-    schemas.value = schemaList;
-    healthReport.value = report;
-    Object.assign(iceSettings, rimeIceSettings);
-  }
-  loading.value = false;
-}
+const studio = useStudioStore();
+const document = useSettingsDocument(
+  () => ({ quick: { ...form }, ice: { ...iceSettings } }),
+  (value) => {
+    applyConfig(value.quick);
+    Object.assign(iceSettings, value.ice);
+  },
+  () =>
+    withErrorHandling(async () => {
+      const [quick, schemaList, report, ice] = await Promise.all([
+        api.getQuickSettings(),
+        api.listSchemas(),
+        api.inspectConfigHealth(),
+        api.getRimeIceSettings(),
+      ]);
+      schemas.value = schemaList;
+      healthReport.value = report;
+      return { quick, ice };
+    }),
+  (value) =>
+    withErrorHandling(async () => {
+      // Validate all participating files before any write; disk failures still have backups.
+      await Promise.all([
+        api.previewQuickSettings(value.quick),
+        hasRimeIce.value ? api.previewRimeIceSettings(value.ice) : Promise.resolve(null),
+      ]);
+      const quick = await api.saveQuickSettings(value.quick);
+      const ice = hasRimeIce.value ? await api.saveRimeIceSettings(value.ice) : value.ice;
+      return { quick, ice };
+    }),
+);
+const { loading, ready } = document;
+const loadQuickSettings = document.load;
+useConfigReload(() => props.env, loadQuickSettings);
+watch(
+  () => studio.deploying,
+  (busy, wasBusy) => {
+    if (wasBusy && !busy && studio.lastDeploy?.success) schedulePostDeployCheck();
+  },
+);
 
 async function saveQuickSettings(shouldDeploy = false) {
+  if (
+    !ready.value ||
+    loading.value ||
+    document.saving.value ||
+    repairingHealth.value ||
+    repairingHealthItem.value
+  )
+    return;
   saving.value = !shouldDeploy;
   deploying.value = shouldDeploy;
-  const results = await withErrorHandling(() =>
-    Promise.all([
-      api.saveQuickSettings({ ...form }),
-      hasRimeIce.value ? api.saveRimeIceSettings({ ...iceSettings }) : Promise.resolve(null),
-    ]),
-  );
-  if (results) {
-    const [config, iceResult] = results;
-    if (config) {
-      applyConfig(config);
+  try {
+    if (await document.save()) {
+      emit("saved");
+      ElMessage.success(shouldDeploy ? "快速设置已保存，开始部署" : "快速设置已保存");
+      if (shouldDeploy) emit("deploy");
     }
-    if (iceResult) {
-      Object.assign(iceSettings, iceResult);
-    }
-    emit("saved");
-    ElMessage.success(shouldDeploy ? "快速设置已保存，开始部署" : "快速设置已保存");
-    if (shouldDeploy) {
-      emit("deploy");
-      schedulePostDeployCheck();
-    }
+  } finally {
+    saving.value = false;
+    deploying.value = false;
   }
-  saving.value = false;
-  deploying.value = false;
 }
 
 async function previewQuickSettings() {
+  if (!ready.value || loading.value || document.saving.value || previewing.value) return;
   previewing.value = true;
   const results = await withErrorHandling(() =>
     Promise.all([
@@ -310,6 +331,7 @@ async function inspectHealth() {
 }
 
 async function repairHealth() {
+  if (repairingHealth.value || repairingHealthItem.value || document.saving.value) return;
   repairingHealth.value = true;
   const report = await withErrorHandling(() => api.repairConfigHealth());
   if (report) {
@@ -322,6 +344,7 @@ async function repairHealth() {
 }
 
 async function repairHealthItem(check: ConfigHealthCheck) {
+  if (repairingHealth.value || repairingHealthItem.value || document.saving.value) return;
   repairingHealthItem.value = check.name;
   const report = await withErrorHandling(() => api.repairConfigHealthItem(check.name));
   if (report) {
@@ -348,6 +371,8 @@ function diffLineClass(line: string) {
 onMounted(loadQuickSettings);
 
 onBeforeUnmount(() => {
+  disposed = true;
+  document.dispose();
   if (postDeployTimer) {
     clearTimeout(postDeployTimer);
   }
@@ -355,7 +380,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="quick-settings-workbench">
+  <div v-loading="loading" class="quick-settings-workbench">
     <!-- Hero Spotlight Header -->
     <header class="quick-hero panel">
       <div class="hero-left">
@@ -406,6 +431,7 @@ onBeforeUnmount(() => {
           plain
           :icon="Check"
           :loading="saving"
+          :disabled="!ready || loading || deploying"
           @click="saveQuickSettings(false)"
         >
           保存
@@ -417,6 +443,7 @@ onBeforeUnmount(() => {
           class="deploy-cta"
           :icon="UploadFilled"
           :loading="deploying"
+          :disabled="!ready || loading || saving"
           @click="saveQuickSettings(true)"
         >
           保存并部署

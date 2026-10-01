@@ -415,6 +415,13 @@ pub(crate) fn read_dictionary_config_sync() -> Result<DictionaryConfig, RimeErro
 pub(crate) fn save_dictionary_imports_sync(
     imports: Vec<String>,
 ) -> Result<DictionaryConfig, RimeError> {
+    let _config_guard = lock_config_write()?;
+    save_dictionary_imports_sync_unlocked(imports)
+}
+
+fn save_dictionary_imports_sync_unlocked(
+    imports: Vec<String>,
+) -> Result<DictionaryConfig, RimeError> {
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir)
         .map_err(|err| RimeError::FileOperationError(format!("创建 Rime 目录失败: {err}")))?;
@@ -465,6 +472,7 @@ fn read_current_dictionary_imports(config: &DictionaryConfig) -> Result<Vec<Stri
 pub(crate) fn add_dictionary_to_current_schema_sync(
     reference: String,
 ) -> Result<DictionaryConfig, RimeError> {
+    let _config_guard = lock_config_write()?;
     let config = read_dictionary_config_sync()?;
     let reference = reference
         .trim()
@@ -480,12 +488,13 @@ pub(crate) fn add_dictionary_to_current_schema_sync(
     if !imports.iter().any(|item| item == &reference) {
         imports.push(reference);
     }
-    save_dictionary_imports_sync(imports)
+    save_dictionary_imports_sync_unlocked(imports)
 }
 
 pub(crate) fn remove_dictionary_from_current_schema_sync(
     reference: String,
 ) -> Result<DictionaryConfig, RimeError> {
+    let _config_guard = lock_config_write()?;
     let config = read_dictionary_config_sync()?;
     let reference = reference
         .trim()
@@ -495,7 +504,7 @@ pub(crate) fn remove_dictionary_from_current_schema_sync(
         .into_iter()
         .filter(|item| item != &reference)
         .collect::<Vec<_>>();
-    save_dictionary_imports_sync(imports)
+    save_dictionary_imports_sync_unlocked(imports)
 }
 
 pub(crate) fn get_dict_health_sync(dict_name: String) -> Result<DictHealth, RimeError> {
@@ -530,6 +539,7 @@ pub(crate) fn remove_duplicate_dictionary_lines(contents: &str) -> (String, usiz
 pub(crate) fn clean_dictionary_duplicates_sync(
     dict_name: String,
 ) -> Result<DictionaryCleanResult, RimeError> {
+    let _config_guard = lock_config_write()?;
     let user_dir = rime_user_dir()?;
     let path = validate_dictionary_path(&user_dir, &dict_name)?;
     let contents = fs::read_to_string(&path)
