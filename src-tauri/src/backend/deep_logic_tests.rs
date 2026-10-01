@@ -581,6 +581,21 @@ fn lua_disable_does_not_install_and_failed_reads_preserve_files() {
                 let snapshot = Path::new(&backup.path).join("lua/date.lua");
                 fs::read_to_string(snapshot).ok().as_deref() == Some("original")
             }));
+            fs::write(user.join("lua/date.lua"), [0xff]).expect("fixture");
+            fs::write(
+                user.join("rime.lua"),
+                "date_translator = require(\"date\")\n",
+            )
+            .expect("fixture");
+            assert!(toggle_lua_plugin_sync("date".into(), true).is_err());
+            assert!(
+                !toggle_lua_plugin_sync("date".into(), false).expect("disable damaged script")[0]
+                    .enabled
+            );
+            assert_eq!(
+                fs::read(user.join("lua/date.lua")).expect("read"),
+                vec![0xff]
+            );
         },
     );
 }

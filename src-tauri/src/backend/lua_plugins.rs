@@ -294,8 +294,11 @@ pub(crate) fn toggle_lua_plugin_sync(
         resolve_user_relative_path(&user_dir, &format!("lua/{}", preset.file_name), false)?;
     let entry = resolve_user_relative_path(&user_dir, "rime.lua", false)?;
     let previous = read_optional_config(&entry)?;
-    // Validate both existing files before installing anything.
-    read_optional_config(&script)?;
+    // Enabling must validate the module; disabling must remain available even
+    // when an existing module is unreadable, since it does not modify that file.
+    if enabled {
+        read_optional_config(&script)?;
+    }
     let mut found = false;
     let mut lines = Vec::new();
     for (line, editable) in previous.lines().zip(export_line_mask(&previous)) {
