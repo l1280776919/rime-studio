@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
+import { useStudioStore } from "../stores/studio";
 import { api } from "../api";
+import SettingsSaveBar from "../components/common/SettingsSaveBar.vue";
+import { useSaveShortcut } from "../composables/useSaveShortcut";
 import {
   CopyDocument,
   Delete,
@@ -13,7 +16,6 @@ import {
   Plus,
   Refresh,
   Search,
-  UploadFilled,
 } from "@element-plus/icons-vue";
 import type { PhraseEntry, RimeEnvironment } from "../types";
 import { useErrorHandler } from "../composables/useErrorHandler";
@@ -46,6 +48,7 @@ const document = usePhraseDocument(
 );
 const { entries, loading, ready, dirty } = document;
 const searchQuery = ref("");
+const studio = useStudioStore();
 const saving = ref(false);
 const deploying = ref(false);
 const editingEntry = ref<PhraseEntry | null>(null);
@@ -125,11 +128,16 @@ async function loadPhrases() {
 }
 
 async function savePhrases(shouldDeploy: boolean) {
-  if (!ready.value || loading.value || document.saving.value) return;
+  if (studio.mutationBusy) return;
   if (editingEntry.value) {
     ElMessage.warning("请先完成或取消正在编辑的短语，再保存");
     return;
   }
+  if (ready.value && !loading.value && !document.saving.value && !dirty.value) {
+    if (shouldDeploy) emit("deploy");
+    return;
+  }
+  if (!ready.value || loading.value || document.saving.value) return;
   if (!entries.value.every(isValidPhrase)) {
     ElMessage.warning("短语或编码格式无效，请检查空内容、制表符、换行及权重");
     return;
@@ -279,6 +287,27 @@ useConfigReload(
   },
 );
 onUnmounted(document.cancelLoad);
+
+async function resetChanges() {
+  if (!dirty.value || loading.value || document.saving.value || studio.mutationBusy) return;
+  try {
+    await ElMessageBox.confirm(
+      "将撤销本页尚未保存的修改，恢复到上次读取或保存的内容。",
+      "撤销修改",
+      {
+        confirmButtonText: "撤销修改",
+        cancelButtonText: "继续编辑",
+        type: "warning",
+      },
+    );
+  } catch {
+    return;
+  }
+  document.reset();
+  editingEntry.value = null;
+}
+
+useSaveShortcut(() => savePhrases(false));
 </script>
 
 <template>
@@ -327,30 +356,21 @@ onUnmounted(document.cancelLoad);
         >
           添加短语
         </el-button>
-
-        <el-button
-          type="primary"
-          plain
-          :loading="saving"
-          :disabled="!ready || loading || deploying"
-          :icon="UploadFilled"
-          @click="savePhrases(false)"
-        >
-          保存
-        </el-button>
-
-        <el-button
-          type="primary"
-          class="deploy-btn"
-          :loading="deploying"
-          :disabled="!ready || loading || saving"
-          :icon="Refresh"
-          @click="savePhrases(true)"
-        >
-          保存并部署
-        </el-button>
       </div>
     </header>
+    <SettingsSaveBar
+      :ready="ready"
+      :dirty="dirty"
+      :loading="loading"
+      :saving="document.saving.value"
+      :deploying="studio.deploying"
+      :busy="studio.mutationBusy"
+      :has-deployer="studio.hasDeployer"
+      @save="savePhrases(false)"
+      @deploy="savePhrases(true)"
+      @reset="resetChanges"
+      @retry="document.load"
+    />
 
     <!-- Main Table Layout -->
     <div class="phrases-grid-layout">

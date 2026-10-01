@@ -23,6 +23,7 @@ export function useSettingsDocument<T>(
   const loading = ref(false);
   const saving = ref(false);
   const original = ref(fingerprint(snapshot()));
+  let savedValue: string | undefined;
   const dirty = computed(() => ready.value && fingerprint(snapshot()) !== original.value);
   let disposed = false;
 
@@ -35,6 +36,7 @@ export function useSettingsDocument<T>(
       if (disposed || value === undefined || fingerprint(snapshot()) !== before) return false;
       apply(value);
       original.value = fingerprint(snapshot());
+      savedValue = JSON.stringify(snapshot());
       ready.value = true;
       return true;
     } finally {
@@ -52,6 +54,7 @@ export function useSettingsDocument<T>(
       if (disposed || result === undefined) return false;
       if (fingerprint(snapshot()) === fingerprint(value)) apply(result);
       original.value = fingerprint(result);
+      savedValue = JSON.stringify(result);
       return true;
     } finally {
       saving.value = false;
@@ -61,5 +64,10 @@ export function useSettingsDocument<T>(
   function dispose() {
     disposed = true;
   }
-  return { ready, loading, saving, dirty, load, save, dispose };
+  function reset() {
+    if (disposed || loading.value || saving.value || savedValue === undefined) return false;
+    apply(JSON.parse(savedValue));
+    return true;
+  }
+  return { ready, loading, saving, dirty, load, save, reset, dispose };
 }

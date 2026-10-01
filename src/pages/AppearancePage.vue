@@ -1,6 +1,18 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
-import { ElMessage } from "element-plus";
+import {
+  computed,
+  nextTick,
+  onActivated,
+  onDeactivated,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  watch,
+} from "vue";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { useRoute, useRouter } from "vue-router";
+import { useThemePreview } from "../composables/useThemePreview";
 import {
   Brush,
   Check,
@@ -13,11 +25,13 @@ import {
   Operation,
   Picture,
   Sunny,
-  UploadFilled,
   View,
 } from "@element-plus/icons-vue";
 import type { AppearanceConfig, ColorScheme, ConfigPreview, RimeEnvironment } from "../types";
+import { useStudioStore } from "../stores/studio";
 import { api } from "../api";
+import SettingsSaveBar from "../components/common/SettingsSaveBar.vue";
+import { useSaveShortcut } from "../composables/useSaveShortcut";
 import { useSettingsDocument } from "../composables/useSettingsDocument";
 import { useConfigReload } from "../composables/useConfigReload";
 import { useErrorHandler } from "../composables/useErrorHandler";
@@ -34,6 +48,7 @@ const emit = defineEmits<{
   deploy: [];
 }>();
 
+const studio = useStudioStore();
 const saving = ref(false);
 const deploying = ref(false);
 const userEdited = ref(false);
@@ -245,7 +260,7 @@ function applyPreset(preset: (typeof presets)[number]) {
   form.theme_name = preset.name;
   Object.assign(form, preset.colors);
   userEdited.value = false;
-  ElMessage.success(`已应用「${preset.label}」`);
+  ElMessage.info(`已预览「${preset.label}」，保存并部署后生效`);
   nextTick(() => {
     programmaticChange = false;
   });
@@ -315,11 +330,52 @@ const document = useSettingsDocument(
   () => withErrorHandling(() => api.getAppearance()),
   (config) => withErrorHandling(() => api.saveAppearance(config)),
 );
-const { loading, ready } = document;
+const { loading, ready, dirty } = document;
+const previewActive = ref(false);
+const route = useRoute();
+const router = useRouter();
+useThemePreview(
+  () =>
+    route.name === "appearance" &&
+    typeof route.query.previewTheme === "string" &&
+    presets.some((item) => item.name === route.query.previewTheme)
+      ? route.query.previewTheme
+      : undefined,
+  () => previewActive.value && ready.value && !loading.value && !document.saving.value,
+  () => dirty.value,
+  (name) => {
+    const preset = presets.find((item) => item.name === name);
+    if (preset) applyPreset(preset);
+  },
+  async () => {
+    try {
+      await ElMessageBox.confirm("预览其他配色会替换当前颜色，字体和布局保持不变。", "预览配色", {
+        confirmButtonText: "预览配色",
+        cancelButtonText: "继续编辑",
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  async (name) => {
+    if (route.name !== "appearance" || route.query.previewTheme !== name) return;
+    const query = { ...route.query };
+    delete query.previewTheme;
+    await router.replace({ query });
+  },
+);
 async function loadAppearance() {
   await document.load();
 }
 useConfigReload(() => props.env, loadAppearance);
+// Reactivation starts the clean-document reload before allowing a requested preview.
+onActivated(() => {
+  previewActive.value = true;
+});
+onDeactivated(() => {
+  previewActive.value = false;
+});
 onBeforeUnmount(document.dispose);
 
 async function previewAppearance() {
@@ -340,6 +396,11 @@ function diffLineClass(line: string) {
 }
 
 async function saveAppearance(shouldDeploy = false) {
+  if (studio.mutationBusy) return;
+  if (ready.value && !loading.value && !document.saving.value && !dirty.value) {
+    if (shouldDeploy) emit("deploy");
+    return;
+  }
   if (!ready.value || loading.value || document.saving.value) return;
   saving.value = !shouldDeploy;
   deploying.value = shouldDeploy;
@@ -398,20 +459,6 @@ function importCustomThemeJson() {
 }
 
 watch(
-  () => props.env,
-  (env) => {
-    if (!env || userEdited.value || isPreset.value) return;
-    programmaticChange = true;
-    if (env.theme_name) form.theme_name = env.theme_name;
-    if (env.font_point) form.font_point = env.font_point;
-    if (env.label_font_point) form.label_font_point = env.label_font_point;
-    nextTick(() => {
-      programmaticChange = false;
-    });
-  },
-);
-
-watch(
   () => ({ ...form }),
   () => markEdited(),
   { deep: true },
@@ -424,6 +471,26 @@ onMounted(() => {
   loadCustomSchemes();
   void loadAppearance();
 });
+
+async function resetChanges() {
+  if (!dirty.value || loading.value || document.saving.value || studio.mutationBusy) return;
+  try {
+    await ElMessageBox.confirm(
+      "将撤销本页尚未保存的修改，恢复到上次读取或保存的内容。",
+      "撤销修改",
+      {
+        confirmButtonText: "撤销修改",
+        cancelButtonText: "继续编辑",
+        type: "warning",
+      },
+    );
+  } catch {
+    return;
+  }
+  document.reset();
+}
+
+useSaveShortcut(() => saveAppearance(false));
 </script>
 
 <template>
@@ -445,11 +512,11 @@ onMounted(() => {
 
       <div class="hero-actions">
         <!-- Live status capsule -->
-        <div class="status-capsule" :class="{ dirty: userEdited }">
+        <div class="status-capsule" :class="{ dirty }">
           <span class="pulse-dot" />
           <strong class="capsule-name">{{ form.theme_name }}</strong>
-          <span v-if="userEdited" class="capsule-dirty-tag">未保存更改</span>
-          <span v-else class="capsule-tag">已同步</span>
+          <span v-if="dirty" class="capsule-dirty-tag">未保存更改</span>
+          <span v-else class="capsule-tag">{{ ready ? "与文件一致" : "尚未读取" }}</span>
         </div>
 
         <TypingSandbox :appearance="form" />
@@ -459,31 +526,21 @@ onMounted(() => {
         <el-button :icon="View" :loading="previewing" @click="previewAppearance">
           配置 Diff
         </el-button>
-
-        <el-button
-          v-if="!isLocked"
-          type="primary"
-          plain
-          :icon="Check"
-          :loading="saving"
-          :disabled="!ready || loading || deploying"
-          @click="saveAppearance(false)"
-        >
-          保存
-        </el-button>
-
-        <el-button
-          type="primary"
-          class="deploy-cta"
-          :icon="UploadFilled"
-          :loading="deploying"
-          :disabled="!ready || loading || saving"
-          @click="saveAppearance(true)"
-        >
-          {{ isLocked ? "一键部署生效" : "保存并部署" }}
-        </el-button>
       </div>
     </header>
+    <SettingsSaveBar
+      :ready="ready"
+      :dirty="dirty"
+      :loading="loading"
+      :saving="document.saving.value"
+      :deploying="studio.deploying"
+      :busy="studio.mutationBusy"
+      :has-deployer="studio.hasDeployer"
+      @save="saveAppearance(false)"
+      @deploy="saveAppearance(true)"
+      @reset="resetChanges"
+      @retry="loadAppearance"
+    />
 
     <!-- Main Visual Stage: Desktop Simulation Preview -->
     <section class="theme-stage-panel panel">

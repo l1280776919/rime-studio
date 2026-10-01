@@ -9,6 +9,37 @@ function deferred<T>() {
   return { promise, resolve };
 }
 const state = () => reactive({ theme: "old", pairs: ["a"] });
+it("restores a deep saved snapshot without reading or writing and tracks the last successful save", async () => {
+  const form = state();
+  const read = vi.fn(async () => state());
+  const pending = deferred<typeof form>();
+  const write = vi.fn(() => pending.promise);
+  const doc = useSettingsDocument(
+    () => ({ ...form }),
+    (value) => Object.assign(form, value),
+    read,
+    write,
+  );
+  expect(doc.reset()).toBe(false);
+  await doc.load();
+  form.pairs.push("draft");
+  expect(doc.reset()).toBe(true);
+  expect(form.pairs).toEqual(["a"]);
+  expect(doc.dirty.value).toBe(false);
+  form.theme = "new";
+  const saving = doc.save();
+  expect(doc.reset()).toBe(false);
+  pending.resolve({ theme: "normalized", pairs: ["saved"] });
+  await saving;
+  form.theme = "later";
+  form.pairs.push("later");
+  doc.reset();
+  expect(form).toEqual({ theme: "normalized", pairs: ["saved"] });
+  expect(read).toHaveBeenCalledTimes(1);
+  expect(write).toHaveBeenCalledTimes(1);
+  doc.dispose();
+  expect(doc.reset()).toBe(false);
+});
 it("blocks default-value saves after an initial read failure", async () => {
   const form = state();
   const write = vi.fn();

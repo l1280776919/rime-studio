@@ -83,6 +83,7 @@ const navGroups: NavGroup[] = [
         type="button"
         class="theme-btn"
         :title="isDark ? '切换至浅色模式' : '切换至深色模式'"
+        :aria-label="isDark ? '切换至浅色模式' : '切换至深色模式'"
         @click="toggleTheme"
       >
         <el-icon :size="15">
@@ -103,6 +104,9 @@ const navGroups: NavGroup[] = [
             type="button"
             class="nav-pill"
             :class="{ active: activePage === item.key }"
+            :aria-current="activePage === item.key ? 'page' : undefined"
+            :title="item.label"
+            :aria-label="item.label"
             @click="emit('navigate', item.key)"
           >
             <el-icon class="nav-icon"><component :is="item.icon" /></el-icon>
@@ -118,7 +122,7 @@ const navGroups: NavGroup[] = [
       <div class="dock-header">
         <div class="status-indicator">
           <span class="pulse-dot" :class="{ online: Boolean(env?.user_dir) }"></span>
-          <span class="status-text">{{ env?.user_dir ? "引擎就绪" : "等待连接" }}</span>
+          <span class="status-text">{{ env?.user_dir ? "已读取配置" : "等待扫描" }}</span>
         </div>
         <span v-if="env?.active_schema" class="schema-tag">{{ env.active_schema }}</span>
       </div>
@@ -397,5 +401,41 @@ html[data-theme="dark"] .schema-tag {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.nav-pill:focus-visible,
+.theme-btn:focus-visible {
+  outline: 2px solid var(--brand-500);
+  outline-offset: 2px;
+}
+
+@media (max-width: 1040px) {
+  .sidebar {
+    padding: 12px 8px;
+  }
+  .brand {
+    flex-direction: column;
+    gap: 10px;
+    padding: 4px 0 12px;
+  }
+  .brand-mark {
+    margin: 0;
+  }
+  .brand-text,
+  .nav-group-title,
+  .nav-label,
+  .sidebar-dock {
+    display: none;
+  }
+  .nav-container {
+    padding: 0;
+  }
+  .nav-pill {
+    justify-content: center;
+    padding: 10px 0;
+  }
+  .nav-icon {
+    font-size: 20px;
+  }
 }
 </style>
