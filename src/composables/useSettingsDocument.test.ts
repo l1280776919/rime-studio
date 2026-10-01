@@ -9,6 +9,39 @@ function deferred<T>() {
   return { promise, resolve };
 }
 const state = () => reactive({ theme: "old", pairs: ["a"] });
+it("resets only selected fields and treats coupled settings as one atomic undo", async () => {
+  const form = reactive({
+    quick: { count: 7, horizontal: true },
+    ice: { fuzzy: false, pairs: [] as string[] },
+  });
+  const doc = useSettingsDocument(
+    () => ({ ...form }),
+    (value) => Object.assign(form, value),
+    async () => JSON.parse(JSON.stringify(form)),
+    async (value) => value,
+  );
+  expect(doc.isChanged("quick.count")).toBe(false);
+  await doc.load();
+  form.quick.count = 9;
+  form.quick.horizontal = false;
+  form.ice.fuzzy = true;
+  form.ice.pairs.push("a");
+  expect(doc.isChanged("quick.count")).toBe(true);
+  expect(doc.resetFields(["quick.count"])).toBe(true);
+  expect(form.quick).toEqual({ count: 7, horizontal: false });
+  expect(doc.dirty.value).toBe(true);
+  expect(doc.resetFields(["ice.fuzzy", "ice.pairs"])).toBe(true);
+  expect(form.ice).toEqual({ fuzzy: false, pairs: [] });
+  expect(form.quick.horizontal).toBe(false);
+  expect(doc.resetFields(["quick.horizontal", "missing.value"])).toBe(false);
+  expect(form.quick.horizontal).toBe(false);
+  expect(doc.resetFields(["__proto__.polluted"])).toBe(false);
+  expect(doc.resetFields(["quick.constructor"])).toBe(false);
+  await doc.save();
+  form.quick.horizontal = true;
+  doc.resetFields(["quick.horizontal"]);
+  expect(form.quick.horizontal).toBe(false);
+});
 it("restores a deep saved snapshot without reading or writing and tracks the last successful save", async () => {
   const form = state();
   const read = vi.fn(async () => state());

@@ -121,6 +121,7 @@ export const useStudioStore = defineStore("studio", () => {
       await loadEnvironment();
       return result;
     } catch (error) {
+      lastDeploy.value = { success: false, message: String(error), log: String(error) };
       status.value = String(error);
       ElMessage.error(String(error));
       return undefined;

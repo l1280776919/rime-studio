@@ -114,7 +114,13 @@ it("preserves deployment failures and clears a previous successful result on a n
   store.lastDeploy = deployed();
   mocks.api.deploy.mockRejectedValue(new Error("cannot deploy"));
   await expect(store.deploy()).resolves.toBeUndefined();
-  expect(store.lastDeploy).toBeUndefined();
+  expect(store.lastDeploy).toEqual({
+    success: false,
+    message: "Error: cannot deploy",
+    log: "Error: cannot deploy",
+  });
+  await store.loadEnvironment();
+  expect(store.lastDeploy?.success).toBe(false);
   expect(store.deploying).toBe(false);
 });
 it("a backup-list refresh failure does not turn a successful backup into a failure", async () => {

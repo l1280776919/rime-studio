@@ -9,6 +9,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import AppSidebar from "./components/layout/AppSidebar.vue";
 import AppTopbar from "./components/layout/AppTopbar.vue";
 import AppStatusbar from "./components/layout/AppStatusbar.vue";
+import DeploymentResultBanner from "./components/layout/DeploymentResultBanner.vue";
 import { guardUnsavedNavigation } from "./composables/guardUnsavedNavigation";
 import { useTheme } from "./composables/useTheme";
 import { useStudioStore } from "./stores/studio";
@@ -73,6 +74,9 @@ async function navigateTo(key: string) {
 }
 async function previewTheme(name: string) {
   await router.push({ name: "appearance", query: { previewTheme: name } });
+}
+async function navigateSetting(id: string) {
+  await router.push({ name: "quick", query: { setting: id } });
 }
 const elapsedSeconds = ref(0);
 let elapsedTimer: ReturnType<typeof setInterval> | undefined;
@@ -199,9 +203,17 @@ onBeforeUnmount(() => {
           @restart-server="studio.restartWeaselServer"
           @navigate="navigateTo"
           @preview-theme="previewTheme"
+          @navigate-setting="navigateSetting"
           @create-backup="studio.createManualBackup"
         />
 
+        <DeploymentResultBanner
+          :result="studio.lastDeploy"
+          :busy="mutationBusy"
+          :has-deployer="hasDeployer"
+          @retry="studio.deploy"
+          @navigate="navigateTo"
+        />
         <div class="page-container">
           <Transition name="page" mode="out-in">
             <KeepAlive exclude="ConfigEditorPage">
