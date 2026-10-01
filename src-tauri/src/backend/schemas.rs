@@ -287,7 +287,7 @@ pub(crate) fn save_active_schema_list_sync(
     let mut config = get_quick_settings_sync()?;
     config.schema_id = safe_schema_ids[0].clone();
     let default_custom_path = user_dir.join("default.custom.yaml");
-    let existing = read_to_string(&default_custom_path);
+    let existing = read_optional_config(&default_custom_path)?;
     write_text_file(
         &default_custom_path,
         &merge_default_custom(&existing, &config, &safe_schema_ids)?,
@@ -304,7 +304,9 @@ pub(crate) fn set_active_schema_sync(schema_id: String) -> Result<QuickSettingsC
     }
 
     let user_dir = rime_user_dir()?;
-    let mut schema_ids = parse_schema_list(&read_to_string(&user_dir.join("default.custom.yaml")));
+    let mut schema_ids = parse_schema_list(&read_optional_config(
+        &user_dir.join("default.custom.yaml"),
+    )?);
     schema_ids.retain(|id| id != &safe_id);
     schema_ids.insert(0, safe_id);
     save_active_schema_list_sync(schema_ids)

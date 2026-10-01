@@ -130,8 +130,8 @@ pub(crate) fn preview_quick_settings_sync(
     appearance.horizontal = config.horizontal;
     appearance.inline_preedit = config.inline_preedit;
 
-    let default_existing = read_to_string(&user_dir.join("default.custom.yaml"));
-    let weasel_existing = read_to_string(&user_dir.join("weasel.custom.yaml"));
+    let default_existing = read_optional_config(&user_dir.join("default.custom.yaml"))?;
+    let weasel_existing = read_optional_config(&user_dir.join("weasel.custom.yaml"))?;
 
     Ok(ConfigPreview {
         files: vec![
@@ -162,7 +162,7 @@ pub(crate) fn save_quick_settings_sync(
     backup_user_config(&user_dir, BackupKind::BeforeSave)?;
 
     let default_custom_path = user_dir.join("default.custom.yaml");
-    let existing_default = read_to_string(&default_custom_path);
+    let existing_default = read_optional_config(&default_custom_path)?;
     write_text_file(
         &default_custom_path,
         &merge_default_custom(
@@ -862,7 +862,7 @@ pub(crate) fn save_rime_ice_settings_sync(
     fs::create_dir_all(&user_dir)
         .map_err(|err| RimeError::SettingsError(format!("创建 Rime 目录失败: {err}")))?;
     let custom_path = user_dir.join("rime_ice.custom.yaml");
-    let custom = read_to_string(&custom_path);
+    let custom = read_optional_config(&custom_path)?;
     backup_user_config(&user_dir, BackupKind::BeforeSave)?;
     write_text_file(
         &custom_path,
@@ -876,7 +876,7 @@ pub(crate) fn preview_appearance_config_sync(
     config: AppearanceConfig,
 ) -> Result<ConfigPreview, RimeError> {
     let user_dir = rime_user_dir()?;
-    let existing = read_to_string(&user_dir.join("weasel.custom.yaml"));
+    let existing = read_optional_config(&user_dir.join("weasel.custom.yaml"))?;
     Ok(ConfigPreview {
         files: vec![preview_file(
             &user_dir,
@@ -890,7 +890,7 @@ pub(crate) fn preview_rime_ice_settings_sync(
     settings: RimeIceSettings,
 ) -> Result<ConfigPreview, RimeError> {
     let user_dir = rime_user_dir()?;
-    let existing = read_to_string(&user_dir.join("rime_ice.custom.yaml"));
+    let existing = read_optional_config(&user_dir.join("rime_ice.custom.yaml"))?;
     Ok(ConfigPreview {
         files: vec![preview_file(
             &user_dir,

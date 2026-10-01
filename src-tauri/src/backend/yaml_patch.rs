@@ -121,24 +121,13 @@ fn reconstruct_preserving(existing: &str, new_root: &Mapping) -> Result<String, 
             || (indent_width(line) == 0 && line.trim() == "patch: {}")
     });
 
+    // Flow mappings, quoted keys, comments after patch:, and null patches cannot
+    // be safely reconstructed by the line-oriented comment-preserving editor.
+    let Some(patch_idx) = patch_idx else {
+        return serialize_custom_yaml(new_root);
+    };
     let key_indent_default = 2;
     let mut out = String::new();
-
-    let Some(patch_idx) = patch_idx else {
-        let preamble = existing.trim_end();
-        if !preamble.is_empty() {
-            out.push_str(preamble);
-            out.push('\n');
-        }
-        out.push_str("patch:\n");
-        for (key, value) in new_patch {
-            let Some(name) = mapping_key_string(key) else {
-                continue;
-            };
-            out.push_str(&emit_yaml_entry(&name, value, key_indent_default)?);
-        }
-        return Ok(out);
-    };
 
     let old_patch = parse_yaml_mapping(existing)
         .ok()
@@ -282,9 +271,8 @@ fn reconstruct_preserving(existing: &str, new_root: &Mapping) -> Result<String, 
         }
     }
 
-    let parsed = parse_yaml_mapping(&out)?;
-    match parsed.get(yaml_str("patch")).and_then(Value::as_mapping) {
-        Some(got) if patches_semantically_eq(got, new_patch) => Ok(out),
+    match parse_yaml_mapping(&out) {
+        Ok(parsed) if patches_semantically_eq(&parsed, new_root) => Ok(out),
         _ => serialize_custom_yaml(new_root),
     }
 }
@@ -296,8 +284,16 @@ where
     let mut root = parse_yaml_mapping(existing)?;
     {
         let key = yaml_str("patch");
-        if !matches!(root.get(&key), Some(Value::Mapping(_))) {
-            root.insert(key.clone(), Value::Mapping(Mapping::new()));
+        match root.get(&key) {
+            None | Some(Value::Null) => {
+                root.insert(key.clone(), Value::Mapping(Mapping::new()));
+            }
+            Some(Value::Mapping(_)) => {}
+            Some(_) => {
+                return Err(RimeError::YamlParseError(
+                    "patch 必须是映射，已中止写入以免覆盖原配置".to_string(),
+                ))
+            }
         }
         let Some(Value::Mapping(patch)) = root.get_mut(&key) else {
             return Err(RimeError::YamlParseError("无法创建 patch 映射".to_string()));
@@ -502,6 +498,46 @@ pub(crate) fn remove_color_scheme(patch: &mut Mapping, name: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn merges_alternative_yaml_layouts_without_losing_top_level_keys() {
+        for existing in [
+            "patch: {menu/page_size: 5}\nother: keep\n",
+            "'patch':\n  menu/page_size: 5\nother: keep\n",
+            "patch: # user comment\n  menu/page_size: 5\nother: keep\n",
+            "patch: null\nother: keep\n",
+            "other: keep\n",
+            "patch:\n  123: numeric key\n  menu/page_size: 5\nother: keep\n",
+        ] {
+            let mut expected = parse_yaml_mapping(existing).expect("parse fixture");
+            let patch = expected
+                .entry(yaml_str("patch"))
+                .or_insert(Value::Mapping(Mapping::new()));
+            if patch.is_null() {
+                *patch = Value::Mapping(Mapping::new());
+            }
+            set_patch_path(
+                patch.as_mapping_mut().expect("mapping"),
+                "menu/page_size",
+                Value::from(9),
+            );
+            let rendered = merge_custom_yaml(existing, |patch| {
+                set_patch_path(patch, "menu/page_size", Value::from(9));
+            })
+            .expect("merge valid layout");
+            assert_eq!(
+                parse_yaml_mapping(&rendered).expect("valid output"),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn refuses_non_mapping_patch_instead_of_discarding_it() {
+        for existing in ["patch: [one, two]", "patch: important"] {
+            assert!(merge_custom_yaml(existing, |_| {}).is_err());
+        }
+    }
 
     #[test]
     fn merge_preserves_unknown_keys_and_updates_managed_ones() {
