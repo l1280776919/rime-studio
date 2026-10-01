@@ -14,8 +14,10 @@ pub(crate) async fn download_app_update() -> Result<RimeDownloadResult, RimeErro
 }
 
 #[tauri::command]
-pub(crate) async fn download_rime_installer() -> Result<RimeDownloadResult, RimeError> {
-    run_blocking(download_rime_installer_sync).await
+pub(crate) async fn download_rime_installer(
+    app: tauri::AppHandle,
+) -> Result<RimeDownloadResult, RimeError> {
+    run_blocking(move || download_rime_installer_sync(&app)).await
 }
 
 #[tauri::command]

@@ -108,6 +108,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             scan_rime_environment,
+            set_weasel_deployer,
             scan_dictionary_health,
             deploy_rime,
             cancel_deploy,

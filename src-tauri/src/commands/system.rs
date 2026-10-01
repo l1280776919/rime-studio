@@ -95,3 +95,8 @@ pub(crate) async fn list_userdb_entries(
 ) -> Result<UserdbEntriesResult, RimeError> {
     run_blocking(move || list_userdb_entries_sync(filename, limit, offset, query)).await
 }
+
+#[tauri::command]
+pub(crate) async fn set_weasel_deployer(path: String) -> Result<String, RimeError> {
+    run_blocking(move || set_weasel_deployer_sync(path)).await
+}
