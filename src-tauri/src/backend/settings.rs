@@ -926,6 +926,7 @@ pub(crate) fn list_backups_sync() -> Result<Vec<BackupEntry>, RimeError> {
 }
 
 pub(crate) fn create_backup_with_note_sync(note: Option<String>) -> Result<BackupEntry, RimeError> {
+    let _config_guard = lock_config_write()?;
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir)
         .map_err(|err| RimeError::SettingsError(format!("创建 Rime 目录失败: {err}")))?;

@@ -750,6 +750,46 @@ fn setting_writers_wait_for_the_configuration_operation_lock() {
 }
 
 #[test]
+fn manual_backups_wait_for_configuration_writes() {
+    isolated("manual_backups_wait_for_configuration_writes", || {
+        use std::{
+            sync::{mpsc, Arc, Barrier},
+            thread,
+            time::Duration,
+        };
+        let user = rime_user_dir().expect("user");
+        let path = user.join("default.custom.yaml");
+        fs::write(&path, "patch: {}\n").expect("fixture");
+        let guard = lock_config_write().expect("lock");
+        let barrier = Arc::new(Barrier::new(2));
+        let worker_barrier = barrier.clone();
+        let (sender, receiver) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            worker_barrier.wait();
+            sender
+                .send(create_backup_with_note_sync(None))
+                .expect("result");
+        });
+        barrier.wait();
+        assert!(matches!(
+            receiver.recv_timeout(Duration::from_millis(150)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        ));
+        fs::write(&path, "patch:\n  menu/page_size: 7\n").expect("finish write");
+        drop(guard);
+        let backup = receiver
+            .recv_timeout(Duration::from_secs(10))
+            .expect("completion")
+            .expect("backup");
+        assert_eq!(
+            fs::read_to_string(Path::new(&backup.path).join("default.custom.yaml")).expect("read"),
+            "patch:\n  menu/page_size: 7\n"
+        );
+        worker.join().expect("worker");
+    });
+}
+
+#[test]
 fn creating_a_snapshot_waits_for_backup_operations_to_finish() {
     isolated(
         "creating_a_snapshot_waits_for_backup_operations_to_finish",
