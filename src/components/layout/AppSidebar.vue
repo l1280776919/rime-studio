@@ -16,6 +16,7 @@ import type { Component } from "vue";
 import type { RimeEnvironment } from "../../types";
 import { useTheme } from "../../composables/useTheme";
 import appLogo from "../../assets/logo.png";
+import WorkbenchThemePicker from "../common/WorkbenchThemePicker.vue";
 
 defineProps<{
   env?: RimeEnvironment;
@@ -46,7 +47,7 @@ const navGroups: NavGroup[] = [
     items: [
       { key: "overview", label: "概览与状态", icon: Monitor },
       { key: "quick", label: "快速设置", icon: MagicStick },
-      { key: "appearance", label: "候选窗主题", icon: Brush },
+      { key: "appearance", label: "主题配置", icon: Brush },
     ],
   },
   {
@@ -92,6 +93,8 @@ const navGroups: NavGroup[] = [
         </el-icon>
       </button>
     </div>
+
+    <WorkbenchThemePicker />
 
     <!-- Categorized Navigation -->
     <div class="nav-container custom-scrollbar">

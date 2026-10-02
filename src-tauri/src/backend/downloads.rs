@@ -249,6 +249,18 @@ where
     result
 }
 
+/// Scan the actual model file, including models installed outside the workbench.
+pub(crate) fn lmdg_grammar_installed_sync() -> Result<bool, RimeError> {
+    let path = rime_user_dir()?.join("wanxiang-lts-zh-hans.gram");
+    match fs::metadata(path) {
+        Ok(metadata) => Ok(metadata.is_file()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(RimeError::FileOperationError(format!(
+            "扫描万象语言模型失败: {error}"
+        ))),
+    }
+}
+
 pub(crate) fn install_lmdg_grammar_sync_with_progress<F>(
     progress: F,
 ) -> Result<LmdgGrammarInstallResult, RimeError>
@@ -258,6 +270,11 @@ where
     let _guard = LMDG_OPERATION.try_lock().map_err(|_| {
         RimeError::CommandExecutionFailed("已有万象安装或卸载任务正在运行".to_string())
     })?;
+    if lmdg_grammar_installed_sync()? {
+        return Err(RimeError::CommandExecutionFailed(
+            "模型已安装，请先卸载再安装".into(),
+        ));
+    }
     let model_name = "wanxiang-lts-zh-hans";
     let asset_name = format!("{model_name}.gram");
     let (download_url, release_name) = github_release_asset_url(
@@ -299,6 +316,11 @@ pub(crate) fn uninstall_lmdg_grammar_sync() -> Result<LmdgGrammarUninstallResult
     let _guard = LMDG_OPERATION.try_lock().map_err(|_| {
         RimeError::CommandExecutionFailed("已有万象安装或卸载任务正在运行".to_string())
     })?;
+    if !lmdg_grammar_installed_sync()? {
+        return Err(RimeError::CommandExecutionFailed(
+            "未安装万象语言模型，无需卸载".into(),
+        ));
+    }
     let model_name = "wanxiang-lts-zh-hans";
     let asset_name = format!("{model_name}.gram");
     let user_dir = rime_user_dir()?;
@@ -339,7 +361,7 @@ pub(crate) fn preview_dictionary_import_sync(
 ) -> Result<DictionaryImportPreview, RimeError> {
     let user_dir = rime_user_dir()?;
     let (dict_name, reference, entries, skipped_entries, _) =
-        parse_dictionary_import_payload(source_name, data)?;
+        parse_dictionary_import_payload(source_name.clone(), data)?;
     let path = user_dir.join(&dict_name);
     let sample_entries = entries
         .iter()
@@ -366,15 +388,37 @@ pub(crate) fn import_dictionary_sync(
     source_name: String,
     data: Vec<u8>,
 ) -> Result<DictionaryImportResult, RimeError> {
+    import_dictionary_with_source(source_name, data, None, None, None)
+}
+
+/// Keep provenance in a YAML comment so exports and backups retain it.
+pub(crate) fn import_dictionary_with_source(
+    source_name: String,
+    data: Vec<u8>,
+    source_url: Option<String>,
+    display_name: Option<String>,
+    source_label: Option<String>,
+) -> Result<DictionaryImportResult, RimeError> {
     let _config_guard = lock_config_write()?;
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir)
         .map_err(|err| RimeError::FileOperationError(format!("创建 Rime 目录失败: {err}")))?;
 
     let (dict_name, reference, entries, skipped_entries, rendered_contents) =
-        parse_dictionary_import_payload(source_name, data)?;
+        parse_dictionary_import_payload(source_name.clone(), data)?;
     let path = resolve_user_relative_path(&user_dir, &dict_name, false)?;
     backup_user_config(&user_dir, BackupKind::BeforeSave)?;
+    let provenance = serde_json::json!({
+        "name": display_name.filter(|s| !s.trim().is_empty()).unwrap_or(source_name),
+        "source": source_label.filter(|s| !s.trim().is_empty()).unwrap_or_else(|| {
+            if source_url.is_some() { "URL 导入".to_string() } else { "本地文件导入".to_string() }
+        }),
+        "url": source_url,
+    });
+    let rendered_contents = format!(
+        "# rime-studio-source: {}\n{}",
+        provenance, rendered_contents
+    );
     write_text_file(&path, &rendered_contents, "写入导入词库失败")?;
 
     Ok(DictionaryImportResult {

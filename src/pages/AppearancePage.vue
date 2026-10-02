@@ -697,7 +697,7 @@ useSaveShortcut(() => saveAppearance(false));
         <div>
           <h3 class="section-heading">主题方案设计库</h3>
           <p class="section-subheading">
-            共 {{ allSchemes.length }} 套配色方案 · 包含官方精选与自定义扩展
+            共 {{ allSchemes.length }} 套配色方案 · 包含 Happy Hues 全部 17 套配色与自定义扩展
           </p>
         </div>
         <div class="section-actions">

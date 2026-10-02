@@ -1,3 +1,5 @@
+import { happyHuesPresets } from "./happyHues";
+
 export const colorFields = [
   { key: "back_color", label: "背景色" },
   { key: "border_color", label: "边框色" },
@@ -101,4 +103,5 @@ export const presets = [
       hilited_candidate_back_color: "0x699605",
     },
   },
+  ...happyHuesPresets,
 ];

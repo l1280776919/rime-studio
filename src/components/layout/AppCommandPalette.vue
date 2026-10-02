@@ -103,8 +103,8 @@ const commands = computed<CommandItem[]>(() => {
     {
       id: "nav-appearance",
       category: "navigation",
-      title: "候选窗主题",
-      subtitle: "预览配色 · 字体排版 · 候选窗布局",
+      title: "主题配置",
+      subtitle: "工作台主题 · 候选窗配色 · 字体排版 · 候选窗布局",
       icon: Brush,
       action: () => emit("navigate", "appearance"),
     },

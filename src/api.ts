@@ -106,14 +106,25 @@ export const api = {
   listOnlineDictionariesByCategory: (categoryId: string) =>
     invoke<OnlineDictionary[]>("list_online_dictionaries_by_category", { categoryId }),
   installLmdgDicts: () => invoke<LmdgInstallResult>("install_lmdg_dicts"),
+  lmdgGrammarInstalled: () => invoke<boolean>("lmdg_grammar_installed"),
   installLmdgGrammar: () => invoke<LmdgGrammarInstallResult>("install_lmdg_grammar"),
   uninstallLmdgGrammar: () => invoke<LmdgGrammarUninstallResult>("uninstall_lmdg_grammar"),
   previewDictionaryUrlImport: (url: string, sourceName?: string) =>
     invoke<DictionaryImportPreview>("preview_dictionary_url_import", { url, sourceName }),
   importOnlineDictionary: (id: string) =>
     invoke<DictionaryImportResult>("import_online_dictionary", { id }),
-  importDictionaryUrl: (url: string, sourceName?: string) =>
-    invoke<DictionaryImportResult>("import_dictionary_url", { url, sourceName }),
+  importDictionaryUrl: (
+    url: string,
+    sourceName?: string,
+    displayName?: string,
+    sourceLabel?: string,
+  ) =>
+    invoke<DictionaryImportResult>("import_dictionary_url", {
+      url,
+      sourceName,
+      displayName,
+      sourceLabel,
+    }),
   importDictionary: (sourceName: string, data: number[]) =>
     invoke<DictionaryImportResult>("import_dictionary", { sourceName, data }),
   exportDictionary: (dictName: string) =>

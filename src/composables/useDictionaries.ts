@@ -51,13 +51,36 @@ export function useDictionaries(emit: EmitFn) {
   const onlineImporting = ref<string>();
   const lmdgInstalling = ref(false);
   const lmdgResult = ref<LmdgInstallResult>();
+  const grammarInstalled = ref<boolean>();
+  const grammarScanning = ref(false);
+  const grammarScanError = ref(false);
+  let grammarScanVersion = 0;
+  /** Unknown and failed scans must never be treated as an uninstalled model. */
+  async function scanGrammar() {
+    const version = ++grammarScanVersion;
+    grammarScanning.value = true;
+    grammarScanError.value = false;
+    grammarInstalled.value = undefined;
+    try {
+      const installed = await api.lmdgGrammarInstalled();
+      if (version === grammarScanVersion) grammarInstalled.value = installed;
+    } catch {
+      if (version === grammarScanVersion) grammarScanError.value = true;
+    } finally {
+      if (version === grammarScanVersion) grammarScanning.value = false;
+    }
+  }
+  watch(showOnlineDictionaryDialog, (open) => {
+    if (open) void scanGrammar();
+  });
   const lmdgGrammarInstalling = ref(false);
   const lmdgGrammarUninstalling = ref(false);
   const lmdgGrammarResult = ref<LmdgGrammarInstallResult>();
   const lmdgGrammarUninstallResult = ref<LmdgGrammarUninstallResult>();
   const lmdgDownloadProgress = ref<LmdgDownloadProgress>();
   type PreparedImport =
-    { kind: "file"; name: string; data: number[] } | { kind: "url"; url: string; name?: string };
+    | { kind: "file"; name: string; data: number[] }
+    | { kind: "url"; url: string; name?: string; displayName?: string; sourceLabel?: string };
   let preparedImport: PreparedImport | undefined;
   let previewVersion = 0;
   let activePreviewSource: "file" | "url" | "online" | undefined;
@@ -264,7 +287,7 @@ export function useDictionaries(emit: EmitFn) {
   }
 
   async function installLmdgGrammar() {
-    if (resourceBusy.value) return;
+    if (resourceBusy.value || grammarScanning.value || grammarInstalled.value !== false) return;
     lmdgGrammarInstalling.value = true;
     lmdgGrammarUninstallResult.value = undefined;
     lmdgDownloadProgress.value = {
@@ -279,12 +302,13 @@ export function useDictionaries(emit: EmitFn) {
     } catch (error) {
       ElMessage.error(String(error));
     } finally {
+      await scanGrammar();
       lmdgGrammarInstalling.value = false;
     }
   }
 
   async function uninstallLmdgGrammar() {
-    if (resourceBusy.value) return;
+    if (resourceBusy.value || grammarScanning.value || grammarInstalled.value !== true) return;
     lmdgGrammarUninstalling.value = true;
     try {
       const result = await api.uninstallLmdgGrammar();
@@ -294,6 +318,7 @@ export function useDictionaries(emit: EmitFn) {
     } catch (error) {
       ElMessage.error(String(error));
     } finally {
+      await scanGrammar();
       lmdgGrammarUninstalling.value = false;
     }
   }
@@ -303,8 +328,11 @@ export function useDictionaries(emit: EmitFn) {
     onlineImporting.value = dict.id;
     const url = dict.detail_url;
     const name = dict.source_name;
+    // Snapshot the human-readable catalog identity together with the preview source.
+    const displayName = dict.title;
+    const sourceLabel = dict.source;
     await prepareImport("online", async () => ({
-      source: { kind: "url", url, name },
+      source: { kind: "url", url, name, displayName, sourceLabel },
       preview: await api.previewDictionaryUrlImport(url, name),
     }));
   }
@@ -330,7 +358,15 @@ export function useDictionaries(emit: EmitFn) {
     try {
       let result: DictionaryImportResult;
       if (source.kind === "url") {
-        result = await api.importDictionaryUrl(source.url, source.name);
+        result =
+          source.displayName || source.sourceLabel
+            ? await api.importDictionaryUrl(
+                source.url,
+                source.name,
+                source.displayName,
+                source.sourceLabel,
+              )
+            : await api.importDictionaryUrl(source.url, source.name);
       } else {
         result = await api.importDictionary(source.name, source.data);
       }
@@ -409,15 +445,24 @@ export function useDictionaries(emit: EmitFn) {
 
   async function moveReference(reference: string, direction: -1 | 1) {
     if (!dictConfig.value || updatingReference.value) return;
+    const index = dictConfig.value.imports.indexOf(reference);
+    await reorderReference(reference, index + direction);
+  }
+
+  /** Both dragging and keyboard-friendly move buttons persist the same full import order. */
+  async function reorderReference(reference: string, targetIndex: number) {
+    if (!dictConfig.value || updatingReference.value || loading.value) return;
     const imports = [...dictConfig.value.imports];
     const index = imports.indexOf(reference);
-    const nextIndex = index + direction;
-    if (index < 0 || nextIndex < 0 || nextIndex >= imports.length) return;
-    [imports[index], imports[nextIndex]] = [imports[nextIndex], imports[index]];
+    if (index < 0 || targetIndex < 0 || targetIndex >= imports.length || index === targetIndex)
+      return;
+    imports.splice(index, 1);
+    imports.splice(targetIndex, 0, reference);
 
     updatingReference.value = reference;
     try {
       dictConfig.value = await api.saveDictionaryImports(imports);
+      ElMessage.success("词库顺序已保存，部署后生效");
       await loadAllStats();
     } catch (error) {
       ElMessage.error(String(error));
@@ -518,7 +563,7 @@ export function useDictionaries(emit: EmitFn) {
   }
 
   async function loadAllStats() {
-    await loadDictionaries();
+    await Promise.all([loadDictionaries(), scanGrammar()]);
   }
 
   onMounted(() => {
@@ -553,6 +598,9 @@ export function useDictionaries(emit: EmitFn) {
 
   return {
     // Refs
+    grammarInstalled,
+    grammarScanning,
+    grammarScanError,
     dictionaries,
     dictConfig,
     orderedReferences,
@@ -611,6 +659,7 @@ export function useDictionaries(emit: EmitFn) {
     addDictionaryReference,
     removeDictionaryReference,
     moveReference,
+    reorderReference,
     deleteDictionary,
     cleanDuplicateLines,
     selectOnlineCategory,

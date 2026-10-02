@@ -544,7 +544,13 @@ pub(crate) fn import_online_dictionary_sync(
     let entry = online_dictionary_by_id(&id)
         .ok_or_else(|| RimeError::NetworkError("未找到在线词库".to_string()))?;
     let data = download_online_dictionary(&entry)?;
-    import_dictionary_sync(entry.source_name, data)
+    import_dictionary_with_source(
+        entry.source_name,
+        data,
+        Some(entry.detail_url),
+        Some(entry.title),
+        Some(entry.source),
+    )
 }
 
 pub(crate) fn preview_dictionary_url_import_sync(
@@ -558,7 +564,9 @@ pub(crate) fn preview_dictionary_url_import_sync(
 pub(crate) fn import_dictionary_url_sync(
     url: String,
     source_name: Option<String>,
+    display_name: Option<String>,
+    source_label: Option<String>,
 ) -> Result<DictionaryImportResult, RimeError> {
-    let (source_name, data) = download_dictionary_import_source(url, source_name)?;
-    import_dictionary_sync(source_name, data)
+    let (source_name, data) = download_dictionary_import_source(url.clone(), source_name)?;
+    import_dictionary_with_source(source_name, data, Some(url), display_name, source_label)
 }

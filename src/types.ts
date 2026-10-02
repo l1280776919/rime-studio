@@ -179,6 +179,8 @@ export type SchemaInfo = {
 
 export type DictInfo = {
   name: string;
+  display_name?: string | null;
+  source?: string | null;
   path: string;
   entry_count: number;
   size_bytes: number;

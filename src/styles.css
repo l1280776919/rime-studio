@@ -5457,3 +5457,75 @@ html[data-theme="dark"] .bento-tile-icon {
   flex-wrap: wrap;
   gap: 6px 12px;
 }
+
+/* Happy Hues 工作台主题：覆盖旧样式中的固定蓝色表面，候选窗预览仍由自己的配色控制。 */
+html[data-workbench-theme] .studio-shell {
+  background: var(--color-bg);
+}
+html[data-workbench-theme] .sidebar {
+  background: var(--color-sidebar-bg);
+}
+html[data-workbench-theme] .sidebar-card,
+html[data-workbench-theme] .panel .el-card__header {
+  background: var(--color-surface-soft);
+}
+:root[data-workbench-theme] .sidebar .nav-pill.active,
+:root[data-workbench-theme] .sidebar .nav-pill.active .nav-icon {
+  background: var(--color-accent-soft);
+  color: var(--ink-900);
+  border-color: var(--color-line);
+  box-shadow: none;
+}
+html[data-workbench-theme] .el-button--primary {
+  --el-button-text-color: var(--workbench-button-text);
+  --el-button-hover-text-color: var(--workbench-button-text);
+  --el-button-active-text-color: var(--workbench-button-text);
+  --el-button-hover-bg-color: var(--color-accent);
+  --el-button-active-bg-color: var(--color-accent);
+  --el-button-disabled-text-color: var(--workbench-button-text);
+}
+html[data-workbench-theme] .deploy-btn {
+  background: var(--color-accent);
+  color: var(--workbench-button-text);
+}
+html[data-workbench-theme] .el-button--primary.is-plain,
+html[data-workbench-theme] .el-button--primary.is-link,
+html[data-workbench-theme] .el-button--primary.is-text {
+  --el-button-text-color: var(--ink-900);
+  --el-button-hover-text-color: var(--ink-900);
+  --el-button-active-text-color: var(--ink-900);
+  --el-button-hover-bg-color: var(--color-accent-soft);
+  --el-button-active-bg-color: var(--color-accent-soft);
+}
+html[data-workbench-theme] .el-table {
+  --el-table-header-bg-color: var(--color-surface-soft);
+  --el-table-tr-bg-color: var(--color-surface);
+  --el-table-row-hover-bg-color: var(--color-surface-hover);
+}
+/* 页面主表面沿用选定配色；状态提示色和输入法预览保留各自语义。 */
+html[data-workbench-theme] .cockpit-hero,
+html[data-workbench-theme] .quick-hero,
+html[data-workbench-theme] .schema-card,
+html[data-workbench-theme] .ice-toggle {
+  background: var(--color-surface-soft);
+}
+html[data-workbench-theme] .schema-choice.active,
+html[data-workbench-theme] .schema-current-strip,
+html[data-workbench-theme] .schema-library-item.active,
+html[data-workbench-theme] .schema-card.active {
+  background: var(--color-accent-soft);
+}
+
+/* 下拉选择本体统一增高；使用最小高度，允许多选标签自然换行。 */
+.el-select .el-select__wrapper {
+  min-height: 40px;
+  padding: 8px 12px;
+}
+.el-select.el-select--small .el-select__wrapper {
+  min-height: 36px;
+  padding: 6px 10px;
+}
+.el-select.el-select--large .el-select__wrapper {
+  min-height: 44px;
+  padding: 10px 16px;
+}

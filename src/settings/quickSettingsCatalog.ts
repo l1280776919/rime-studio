@@ -4,25 +4,28 @@ export function editableQuickSettings(config: QuickSettingsConfig) {
   delete value.schema_list;
   return value;
 }
-export type SettingGroup = "all" | "display" | "keys" | "schema" | "ice" | "extensions";
+export type SettingGroup = "common" | "all" | "display" | "keys" | "schema" | "ice" | "extensions";
 export type QuickSetting = {
   id: string;
   title: string;
   keywords: string;
   group: SettingGroup;
   paths: string[];
+  common?: boolean;
 };
 export const settingGroups: { value: SettingGroup; label: string }[] = [
-  { value: "all", label: "全部" },
+  { value: "common", label: "常用" },
   { value: "display", label: "候选窗" },
   { value: "keys", label: "按键" },
   { value: "schema", label: "输入方案" },
   { value: "ice", label: "雾凇功能" },
   { value: "extensions", label: "Lua 扩展" },
+  { value: "all", label: "全部" },
 ];
 export const quickSettingsCatalog: QuickSetting[] = [
   {
     id: "page_size",
+    common: true,
     title: "候选词数",
     keywords: "数量 每页 page size menu",
     group: "display",
@@ -30,6 +33,7 @@ export const quickSettingsCatalog: QuickSetting[] = [
   },
   {
     id: "horizontal",
+    common: true,
     title: "排布方向",
     keywords: "横排 竖排 候选 横向 纵向 horizontal",
     group: "display",
@@ -44,6 +48,7 @@ export const quickSettingsCatalog: QuickSetting[] = [
   },
   {
     id: "switch_key",
+    common: true,
     title: "Shift 按键行为",
     keywords: "中英文 切换 shift switch",
     group: "keys",
@@ -51,6 +56,7 @@ export const quickSettingsCatalog: QuickSetting[] = [
   },
   {
     id: "paging_keys",
+    common: true,
     title: "翻页按键",
     keywords: "逗号 句号 减号 等号 方向键 paging",
     group: "keys",
@@ -65,6 +71,7 @@ export const quickSettingsCatalog: QuickSetting[] = [
   },
   {
     id: "schema_id",
+    common: true,
     title: "输入方案",
     keywords: "拼音 双拼 五笔 schema 切换",
     group: "schema",
@@ -72,6 +79,7 @@ export const quickSettingsCatalog: QuickSetting[] = [
   },
   {
     id: "emoji",
+    common: true,
     title: "Emoji 表情联想",
     keywords: "表情 emoji",
     group: "ice",
@@ -79,6 +87,7 @@ export const quickSettingsCatalog: QuickSetting[] = [
   },
   {
     id: "traditionalization",
+    common: true,
     title: "简繁转换",
     keywords: "繁体 台湾 香港 traditional",
     group: "ice",
@@ -120,11 +129,9 @@ export const quickSettingsCatalog: QuickSetting[] = [
     paths: [],
   },
 ];
-export function matchesSetting(setting: QuickSetting, query: string) {
-  const text = `${setting.id} ${setting.title} ${setting.keywords}`.toLowerCase();
-  return query
-    .trim()
-    .toLowerCase()
-    .split(/\s+/)
-    .every((word) => text.includes(word));
+/** 常用项与分类共用目录，保持页面展示和外部设置定位一致。 */
+export function filterQuickSettings(settings: QuickSetting[], group: SettingGroup) {
+  return settings.filter(
+    (item) => group === "all" || (group === "common" ? item.common : item.group === group),
+  );
 }

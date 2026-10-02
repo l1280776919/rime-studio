@@ -1,41 +1,68 @@
-import { ref } from "vue";
+import { computed, ref } from "vue";
+import { workbenchThemes } from "../appearance/workbenchThemes";
 
-const DARK_THEME_KEY = "rime-studio-theme";
+const THEME_KEY = "rime-studio-theme";
+const DEFAULT_THEME = "happy-hues-3";
+// 多个入口共享状态，确保侧栏显示与实际主题一致。
+const selectedTheme = ref(DEFAULT_THEME);
+const isDark = computed(
+  () =>
+    selectedTheme.value === "dark" ||
+    !!workbenchThemes.find((theme) => theme.name === selectedTheme.value)?.dark,
+);
+let appliedTokens: string[] = [];
+let initialized = false;
 
-function applyTheme(dark: boolean) {
-  if (dark) {
-    document.documentElement.dataset.theme = "dark";
-  } else {
-    delete document.documentElement.dataset.theme;
+/** 清除上一套颜色后应用新主题，切回默认模式时恢复原始 CSS。 */
+function applyTheme(name: string) {
+  const resolvedName =
+    workbenchThemes.some((item) => item.name === name) || name === "light" || name === "dark"
+      ? name
+      : DEFAULT_THEME;
+  const theme = workbenchThemes.find((item) => item.name === resolvedName);
+  selectedTheme.value = resolvedName;
+  const root = document.documentElement;
+  for (const key of appliedTokens) root.style.removeProperty(key);
+  appliedTokens = Object.keys(theme?.tokens ?? {});
+  for (const [key, value] of Object.entries(theme?.tokens ?? {}))
+    root.style.setProperty(key, value);
+  if (isDark.value) root.dataset.theme = "dark";
+  else delete root.dataset.theme;
+  if (theme) root.dataset.workbenchTheme = theme.name;
+  else delete root.dataset.workbenchTheme;
+  root.style.colorScheme = isDark.value ? "dark" : "light";
+}
+
+function setTheme(name: string) {
+  applyTheme(name);
+  // 存储受限时仍允许即时切换；无需阻断工作台操作。
+  try {
+    localStorage.setItem(THEME_KEY, selectedTheme.value);
+  } catch {
+    /* 当前会话继续生效。 */
   }
-  localStorage.setItem(DARK_THEME_KEY, dark ? "dark" : "light");
+}
+
+function initTheme() {
+  if (initialized) return;
+  initialized = true;
+  let stored: string | null = null;
+  try {
+    stored = localStorage.getItem(THEME_KEY);
+  } catch {
+    /* 使用 Happy Hues 03 浅色默认主题。 */
+  }
+  // 默认固定为 03 浅色，已有的手动选择继续保留，不再被系统明暗变化覆盖。
+  applyTheme(stored ?? DEFAULT_THEME);
 }
 
 export function useTheme() {
-  const isDark = ref(false);
-
-  function toggleTheme() {
-    isDark.value = !isDark.value;
-    applyTheme(isDark.value);
-  }
-
-  function initTheme() {
-    const stored = localStorage.getItem(DARK_THEME_KEY);
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-    if (stored) {
-      isDark.value = stored === "dark";
-    } else {
-      isDark.value = media.matches;
-    }
-    applyTheme(isDark.value);
-
-    const onChange = (event: MediaQueryListEvent) => {
-      if (localStorage.getItem(DARK_THEME_KEY)) return;
-      isDark.value = event.matches;
-      applyTheme(isDark.value);
-    };
-    media.addEventListener("change", onChange);
-  }
-
-  return { isDark, toggleTheme, initTheme };
+  return {
+    isDark,
+    selectedTheme,
+    workbenchThemes,
+    setTheme,
+    initTheme,
+    toggleTheme: () => setTheme(isDark.value ? "light" : "dark"),
+  };
 }

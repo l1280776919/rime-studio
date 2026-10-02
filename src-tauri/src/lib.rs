@@ -161,6 +161,7 @@ pub fn run() {
             import_dictionary_url,
             install_lmdg_dicts,
             install_lmdg_grammar,
+            lmdg_grammar_installed,
             uninstall_lmdg_grammar,
             preview_dictionary_import,
             import_dictionary,

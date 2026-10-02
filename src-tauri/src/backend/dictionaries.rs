@@ -125,7 +125,10 @@ pub(crate) fn list_dictionaries_sync() -> Result<Vec<DictInfo>, RimeError> {
                 .map(|relative| relative.display().to_string().replace('\\', "/"))
                 .unwrap_or_else(|| name.to_string());
 
+            let (display_title, source) = read_dictionary_metadata(&path);
             dicts.push(DictInfo {
+                display_name: display_title,
+                source,
                 name: display_name,
                 path: path.display().to_string(),
                 entry_count,
@@ -596,5 +599,63 @@ pub(crate) fn sanitize_dict_file_name(source_name: &str) -> String {
         format!("{}.yaml", id.replace("_dict", ".dict"))
     } else {
         format!("{id}.dict.yaml")
+    }
+}
+
+/// Read only the bounded header, even for dictionaries containing millions of entries.
+fn read_dictionary_metadata(path: &Path) -> (Option<String>, Option<String>) {
+    use std::io::Read;
+    let Ok(file) = fs::File::open(path) else {
+        return (None, None);
+    };
+    parse_dictionary_metadata(BufReader::new(file.take(65536)))
+}
+
+fn parse_dictionary_metadata(reader: impl BufRead) -> (Option<String>, Option<String>) {
+    let mut name = None;
+    for line in reader.lines().take(200).map_while(Result::ok) {
+        if let Some(value) = line.strip_prefix("# rime-studio-source: ") {
+            if let Ok(meta) = serde_json::from_str::<serde_json::Value>(value) {
+                return (
+                    meta.get("name").and_then(|v| v.as_str()).map(str::to_owned),
+                    meta.get("source")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_owned),
+                );
+            }
+        }
+        if line.trim() == "..." {
+            break;
+        }
+        if let Some(value) = line.strip_prefix("name:") {
+            name = serde_yaml::from_str::<String>(value.trim()).ok();
+        }
+    }
+    (name, None)
+}
+
+#[cfg(test)]
+mod metadata_tests {
+    use super::*;
+    #[test]
+    fn reads_import_provenance_and_legacy_names_without_reading_entries() {
+        let header = "# rime-studio-source: {\"name\":\"医学词库.scel\",\"source\":\"https://example.com/dict\"}\n---\nname: imported\n...\n";
+        assert_eq!(
+            parse_dictionary_metadata(header.as_bytes()),
+            (
+                Some("医学词库.scel".into()),
+                Some("https://example.com/dict".into())
+            )
+        );
+        assert_eq!(
+            parse_dictionary_metadata(b"---\nname: legacy\n...\nname: entry\n".as_slice()),
+            (Some("legacy".into()), None)
+        );
+        assert_eq!(
+            parse_dictionary_metadata(
+                b"# rime-studio-source: invalid\nname: fallback\n...".as_slice()
+            ),
+            (Some("fallback".into()), None)
+        );
     }
 }

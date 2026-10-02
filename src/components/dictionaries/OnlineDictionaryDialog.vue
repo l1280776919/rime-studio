@@ -30,6 +30,9 @@ const props = defineProps<{
   importing: boolean;
   onlineImporting?: string;
   dictInstalling: boolean;
+  grammarInstalled?: boolean;
+  grammarScanning: boolean;
+  grammarScanError: boolean;
   grammarInstalling: boolean;
   grammarUninstalling: boolean;
   lmdgProgress?: LmdgDownloadProgress;
@@ -106,6 +109,9 @@ function showFeatured() {
   >
     <LmdgResourcePanel
       :dict-installing="dictInstalling"
+      :grammar-installed="grammarInstalled"
+      :grammar-scanning="grammarScanning"
+      :grammar-scan-error="grammarScanError"
       :grammar-installing="grammarInstalling"
       :grammar-uninstalling="grammarUninstalling"
       :loading="localLoading"

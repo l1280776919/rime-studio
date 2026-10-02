@@ -8,20 +8,15 @@ import DictionaryImportPreviewDialog from "../components/dictionaries/Dictionary
 import DictionaryUrlImportDialog from "../components/dictionaries/DictionaryUrlImportDialog.vue";
 import OnlineDictionaryDialog from "../components/dictionaries/OnlineDictionaryDialog.vue";
 import {
-  Bottom,
   Collection,
   Delete,
   Download,
-  Files,
   FolderOpened,
-  InfoFilled,
   Link,
   MagicStick,
   Open,
   Refresh,
-  Top,
   UploadFilled,
-  Warning,
 } from "@element-plus/icons-vue";
 import type { DictionaryReference, DictInfo, RimeEnvironment } from "../types";
 
@@ -36,6 +31,7 @@ const emit = defineEmits<{
 
 const {
   dictionaries,
+  fileInput,
   dictConfig,
   orderedReferences,
   loading,
@@ -62,6 +58,9 @@ const {
   onlineImporting,
   lmdgInstalling,
   lmdgResult,
+  grammarInstalled,
+  grammarScanning,
+  grammarScanError,
   lmdgGrammarInstalling,
   lmdgGrammarUninstalling,
   lmdgGrammarResult,
@@ -84,7 +83,7 @@ const {
   exportDictionary,
   addDictionaryReference,
   removeDictionaryReference,
-  moveReference,
+  reorderReference,
   deleteDictionary,
   cleanDuplicateLines,
   selectOnlineCategory,
@@ -101,83 +100,71 @@ const availablePageSize = ref(40);
 const pagedAvailable = computed(() =>
   paginateItems(dictConfig.value?.available ?? [], availablePage.value, availablePageSize.value),
 );
+
+const draggedReference = ref<string>();
+const dropTarget = ref<string>();
+const dictionaryByReference = computed(
+  () => new Map(dictionaries.value.map((dict) => [dictNameToReference(dict.name), dict])),
+);
+function referenceInfo(reference: string) {
+  return dictionaryByReference.value.get(reference);
+}
+function clearDrag() {
+  draggedReference.value = undefined;
+  dropTarget.value = undefined;
+}
+function startDrag(event: DragEvent, reference: string) {
+  if (updatingReference.value || loading.value) {
+    event.preventDefault();
+    return;
+  }
+  draggedReference.value = reference;
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", reference);
+  }
+}
+/** Resolve the row from any cell so the full row is a drop target, not only the handle. */
+function targetReference(event: DragEvent) {
+  const target = event.target as HTMLElement | null;
+  return target?.closest("tr")?.querySelector<HTMLElement>("[data-reference]")?.dataset.reference;
+}
+function onDragOver(event: DragEvent) {
+  if (!draggedReference.value || updatingReference.value || loading.value) return;
+  const target = targetReference(event);
+  if (!target) return;
+  event.preventDefault();
+  dropTarget.value = target;
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+}
+async function onDrop(event: DragEvent) {
+  event.preventDefault();
+  const source = draggedReference.value;
+  const target = targetReference(event);
+  clearDrag();
+  if (source && target)
+    await reorderReference(source, dictConfig.value?.imports.indexOf(target) ?? -1);
+}
 </script>
 
 <template>
   <div class="dictionaries-hub-container">
-    <!-- Bento Metrics Stage -->
-    <div class="dict-bento-metrics">
-      <div class="metric-card card-accent">
-        <div class="metric-icon-box">
-          <el-icon><Collection /></el-icon>
-        </div>
-        <div class="metric-body">
-          <span class="metric-label">启用词库 / 总词库</span>
-          <strong class="metric-value"
-            >{{ enabledCount }}
-            <span class="metric-total">/ {{ dictionaries.length }}</span></strong
-          >
-        </div>
+    <header class="dictionary-heading">
+      <div>
+        <h2>管理你的词库</h2>
+        <p>
+          {{ dictConfig?.schema_name ?? dictConfig?.schema_id ?? "当前方案" }} ·
+          {{ enabledCount }} 个启用 / {{ dictionaries.length }} 个本地词库 ·
+          {{ totalEntries.toLocaleString() }} 条词条 · {{ formatBytes(totalSize) }}
+        </p>
       </div>
-
-      <div class="metric-card">
-        <div class="metric-icon-box">
-          <el-icon><InfoFilled /></el-icon>
-        </div>
-        <div class="metric-body">
-          <span class="metric-label">收录总词条</span>
-          <strong class="metric-value">{{ totalEntries.toLocaleString() }}</strong>
-        </div>
-      </div>
-
-      <div class="metric-card">
-        <div class="metric-icon-box">
-          <el-icon><FolderOpened /></el-icon>
-        </div>
-        <div class="metric-body">
-          <span class="metric-label">词库总容量</span>
-          <strong class="metric-value">{{ formatBytes(totalSize) }}</strong>
-        </div>
-      </div>
-
-      <div class="metric-card">
-        <div class="metric-icon-box">
-          <el-icon><Warning /></el-icon>
-        </div>
-        <div class="metric-body">
-          <span class="metric-label">当前方案</span>
-          <strong
-            class="metric-value truncate"
-            :title="dictConfig?.schema_name ?? dictConfig?.schema_id"
-          >
-            {{ dictConfig?.schema_name ?? dictConfig?.schema_id ?? "未识别" }}
-          </strong>
-        </div>
-      </div>
-
-      <div class="metric-card">
-        <div class="metric-icon-box">
-          <el-icon><Files /></el-icon>
-        </div>
-        <div class="metric-body">
-          <span class="metric-label">主词库文件</span>
-          <strong
-            class="metric-value truncate"
-            :title="
-              dictConfig?.main_dictionary ? `${dictConfig.main_dictionary}.dict.yaml` : '未配置'
-            "
-          >
-            {{ dictConfig?.main_dictionary ? `${dictConfig.main_dictionary}.dict.yaml` : "未配置" }}
-          </strong>
-        </div>
-      </div>
-    </div>
+    </header>
 
     <!-- Action Bar -->
     <div class="dict-action-bar panel">
       <div class="action-bar-left">
         <input
-          ref="fileInput"
+          :ref="(element) => (fileInput = element as HTMLInputElement | undefined)"
           type="file"
           accept=".bin,.scel,.txt,.dict.yaml,.yaml"
           style="display: none"
@@ -194,7 +181,7 @@ const pagedAvailable = computed(() =>
         </el-button>
 
         <el-button type="success" plain :icon="Download" @click="showOnlineDictionaryDialog = true">
-          社区在线词库市场
+          在线词库
         </el-button>
 
         <el-button :icon="Link" :loading="importing" @click="showUrlImportDialog = true">
@@ -222,7 +209,7 @@ const pagedAvailable = computed(() =>
             <div class="dict-panel-header">
               <div class="panel-heading-group">
                 <div class="panel-icon-dot" />
-                <h3 class="panel-heading-title">当前方案启用词库 (import_tables)</h3>
+                <h3 class="panel-heading-title">已启用词库</h3>
               </div>
               <div class="header-tags">
                 <span class="tag-pill-accent">
@@ -239,31 +226,63 @@ const pagedAvailable = computed(() =>
 
           <el-empty
             v-if="!loading && !dictConfig?.enabled.length && !dictConfig?.missing.length"
-            description="当前方案尚未配置 import_tables 扩展词库"
+            description="尚未启用扩展词库，可从下方加入词库"
             :image-size="64"
           />
 
+          <p v-if="orderedReferences.length" class="order-help">
+            拖动左侧手柄调整加载顺序，修改后请部署生效。
+          </p>
           <el-table
-            v-else
+            v-if="orderedReferences.length || loading"
             v-loading="loading"
             :data="orderedReferences"
+            row-key="reference"
+            :row-class-name="
+              ({ row }: { row: DictionaryReference }) =>
+                dropTarget === row.reference ? 'drop-target' : ''
+            "
             stripe
             class="dict-clean-table"
             max-height="360"
+            @dragover="onDragOver"
+            @drop="onDrop"
+            @dragend="clearDrag"
           >
-            <el-table-column label="优先级 / 词库引用" min-width="240">
+            <el-table-column label="词库名称" min-width="240">
               <template #default="{ row, $index }: { row: DictionaryReference; $index: number }">
-                <div class="dict-ref-cell">
+                <div class="dict-ref-cell" :data-reference="row.reference">
+                  <button
+                    class="drag-handle"
+                    :draggable="!updatingReference && !loading"
+                    :disabled="!!updatingReference || loading"
+                    :aria-label="`拖动排序 ${row.reference}`"
+                    title="拖动调整顺序"
+                    @dragstart="startDrag($event, row.reference)"
+                  >
+                    ⠿
+                  </button>
                   <span class="priority-badge" :class="{ 'is-top': $index === 0 }">
                     #{{ $index + 1 }}
                   </span>
                   <div class="ref-name-wrap">
-                    <span class="dict-ref-name">{{ row.reference }}</span>
-                    <small v-if="$index === 0" class="top-hint">优先级最高</small>
+                    <span class="dict-ref-name">{{
+                      referenceInfo(row.reference)?.display_name || row.reference
+                    }}</span>
+                    <small class="file-date">{{ row.reference }}.dict.yaml</small>
+                    <small v-if="$index === 0" class="top-hint">首位加载</small>
                   </div>
                   <span v-if="!row.exists" class="status-tag tag-missing">缺失文件</span>
-                  <span v-else class="status-tag tag-enabled">生效中</span>
+                  <span v-else class="status-tag tag-enabled">已启用</span>
                 </div>
+              </template>
+            </el-table-column>
+
+            <el-table-column label="来源" min-width="180" show-overflow-tooltip>
+              <template #default="{ row }: { row: DictionaryReference }">
+                <span class="source-label">{{
+                  referenceInfo(row.reference)?.source || "未记录"
+                }}</span>
               </template>
             </el-table-column>
 
@@ -279,29 +298,9 @@ const pagedAvailable = computed(() =>
               </template>
             </el-table-column>
 
-            <el-table-column label="排序与管理" width="220" align="center">
-              <template #default="{ row, $index }: { row: DictionaryReference; $index: number }">
+            <el-table-column label="管理" width="130" align="center">
+              <template #default="{ row }: { row: DictionaryReference }">
                 <div class="row-action-btns">
-                  <el-button
-                    link
-                    size="small"
-                    :icon="Top"
-                    :disabled="$index === 0 || !!updatingReference"
-                    title="上移优先级"
-                    @click.stop="moveReference(row.reference, -1)"
-                  >
-                    上移
-                  </el-button>
-                  <el-button
-                    link
-                    size="small"
-                    :icon="Bottom"
-                    :disabled="$index >= enabledCount - 1 || !!updatingReference"
-                    title="下移优先级"
-                    @click.stop="moveReference(row.reference, 1)"
-                  >
-                    下移
-                  </el-button>
                   <el-button
                     v-if="row.exists"
                     link
@@ -336,7 +335,7 @@ const pagedAvailable = computed(() =>
             <div class="dict-panel-header">
               <div class="panel-heading-group">
                 <div class="panel-icon-dot gray" />
-                <h3 class="panel-heading-title">未启用 / 本地候选词库库</h3>
+                <h3 class="panel-heading-title">未启用词库</h3>
               </div>
               <span class="count-capsule">{{ dictConfig?.available.length ?? 0 }} 个本地词库</span>
             </div>
@@ -348,7 +347,7 @@ const pagedAvailable = computed(() =>
             :image-size="64"
           >
             <p class="helper-text" style="font-size: 12px; color: var(--color-muted)">
-              您可以点击上方「导入词库文件」或从「社区在线词库市场」获取词库。
+              您可以点击上方「导入词库文件」或从「在线词库」获取词库。
             </p>
           </el-empty>
 
@@ -362,17 +361,24 @@ const pagedAvailable = computed(() =>
               max-height="360"
               @row-click="toggleHealth"
             >
-              <el-table-column label="词库文件名" min-width="260">
+              <el-table-column label="词库名称" min-width="260">
                 <template #default="{ row }: { row: DictInfo }">
                   <div class="dict-file-cell">
                     <div class="dict-file-icon">
                       <el-icon><Collection /></el-icon>
                     </div>
                     <div class="dict-file-meta">
-                      <span class="file-name">{{ row.name }}</span>
+                      <span class="file-name">{{ row.display_name || row.name }}</span>
+                      <small class="file-date">{{ row.name }}</small>
                       <small class="file-date">{{ formatTime(row.modified) }}</small>
                     </div>
                   </div>
+                </template>
+              </el-table-column>
+
+              <el-table-column label="来源" min-width="180" show-overflow-tooltip>
+                <template #default="{ row }: { row: DictInfo }">
+                  <span class="source-label">{{ row.source || "未记录" }}</span>
                 </template>
               </el-table-column>
 
@@ -388,47 +394,48 @@ const pagedAvailable = computed(() =>
                 </template>
               </el-table-column>
 
-              <el-table-column label="快捷操作" width="220" align="center">
+              <el-table-column label="操作" width="180" align="center" fixed="right">
                 <template #default="{ row }: { row: DictInfo }">
-                  <div class="row-action-btns">
+                  <!-- 常用操作直接展示，次要操作集中到菜单，避免窄表格中换行拥挤。 -->
+                  <div class="available-row-actions" @click.stop>
                     <el-button
                       size="small"
-                      type="success"
+                      type="primary"
                       plain
-                      :loading="updatingReference === row.name"
-                      :disabled="!!updatingReference"
-                      @click.stop="addDictionaryReference(dictNameToReference(row.name))"
+                      :loading="updatingReference === dictNameToReference(row.name)"
+                      :disabled="!!updatingReference || !!deletingDict"
+                      @click="addDictionaryReference(dictNameToReference(row.name))"
+                      >加入方案</el-button
                     >
-                      加入方案
-                    </el-button>
-                    <el-button
-                      link
-                      size="small"
-                      :icon="Open"
-                      title="系统资源管理器定位"
-                      @click.stop="openFileLocation(row)"
-                    >
-                      定位
-                    </el-button>
-                    <el-button
-                      link
-                      size="small"
-                      :icon="Download"
-                      :loading="exportingDict === row.name"
-                      title="导出文本"
-                      @click.stop="exportDictionary(row)"
-                    >
-                      导出
-                    </el-button>
-                    <el-button
-                      link
-                      size="small"
-                      type="danger"
-                      :icon="Delete"
-                      :loading="deletingDict === row.name"
-                      title="从磁盘删除"
-                      @click.stop="deleteDictionary(row)"
-                    />
+                    <el-dropdown trigger="click">
+                      <el-button
+                        link
+                        size="small"
+                        :aria-label="`${row.display_name || row.name} 的更多操作`"
+                        :loading="exportingDict === row.name || deletingDict === row.name"
+                        >更多</el-button
+                      >
+                      <template #dropdown>
+                        <el-dropdown-menu>
+                          <el-dropdown-item :icon="Open" @click="openFileLocation(row)"
+                            >定位文件</el-dropdown-item
+                          >
+                          <el-dropdown-item
+                            :icon="Download"
+                            :disabled="!!exportingDict || !!deletingDict"
+                            @click="exportDictionary(row)"
+                            >导出词库</el-dropdown-item
+                          >
+                          <el-dropdown-item
+                            divided
+                            :icon="Delete"
+                            :disabled="!!deletingDict || !!updatingReference || !!exportingDict"
+                            @click="deleteDictionary(row)"
+                            >从磁盘删除</el-dropdown-item
+                          >
+                        </el-dropdown-menu>
+                      </template>
+                    </el-dropdown>
                   </div>
                 </template>
               </el-table-column>
@@ -512,8 +519,8 @@ const pagedAvailable = computed(() =>
             <strong>词库格式与生态规范</strong>
           </div>
           <p class="side-card-text">
-            Rime 规范词库文件名必须以 <code>.dict.yaml</code> 结尾，文件内部包含 YAML 元数据头部与
-            Tab 分隔的数据行（词汇 → 编码 → 权重）。
+            Rime 词库文件名必须以 <code>.dict.yaml</code> 结尾，文件内部包含 YAML 元数据头部与 Tab
+            分隔的数据行（词汇 → 编码 → 权重）。
           </p>
 
           <div class="format-badges-list">
@@ -570,6 +577,9 @@ const pagedAvailable = computed(() =>
       :importing="importing"
       :online-importing="onlineImporting"
       :dict-installing="lmdgInstalling"
+      :grammar-installed="grammarInstalled"
+      :grammar-scanning="grammarScanning"
+      :grammar-scan-error="grammarScanError"
       :grammar-installing="lmdgGrammarInstalling"
       :grammar-uninstalling="lmdgGrammarUninstalling"
       :lmdg-progress="lmdgDownloadProgress"
@@ -611,90 +621,6 @@ const pagedAvailable = computed(() =>
   gap: 16px;
 }
 
-/* Bento Metrics Grid */
-.dict-bento-metrics {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 12px;
-}
-
-.metric-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-line-soft);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-xs);
-  transition: all var(--transition-fast);
-}
-
-.metric-card:hover {
-  transform: translateY(-1px);
-  border-color: var(--brand-300);
-  box-shadow: var(--shadow-sm);
-}
-
-.metric-card.card-accent {
-  background: linear-gradient(135deg, var(--brand-50, #eff6ff) 0%, var(--color-surface) 100%);
-  border-color: var(--brand-200);
-}
-
-html[data-theme="dark"] .metric-card.card-accent {
-  background: linear-gradient(135deg, rgba(37, 99, 235, 0.15) 0%, var(--color-surface) 100%);
-  border-color: rgba(59, 130, 246, 0.3);
-}
-
-.metric-icon-box {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-soft);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--brand-600);
-  font-size: 18px;
-  flex-shrink: 0;
-}
-
-.card-accent .metric-icon-box {
-  background: var(--brand-600);
-  color: #fff;
-}
-
-.metric-body {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.metric-label {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--ink-500);
-}
-
-.metric-value {
-  font-size: 16px;
-  font-weight: 800;
-  color: var(--ink-900);
-}
-
-.metric-value.truncate {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.metric-total {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-muted);
-}
-
-/* Action Bar */
 .dict-action-bar {
   display: flex;
   justify-content: space-between;
@@ -1036,5 +962,102 @@ html[data-theme="dark"] .health-inspect-banner {
 
 .warn-text {
   color: #ef4444;
+}
+/* Keep the list primary; summary and helper content stay compact. */
+.dictionary-heading h2 {
+  margin: 0 0 8px;
+  font-size: 23px;
+  color: var(--ink-900);
+}
+.dictionary-heading p,
+.order-help {
+  font-size: 12px;
+  color: var(--color-muted);
+  margin: 0;
+  line-height: 1.6;
+}
+.order-help {
+  padding: 10px 16px;
+}
+.dictionaries-hub-container {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+.dict-workbench-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+.dict-side-column {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+.dict-action-bar {
+  box-shadow: none;
+  padding: 12px;
+  flex-wrap: wrap;
+}
+.action-bar-left,
+.action-bar-right {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.action-bar-left .el-button,
+.action-bar-right .el-button {
+  margin: 0;
+}
+.drag-handle {
+  border: 0;
+  background: transparent;
+  cursor: grab;
+  color: var(--color-muted);
+  font-size: 22px;
+  padding: 4px;
+}
+.drag-handle:active {
+  cursor: grabbing;
+}
+.drag-handle:focus-visible {
+  outline: 2px solid var(--color-accent);
+}
+.drag-handle:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+:deep(.drop-target td) {
+  background: var(--color-surface-soft) !important;
+  box-shadow: inset 0 2px var(--color-accent);
+}
+.source-label {
+  display: block;
+  font-size: 12px;
+  color: var(--color-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.5;
+}
+.ref-name-wrap,
+.dict-file-meta {
+  min-width: 0;
+}
+.dict-ref-name,
+.file-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.row-action-btns {
+  flex-wrap: wrap;
+}
+:deep(.el-empty) {
+  padding: 20px 0;
+}
+.available-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  white-space: nowrap;
+}
+.available-row-actions .el-button {
+  margin: 0;
 }
 </style>

@@ -20,6 +20,7 @@ import {
 import type { CommunitySchema, QuickSettingsConfig, RimeEnvironment, SchemaInfo } from "../types";
 import { useConfigReload } from "../composables/useConfigReload";
 import { useErrorHandler } from "../composables/useErrorHandler";
+import { confirmSchemaDeployment } from "../composables/confirmSchemaDeployment";
 import DoublePinyinVisualizer from "../components/schemas/DoublePinyinVisualizer.vue";
 
 const props = defineProps<{
@@ -143,8 +144,7 @@ async function activateSchema(schema: SchemaInfo, shouldDeploy = false) {
       currentConfig.value = config;
       await loadSchemas(true);
       emit("saved");
-      ElMessage.success(shouldDeploy ? "当前方案已切换，开始部署" : "当前方案已切换");
-      if (shouldDeploy) {
+      if (shouldDeploy || (await confirmSchemaDeployment(Boolean(props.env?.deployer_path)))) {
         emit("deploy");
       }
     }
@@ -184,8 +184,7 @@ async function saveSchemaMenu(shouldDeploy = false) {
       currentConfig.value = config;
       await loadSchemas(true);
       emit("saved");
-      ElMessage.success(shouldDeploy ? "方案菜单已保存，开始部署" : "方案菜单已保存");
-      if (shouldDeploy) {
+      if (shouldDeploy || (await confirmSchemaDeployment(Boolean(props.env?.deployer_path)))) {
         emit("deploy");
       }
     }

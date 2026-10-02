@@ -13,17 +13,17 @@ import {
 import { ElMessage, ElMessageBox } from "element-plus";
 import { api } from "../api";
 import { useRoute, useRouter } from "vue-router";
-import SettingChangeIndicator from "../components/common/SettingChangeIndicator.vue";
 import {
   quickSettingsCatalog,
   settingGroups,
-  matchesSetting,
+  filterQuickSettings,
   editableQuickSettings,
   type SettingGroup,
 } from "../settings/quickSettingsCatalog";
 import SettingsSaveBar from "../components/common/SettingsSaveBar.vue";
 import { useSaveShortcut } from "../composables/useSaveShortcut";
 import { useSettingsDocument } from "../composables/useSettingsDocument";
+import { confirmSchemaDeployment } from "../composables/confirmSchemaDeployment";
 import { useConfigReload } from "../composables/useConfigReload";
 import { useStudioStore } from "../stores/studio";
 import { useErrorHandler } from "../composables/useErrorHandler";
@@ -286,32 +286,16 @@ const document = useSettingsDocument(
 );
 const { loading, ready, dirty } = document;
 const settingsActive = ref(false);
-const settingsQuery = ref("");
-const settingsGroup = ref<SettingGroup>("all");
-const modifiedOnly = ref(false);
+const settingsGroup = ref<SettingGroup>("common");
+const showCandidatePreview = ref(false);
 const pageRoot = ref<HTMLDivElement>();
 const route = useRoute();
 const router = useRouter();
 const availableSettings = computed(() =>
   quickSettingsCatalog.filter((item) => item.group !== "ice" || hasRimeIce.value),
 );
-function settingChanged(id: string) {
-  return (
-    quickSettingsCatalog
-      .find((item) => item.id === id)
-      ?.paths.some((path) => document.isChanged(path)) ?? false
-  );
-}
-const changedSettingCount = computed(
-  () => availableSettings.value.filter((item) => settingChanged(item.id)).length,
-);
 const matchedSettings = computed(() =>
-  availableSettings.value.filter(
-    (item) =>
-      (settingsGroup.value === "all" || settingsGroup.value === item.group) &&
-      matchesSetting(item, settingsQuery.value) &&
-      (!modifiedOnly.value || settingChanged(item.id)),
-  ),
+  filterQuickSettings(availableSettings.value, settingsGroup.value),
 );
 function settingVisible(id: string) {
   return matchedSettings.value.some((item) => item.id === id);
@@ -319,25 +303,14 @@ function settingVisible(id: string) {
 function groupVisible(group: SettingGroup) {
   return matchedSettings.value.some((item) => item.group === group);
 }
-function resetSetting(id: string) {
-  if (studio.mutationBusy || repairingHealth.value || repairingHealthItem.value) return;
-  const item = quickSettingsCatalog.find((item) => item.id === id);
-  if (item) document.resetFields(item.paths);
-}
-function clearSettingsFilters() {
-  settingsQuery.value = "";
-  settingsGroup.value = "all";
-  modifiedOnly.value = false;
-}
 watch(
   () => [route.name, route.query.setting, ready.value, loading.value, settingsActive.value],
   async () => {
     if (!settingsActive.value || route.name !== "quick" || !ready.value || loading.value) return;
     const item = quickSettingsCatalog.find((item) => item.id === route.query.setting);
     if (!item) return;
-    settingsQuery.value = item.id;
-    settingsGroup.value = "all";
-    modifiedOnly.value = false;
+    // 外部定位直接打开所属分类，保留跳转到具体设置的能力。
+    settingsGroup.value = item.group;
     await nextTick();
     if (!settingsActive.value || route.name !== "quick" || route.query.setting !== item.id) return;
     const element = pageRoot.value?.querySelector<HTMLDivElement>(`[data-setting="${item.id}"]`);
@@ -380,11 +353,19 @@ async function saveQuickSettings(shouldDeploy = false) {
   }
   saving.value = !shouldDeploy;
   deploying.value = shouldDeploy;
+  // 保存会更新基线，必须提前记录方案是否变化；未保存的草稿不触发部署。
+  const schemaChanged = document.isChanged("quick.schema_id");
   try {
     if (await document.save()) {
       emit("saved");
-      ElMessage.success(shouldDeploy ? "快速设置已保存，开始部署" : "快速设置已保存");
-      if (shouldDeploy) emit("deploy");
+      if (shouldDeploy) {
+        ElMessage.success("快速设置已保存，开始部署");
+        emit("deploy");
+      } else if (schemaChanged) {
+        if (await confirmSchemaDeployment(studio.hasDeployer)) emit("deploy");
+      } else {
+        ElMessage.success("快速设置已保存");
+      }
     }
   } finally {
     saving.value = false;
@@ -497,307 +478,49 @@ useSaveShortcut(() => saveQuickSettings(false));
 
 <template>
   <div ref="pageRoot" v-loading="loading" class="quick-settings-workbench">
-    <!-- Hero Spotlight Header -->
-    <header class="quick-hero panel">
-      <div class="hero-left">
-        <div class="schema-badge-box">
-          <span class="active-dot" />
-          <strong class="schema-name">{{ activeSchema?.name ?? form.schema_id }}</strong>
-          <code class="schema-id">{{ form.schema_id }}</code>
-        </div>
-        <div class="hero-tags">
-          <span class="tag-pill" :class="hasRimeIce ? 'ice-ready' : 'ice-missing'">
-            {{ hasRimeIce ? "❄️ 雾凇组件已安装" : "未检测到雾凇" }}
-          </span>
-          <span class="path-mini-capsule" title="写入文件">
-            default.custom.yaml & weasel.custom.yaml
-          </span>
-        </div>
+    <header class="quick-page-heading">
+      <div>
+        <h2>把输入法调到顺手</h2>
+        <p>先选输入方案，再调整常用习惯。修改后保存并部署即可生效。</p>
       </div>
-
-      <div class="hero-actions">
-        <el-button
-          size="small"
-          :icon="FirstAidKit"
-          :loading="checkingHealth"
-          @click="inspectHealth"
-        >
-          配置体检
-        </el-button>
-
-        <el-button
-          v-if="!hasRimeIce"
-          size="small"
-          type="success"
-          plain
-          :icon="Connection"
-          :loading="installingRecipe === 'iDvel/rime-ice:others/recipes/full'"
-          @click="emit('install', 'iDvel/rime-ice:others/recipes/full')"
-        >
-          一键安装雾凇
-        </el-button>
-
-        <el-button size="small" :icon="View" :loading="previewing" @click="previewQuickSettings">
-          变更 Diff
-        </el-button>
-      </div>
+      <el-dropdown trigger="click">
+        <el-button text>更多工具</el-button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item :icon="FirstAidKit" :disabled="checkingHealth" @click="inspectHealth"
+              >配置体检</el-dropdown-item
+            >
+            <el-dropdown-item :icon="View" :disabled="previewing" @click="previewQuickSettings"
+              >查看配置变更</el-dropdown-item
+            >
+            <el-dropdown-item
+              v-if="!hasRimeIce"
+              :icon="Connection"
+              :disabled="Boolean(installingRecipe)"
+              @click="emit('install', 'iDvel/rime-ice:others/recipes/full')"
+              >安装雾凇拼音</el-dropdown-item
+            >
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
     </header>
-    <SettingsSaveBar
-      :ready="ready"
-      :dirty="dirty"
-      :loading="loading"
-      :saving="document.saving.value"
-      :deploying="studio.deploying"
-      :busy="studio.mutationBusy || repairingHealth || Boolean(repairingHealthItem)"
-      :has-deployer="studio.hasDeployer"
-      @save="saveQuickSettings(false)"
-      @deploy="saveQuickSettings(true)"
-      @reset="resetChanges"
-      @retry="loadQuickSettings"
-    />
-
-    <section class="settings-explorer" aria-label="查找快速设置">
-      <div class="settings-search-row">
-        <el-input
-          v-model="settingsQuery"
-          clearable
-          placeholder="搜索设置，如：候选词数、翻页、模糊音…"
-          aria-label="搜索快速设置"
-          @keydown.esc="clearSettingsFilters"
-        />
-        <el-checkbox v-model="modifiedOnly">仅未保存 ({{ changedSettingCount }})</el-checkbox>
-        <span role="status" aria-live="polite">{{ matchedSettings.length }} 项</span>
-      </div>
-      <div class="settings-group-tabs" role="group" aria-label="设置分类">
-        <button
-          v-for="group in settingGroups"
-          :key="group.value"
-          type="button"
-          :aria-pressed="settingsGroup === group.value"
-          :class="{ active: settingsGroup === group.value }"
-          @click="settingsGroup = group.value"
-        >
-          {{ group.label }}
-        </button>
-      </div>
-      <small
-        >“仅未保存”对比上次读取或保存的配置；Lua
-        扩展单独保存。搜索与分类只改变显示，不改动配置。</small
+    <div class="settings-group-tabs" role="group" aria-label="设置分类">
+      <button
+        v-for="group in settingGroups"
+        :key="group.value"
+        type="button"
+        :aria-pressed="settingsGroup === group.value"
+        :class="{ active: settingsGroup === group.value }"
+        @click="settingsGroup = group.value"
       >
-    </section>
+        {{ group.label }}
+      </button>
+    </div>
     <el-empty
       v-if="!matchedSettings.length"
-      description="没有匹配的设置；雾凇功能需要先安装雾凇。"
+      description="雾凇功能需要先安装雾凇拼音。"
       :image-size="64"
-    >
-      <el-button @click="clearSettingsFilters">清除筛选</el-button>
-    </el-empty>
-
-    <!-- Interactive Live Candidate Window Simulation Sandbox -->
-    <section v-show="groupVisible('display')" class="live-sandbox-stage panel">
-      <div class="sandbox-stage-bar">
-        <div class="stage-title-wrap">
-          <span class="stage-icon">🎯</span>
-          <strong>实时候选窗仿真舞台 (Live Candidate Sandbox)</strong>
-        </div>
-        <div class="stage-chips">
-          <span class="chip-item">{{ form.page_size }} 候选词</span>
-          <span class="chip-item">{{ form.horizontal ? "水平横排" : "垂直竖排" }}</span>
-          <span class="chip-item">{{ form.inline_preedit ? "光标内嵌" : "窗顶独立" }}</span>
-        </div>
-      </div>
-
-      <!-- Preview Canvas -->
-      <div class="sandbox-canvas">
-        <div class="realistic-weasel-window">
-          <!-- Non-inline Preedit -->
-          <div v-if="!form.inline_preedit" class="weasel-box-preedit">
-            <span>wo'men</span>
-          </div>
-
-          <!-- Candidates -->
-          <div class="weasel-box-candidates" :class="{ vertical: !form.horizontal }">
-            <span
-              v-for="(word, idx) in liveCandidates"
-              :key="word"
-              class="candidate-pill"
-              :class="{ active: idx === 0 }"
-            >
-              <em class="cand-idx">{{ idx + 1 }}.</em> {{ word }}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Quick Knobs Bar -->
-      <div class="stage-knobs">
-        <div
-          v-show="settingVisible('page_size')"
-          data-setting="page_size"
-          role="group"
-          aria-label="候选词数"
-          tabindex="-1"
-          class="knob-item"
-          :class="{ 'setting-modified': settingChanged('page_size') }"
-        >
-          <span class="knob-label">候选词数 ({{ form.page_size }})</span
-          ><SettingChangeIndicator
-            :changed="settingChanged('page_size')"
-            :disabled="document.saving.value || studio.mutationBusy"
-            @reset="resetSetting('page_size')"
-          />
-          <el-slider
-            v-model="form.page_size"
-            aria-label="候选词数"
-            :min="3"
-            :max="12"
-            size="small"
-            style="width: 140px"
-          />
-        </div>
-
-        <div
-          v-show="settingVisible('horizontal')"
-          data-setting="horizontal"
-          role="group"
-          aria-label="排布方向"
-          tabindex="-1"
-          class="knob-item"
-          :class="{ 'setting-modified': settingChanged('horizontal') }"
-        >
-          <span class="knob-label">排布方向</span
-          ><SettingChangeIndicator
-            :changed="settingChanged('horizontal')"
-            :disabled="document.saving.value || studio.mutationBusy"
-            @reset="resetSetting('horizontal')"
-          />
-          <el-segmented
-            v-model="form.horizontal"
-            aria-label="排布方向"
-            size="small"
-            :options="[
-              { label: '横排', value: true },
-              { label: '竖排', value: false },
-            ]"
-          />
-        </div>
-
-        <div
-          v-show="settingVisible('inline_preedit')"
-          data-setting="inline_preedit"
-          role="group"
-          aria-label="拼音编码位置"
-          tabindex="-1"
-          class="knob-item"
-          :class="{ 'setting-modified': settingChanged('inline_preedit') }"
-        >
-          <span class="knob-label">拼音编码</span
-          ><SettingChangeIndicator
-            :changed="settingChanged('inline_preedit')"
-            :disabled="document.saving.value || studio.mutationBusy"
-            @reset="resetSetting('inline_preedit')"
-          />
-          <el-segmented
-            v-model="form.inline_preedit"
-            aria-label="拼音编码位置"
-            size="small"
-            :options="[
-              { label: '行内跟随', value: true },
-              { label: '窗顶独立', value: false },
-            ]"
-          />
-        </div>
-      </div>
-    </section>
-
-    <!-- Scheme & Layout Settings (Grouped) -->
-    <div v-show="groupVisible('keys')" class="setting-card">
-      <div class="setting-card-header">
-        <span class="setting-card-title"> <span>⌨️</span> 输入行为与按键映射规则 </span>
-        <span class="panel-caption">直接控制 Weasel 输入法底层的键位响应</span>
-      </div>
-
-      <div class="setting-group">
-        <div
-          v-show="settingVisible('switch_key')"
-          data-setting="switch_key"
-          role="group"
-          aria-label="Shift 按键行为"
-          tabindex="-1"
-          class="setting-row"
-          :class="{ 'setting-modified': settingChanged('switch_key') }"
-        >
-          <div class="setting-lead">
-            <span class="setting-label">Shift 按键行为</span>
-            <span class="setting-desc">敲击左/右 Shift 键时的中英文快捷切换机制</span
-            ><SettingChangeIndicator
-              :changed="settingChanged('switch_key')"
-              :disabled="document.saving.value || studio.mutationBusy"
-              @reset="resetSetting('switch_key')"
-            />
-          </div>
-          <div class="setting-control" style="width: 220px">
-            <el-select v-model="form.switch_key" aria-label="Shift 按键行为" size="small">
-              <el-option label="提交编码并切换中英" value="shift" />
-              <el-option label="不处理 Shift" value="none" />
-            </el-select>
-          </div>
-        </div>
-
-        <div
-          v-show="settingVisible('paging_keys')"
-          data-setting="paging_keys"
-          role="group"
-          aria-label="翻页按键"
-          tabindex="-1"
-          class="setting-row"
-          :class="{ 'setting-modified': settingChanged('paging_keys') }"
-        >
-          <div class="setting-lead">
-            <span class="setting-label">翻页按键映射</span>
-            <span class="setting-desc">备选项过多时快速翻页的物理按键</span
-            ><SettingChangeIndicator
-              :changed="settingChanged('paging_keys')"
-              :disabled="document.saving.value || studio.mutationBusy"
-              @reset="resetSetting('paging_keys')"
-            />
-          </div>
-          <div class="setting-control" style="width: 220px">
-            <el-select v-model="form.paging_keys" aria-label="翻页按键" size="small">
-              <el-option label="逗号 / 句号 (, .)" value="comma_period" />
-              <el-option label="减号 / 等号 (- =)" value="minus_equal" />
-              <el-option label="方向键上下 (↑ ↓)" value="arrow_keys" />
-            </el-select>
-          </div>
-        </div>
-
-        <div
-          v-show="settingVisible('navigation_keys')"
-          data-setting="navigation_keys"
-          role="group"
-          aria-label="候选选择键"
-          tabindex="-1"
-          class="setting-row"
-          :class="{ 'setting-modified': settingChanged('navigation_keys') }"
-        >
-          <div class="setting-lead">
-            <span class="setting-label">候选词光标选择键</span>
-            <span class="setting-desc">在当前页备选项之间高亮移动的选择键</span
-            ><SettingChangeIndicator
-              :changed="settingChanged('navigation_keys')"
-              :disabled="document.saving.value || studio.mutationBusy"
-              @reset="resetSetting('navigation_keys')"
-            />
-          </div>
-          <div class="setting-control" style="width: 220px">
-            <el-select v-model="form.navigation_keys" aria-label="候选选择键" size="small">
-              <el-option label="方向键上下 (↑ ↓)" value="up_down" />
-              <el-option label="方向键左右 (← →)" value="left_right" />
-            </el-select>
-          </div>
-        </div>
-      </div>
-    </div>
+    />
 
     <!-- Active Schema Chooser -->
     <div
@@ -807,20 +530,19 @@ useSaveShortcut(() => saveQuickSettings(false));
       aria-label="输入方案"
       tabindex="-1"
       class="setting-card"
-      :class="{ 'setting-modified': settingChanged('schema_id') }"
     >
       <div class="setting-card-header">
-        <SettingChangeIndicator
-          :changed="settingChanged('schema_id')"
-          :disabled="document.saving.value || studio.mutationBusy"
-          @reset="resetSetting('schema_id')"
-        />
-        <span class="setting-card-title"> <span>📚</span> 快速切换输入方案 </span>
-        <span class="panel-caption">共 {{ schemas.length }} 个本机已安装方案</span>
+        <span class="setting-card-title">输入方案</span>
+        <span class="panel-caption">{{
+          activeSchema?.name || form.schema_id || "选择已安装的方案"
+        }}</span>
       </div>
 
-      <div style="padding: 16px 20px">
-        <div class="schema-choice-grid">
+      <div class="schema-settings-body">
+        <div
+          v-if="settingsGroup === 'schema' || settingsGroup === 'all'"
+          class="schema-choice-grid"
+        >
           <button
             v-for="preset in schemaPresets"
             :key="preset.id"
@@ -841,12 +563,12 @@ useSaveShortcut(() => saveQuickSettings(false));
           </button>
         </div>
 
-        <div style="margin-top: 14px; display: flex; align-items: center; gap: 12px">
+        <div class="schema-select-row">
           <el-select
             v-model="form.schema_id"
             aria-label="输入方案"
             filterable
-            placeholder="从本机所有方案中选择"
+            placeholder="选择输入方案"
             size="small"
             style="flex: 1"
             :loading="loading"
@@ -876,65 +598,214 @@ useSaveShortcut(() => saveQuickSettings(false));
       </div>
     </div>
 
+    <!-- Interactive Live Candidate Window Simulation Sandbox -->
+    <section v-show="groupVisible('display')" class="live-sandbox-stage panel">
+      <div class="sandbox-stage-bar">
+        <strong>候选显示</strong>
+        <el-button
+          link
+          :aria-expanded="showCandidatePreview"
+          @click="showCandidatePreview = !showCandidatePreview"
+        >
+          {{ showCandidatePreview ? "收起预览" : "查看效果" }}
+        </el-button>
+      </div>
+
+      <!-- Preview Canvas -->
+      <div v-if="showCandidatePreview" class="sandbox-canvas">
+        <div class="realistic-weasel-window">
+          <!-- Non-inline Preedit -->
+          <div v-if="!form.inline_preedit" class="weasel-box-preedit">
+            <span>wo'men</span>
+          </div>
+
+          <!-- Candidates -->
+          <div class="weasel-box-candidates" :class="{ vertical: !form.horizontal }">
+            <span
+              v-for="(word, idx) in liveCandidates"
+              :key="word"
+              class="candidate-pill"
+              :class="{ active: idx === 0 }"
+            >
+              <em class="cand-idx">{{ idx + 1 }}.</em> {{ word }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Knobs Bar -->
+      <div class="stage-knobs">
+        <div
+          v-show="settingVisible('page_size')"
+          data-setting="page_size"
+          role="group"
+          aria-label="候选词数"
+          tabindex="-1"
+          class="knob-item"
+        >
+          <span class="knob-label">候选词数 ({{ form.page_size }})</span>
+          <el-slider
+            v-model="form.page_size"
+            aria-label="候选词数"
+            :min="3"
+            :max="12"
+            size="small"
+            style="width: 140px"
+          />
+        </div>
+
+        <div
+          v-show="settingVisible('horizontal')"
+          data-setting="horizontal"
+          role="group"
+          aria-label="排布方向"
+          tabindex="-1"
+          class="knob-item"
+        >
+          <span class="knob-label">排布方向</span>
+          <el-segmented
+            v-model="form.horizontal"
+            aria-label="排布方向"
+            size="small"
+            :options="[
+              { label: '横排', value: true },
+              { label: '竖排', value: false },
+            ]"
+          />
+        </div>
+
+        <div
+          v-show="settingVisible('inline_preedit')"
+          data-setting="inline_preedit"
+          role="group"
+          aria-label="拼音编码位置"
+          tabindex="-1"
+          class="knob-item"
+        >
+          <span class="knob-label">拼音编码</span>
+          <el-segmented
+            v-model="form.inline_preedit"
+            aria-label="拼音编码位置"
+            size="small"
+            :options="[
+              { label: '行内跟随', value: true },
+              { label: '窗顶独立', value: false },
+            ]"
+          />
+        </div>
+      </div>
+    </section>
+
+    <!-- Scheme & Layout Settings (Grouped) -->
+    <div v-show="groupVisible('keys')" class="setting-card">
+      <div class="setting-card-header">
+        <span class="setting-card-title">按键习惯</span>
+      </div>
+
+      <div class="setting-group compact-settings-grid">
+        <div
+          v-show="settingVisible('switch_key')"
+          data-setting="switch_key"
+          role="group"
+          aria-label="Shift 按键行为"
+          tabindex="-1"
+          class="setting-row"
+        >
+          <div class="setting-lead">
+            <span class="setting-label">Shift 按键行为</span>
+            <span class="setting-desc">按 Shift 时是否切换中英文</span>
+          </div>
+          <div class="setting-control" style="width: 220px">
+            <el-select v-model="form.switch_key" aria-label="Shift 按键行为" size="small">
+              <el-option label="提交编码并切换中英" value="shift" />
+              <el-option label="不处理 Shift" value="none" />
+            </el-select>
+          </div>
+        </div>
+
+        <div
+          v-show="settingVisible('paging_keys')"
+          data-setting="paging_keys"
+          role="group"
+          aria-label="翻页按键"
+          tabindex="-1"
+          class="setting-row"
+        >
+          <div class="setting-lead">
+            <span class="setting-label">翻页按键</span>
+            <span class="setting-desc">候选词超过一页时使用</span>
+          </div>
+          <div class="setting-control" style="width: 220px">
+            <el-select v-model="form.paging_keys" aria-label="翻页按键" size="small">
+              <el-option label="逗号 / 句号 (, .)" value="comma_period" />
+              <el-option label="减号 / 等号 (- =)" value="minus_equal" />
+              <el-option label="方向键上下 (↑ ↓)" value="arrow_keys" />
+            </el-select>
+          </div>
+        </div>
+
+        <div
+          v-show="settingVisible('navigation_keys')"
+          data-setting="navigation_keys"
+          role="group"
+          aria-label="候选选择键"
+          tabindex="-1"
+          class="setting-row"
+        >
+          <div class="setting-lead">
+            <span class="setting-label">候选选择键</span>
+            <span class="setting-desc">在当前页的候选词之间移动</span>
+          </div>
+          <div class="setting-control" style="width: 220px">
+            <el-select v-model="form.navigation_keys" aria-label="候选选择键" size="small">
+              <el-option label="方向键上下 (↑ ↓)" value="up_down" />
+              <el-option label="方向键左右 (← →)" value="left_right" />
+            </el-select>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Rime Ice Advanced Feature Bento Matrix -->
     <section v-if="hasRimeIce" v-show="groupVisible('ice')" class="panel rime-ice-bento-section">
       <div class="bento-section-header">
         <div>
-          <h3 class="bento-section-title">雾凇高级组件配置 (rime-ice)</h3>
-          <p class="bento-section-subtitle">
-            配置将写入 <code>rime_ice.custom.yaml</code> ·
-            保存到文件后，点击“保存并部署”让输入法生效
-          </p>
+          <h3 class="bento-section-title">输入偏好</h3>
+          <p class="bento-section-subtitle">表情、简繁与拼音容错，按自己的习惯选择。</p>
         </div>
       </div>
 
       <div class="ice-bento-grid">
-        <div class="ice-tile">
+        <div v-show="settingVisible('emoji')" class="ice-tile">
           <div
-            v-show="settingVisible('emoji')"
             data-setting="emoji"
             role="group"
             aria-label="Emoji 表情联想"
             tabindex="-1"
-            :class="{ 'setting-modified': settingChanged('emoji') }"
             class="ice-tile-info"
           >
-            <span class="ice-tile-icon">😃</span>
             <div>
               <strong>Emoji 表情联想</strong>
-              <small>输入对应词条时候选列中智能出现表情包</small
-              ><SettingChangeIndicator
-                :changed="settingChanged('emoji')"
-                :disabled="document.saving.value || studio.mutationBusy"
-                @reset="resetSetting('emoji')"
-              />
+              <small>候选词中显示对应表情</small>
             </div>
           </div>
           <el-switch v-model="iceSettings.emoji" aria-label="Emoji 表情联想" />
         </div>
 
-        <div class="ice-tile">
+        <div v-show="settingVisible('traditionalization')" class="ice-tile">
           <div
-            v-show="settingVisible('traditionalization')"
             data-setting="traditionalization"
             role="group"
             aria-label="简繁转换"
             tabindex="-1"
-            :class="{ 'setting-modified': settingChanged('traditionalization') }"
             class="ice-tile-info"
           >
-            <span class="ice-tile-icon">繁</span>
             <div>
               <strong>简繁转换输出</strong>
-              <small>自动将候选转换为繁体字形输出</small
-              ><SettingChangeIndicator
-                :changed="settingChanged('traditionalization')"
-                :disabled="document.saving.value || studio.mutationBusy"
-                @reset="resetSetting('traditionalization')"
-              />
+              <small>开启后输出繁体字</small>
             </div>
           </div>
-          <div style="display: flex; align-items: center; gap: 8px">
+          <div class="ice-tile-controls">
             <el-select
               v-if="iceSettings.traditionalization"
               v-model="iceSettings.traditional_preset"
@@ -950,97 +821,65 @@ useSaveShortcut(() => saveQuickSettings(false));
           </div>
         </div>
 
-        <div class="ice-tile">
+        <div v-show="settingVisible('ascii_punct')" class="ice-tile">
           <div
-            v-show="settingVisible('ascii_punct')"
             data-setting="ascii_punct"
             role="group"
             aria-label="英文半角标点"
             tabindex="-1"
-            :class="{ 'setting-modified': settingChanged('ascii_punct') }"
             class="ice-tile-info"
           >
-            <span class="ice-tile-icon">🔤</span>
             <div>
               <strong>英文半角标点</strong>
-              <small>中文状态下输入逗号句号等输出半角符号</small
-              ><SettingChangeIndicator
-                :changed="settingChanged('ascii_punct')"
-                :disabled="document.saving.value || studio.mutationBusy"
-                @reset="resetSetting('ascii_punct')"
-              />
+              <small>中文状态下输入逗号句号等输出半角符号</small>
             </div>
           </div>
           <el-switch v-model="iceSettings.ascii_punct" aria-label="英文半角标点" />
         </div>
 
-        <div class="ice-tile">
+        <div v-show="settingVisible('full_shape')" class="ice-tile">
           <div
-            v-show="settingVisible('full_shape')"
             data-setting="full_shape"
             role="group"
             aria-label="全角字符"
             tabindex="-1"
-            :class="{ 'setting-modified': settingChanged('full_shape') }"
             class="ice-tile-info"
           >
-            <span class="ice-tile-icon">🔲</span>
             <div>
-              <strong>全角字符模式</strong>
-              <small>输出两倍宽度的全角英文字母与空格</small
-              ><SettingChangeIndicator
-                :changed="settingChanged('full_shape')"
-                :disabled="document.saving.value || studio.mutationBusy"
-                @reset="resetSetting('full_shape')"
-              />
+              <strong>全角字符</strong>
+              <small>输出两倍宽度的全角英文字母与空格</small>
             </div>
           </div>
           <el-switch v-model="iceSettings.full_shape" aria-label="全角字符" />
         </div>
 
-        <div class="ice-tile">
+        <div v-show="settingVisible('search_single_char')" class="ice-tile">
           <div
-            v-show="settingVisible('search_single_char')"
             data-setting="search_single_char"
             role="group"
             aria-label="辅码单字优先"
             tabindex="-1"
-            :class="{ 'setting-modified': settingChanged('search_single_char') }"
             class="ice-tile-info"
           >
-            <span class="ice-tile-icon">🎯</span>
             <div>
               <strong>辅码单字优先</strong>
-              <small>拼音/部件反查输入时更偏向优先单字</small
-              ><SettingChangeIndicator
-                :changed="settingChanged('search_single_char')"
-                :disabled="document.saving.value || studio.mutationBusy"
-                @reset="resetSetting('search_single_char')"
-              />
+              <small>拼音/部件反查输入时更偏向优先单字</small>
             </div>
           </div>
           <el-switch v-model="iceSettings.search_single_char" aria-label="辅码单字优先" />
         </div>
 
-        <div class="ice-tile fuzzy-tile">
+        <div v-show="settingVisible('fuzzy_pinyin')" class="ice-tile fuzzy-tile">
           <div
-            v-show="settingVisible('fuzzy_pinyin')"
             data-setting="fuzzy_pinyin"
             role="group"
             aria-label="模糊音纠错"
             tabindex="-1"
-            :class="{ 'setting-modified': settingChanged('fuzzy_pinyin') }"
             class="ice-tile-info"
           >
-            <span class="ice-tile-icon">🗣️</span>
             <div>
-              <strong>常用模糊音纠错</strong>
-              <small>声母、平翘舌及前后鼻音容错，按需选择</small
-              ><SettingChangeIndicator
-                :changed="settingChanged('fuzzy_pinyin')"
-                :disabled="document.saving.value || studio.mutationBusy"
-                @reset="resetSetting('fuzzy_pinyin')"
-              />
+              <strong>模糊音</strong>
+              <small>声母、平翘舌及前后鼻音容错，按需选择</small>
             </div>
           </div>
           <el-switch
@@ -1059,7 +898,7 @@ useSaveShortcut(() => saveQuickSettings(false));
       >
         <div class="fuzzy-pairs-toolbar">
           <span class="fuzzy-toolbar-title">
-            细粒度音节容错选项 (已选 {{ iceSettings.fuzzy_pairs?.length ?? 0 }} 项)
+            需要容错的发音 (已选 {{ iceSettings.fuzzy_pairs?.length ?? 0 }} 项)
           </span>
           <div class="fuzzy-toolbar-actions">
             <el-button link type="primary" size="small" @click="selectAllFuzzyPairs">
@@ -1097,11 +936,26 @@ useSaveShortcut(() => saveQuickSettings(false));
       data-setting="lua"
       tabindex="-1"
       class="settings-extensions"
-      :open="Boolean(settingsQuery) && settingVisible('lua')"
+      :open="settingsGroup === 'extensions'"
     >
       <summary>Lua 扩展 <small>日期、计算器等功能，按需展开；此处单独保存</small></summary>
       <LuaPluginManager @change="emit('saved')" @deploy="emit('deploy')" />
     </details>
+
+    <SettingsSaveBar
+      class="quick-save-bar"
+      :ready="ready"
+      :dirty="dirty"
+      :loading="loading"
+      :saving="document.saving.value"
+      :deploying="studio.deploying"
+      :busy="studio.mutationBusy || repairingHealth || Boolean(repairingHealthItem)"
+      :has-deployer="studio.hasDeployer"
+      @save="saveQuickSettings(false)"
+      @deploy="saveQuickSettings(true)"
+      @reset="resetChanges"
+      @retry="loadQuickSettings"
+    />
 
     <!-- Health Dialog -->
     <el-dialog
@@ -1197,98 +1051,9 @@ useSaveShortcut(() => saveQuickSettings(false));
 .quick-settings-workbench {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-}
-
-/* Quick Hero */
-.quick-hero {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 14px 20px;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.hero-left {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.schema-badge-box {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  background: var(--color-surface-soft);
-  border: 1px solid var(--color-line-soft);
-  border-radius: var(--radius-full);
-}
-
-.active-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--emerald-500);
-  box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
-}
-
-.schema-name {
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--ink-900);
-}
-
-.schema-id {
-  font-size: 11px;
-  font-family: var(--font-mono);
-  color: var(--color-muted);
-}
-
-.hero-tags {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.tag-pill {
-  font-size: 11px;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
-}
-
-.tag-pill.ice-ready {
-  background: var(--brand-50, #eff6ff);
-  color: var(--brand-600);
-  border: 1px solid var(--brand-200);
-}
-
-.tag-pill.ice-missing {
-  background: var(--amber-50, #fffbeb);
-  color: var(--amber-600);
-  border: 1px solid #fef3c7;
-}
-
-.path-mini-capsule {
-  font-size: 11px;
-  font-family: var(--font-mono);
-  color: var(--color-muted);
-  background: var(--color-surface-soft);
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
-  border: 1px solid var(--color-line-soft);
-}
-
-.hero-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.deploy-cta {
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+  gap: 20px;
+  max-width: 1040px;
+  margin: 0 auto;
 }
 
 /* Sandbox Stage */
@@ -1481,7 +1246,7 @@ html[data-theme="dark"] .schema-choice-btn.active {
   color: var(--color-muted);
 }
 
-/* Rime Ice Bento */
+/* 简单设置按可用宽度并排，搜索只剩一项时也保持紧凑，不拉满整行。 */
 .rime-ice-bento-section {
   padding: 18px 20px;
   display: flex;
@@ -1504,35 +1269,34 @@ html[data-theme="dark"] .schema-choice-btn.active {
 
 .ice-bento-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  gap: 8px 24px;
 }
-
 .ice-tile {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 16px;
-  background: var(--color-surface-soft);
-  border: 1px solid var(--color-line-soft);
-  border-radius: var(--radius-md);
-  transition: all var(--transition-fast);
+  gap: 12px;
+  min-width: 0;
+  padding: 10px 0;
+  align-self: start;
+  flex-wrap: wrap;
 }
-
-.ice-tile:hover {
-  background: var(--color-surface);
-  border-color: var(--brand-300);
-  box-shadow: var(--shadow-xs);
+.ice-tile > .el-switch {
+  flex-shrink: 0;
 }
-
+.ice-tile-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
 .ice-tile-info {
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.ice-tile-icon {
-  font-size: 20px;
+  flex: 1;
+  min-width: 160px;
 }
 
 .ice-tile-info strong {
@@ -1545,6 +1309,31 @@ html[data-theme="dark"] .schema-choice-btn.active {
   display: block;
   font-size: 11px;
   color: var(--color-muted);
+  line-height: 1.5;
+  margin-top: 3px;
+}
+
+/* 下拉选择也复用紧凑栅格：标签和控件在同一小组内，避免横跨整页。 */
+.compact-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
+  gap: 16px 24px;
+  padding: 16px 20px;
+}
+.compact-settings-grid .setting-row {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 0;
+  min-width: 0;
+  border: 0;
+}
+.compact-settings-grid .setting-row:hover {
+  background: transparent;
+}
+.compact-settings-grid .setting-control {
+  width: 100% !important;
 }
 
 /* Fuzzy Pairs Card */
@@ -1674,48 +1463,29 @@ html[data-theme="dark"] .fuzzy-chip-btn.active {
 </style>
 
 <style scoped>
-.settings-explorer {
-  padding: 16px;
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius-lg);
-  background: var(--color-surface);
-}
-.settings-search-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-.settings-search-row .el-input {
-  flex: 1;
-  min-width: 240px;
-}
-.settings-search-row > span,
-.settings-explorer > small {
-  font-size: 12px;
-  color: var(--ink-500);
-}
 .settings-group-tabs {
   display: flex;
-  gap: 8px;
+  gap: 4px;
   flex-wrap: wrap;
-  margin: 12px 0 8px;
+  border-bottom: 1px solid var(--color-line);
 }
 .settings-group-tabs button {
-  padding: 6px 12px;
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  color: var(--ink-700);
-  cursor: pointer;
+  padding: 11px 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+.settings-group-tabs button:hover {
+  color: var(--ink-900);
+  background: var(--color-surface-soft);
 }
 .settings-group-tabs button.active {
-  color: var(--brand-700);
-  background: var(--brand-50);
-  border-color: var(--brand-400);
-}
-.setting-modified {
-  box-shadow: inset 3px 0 var(--brand-500);
+  color: var(--ink-900);
+  border-bottom-color: var(--color-accent);
+  font-weight: 700;
 }
 [data-setting] {
   scroll-margin-top: 120px;
@@ -1743,5 +1513,114 @@ html[data-theme="dark"] .fuzzy-chip-btn.active {
 }
 .settings-extensions[open] summary {
   margin-bottom: 16px;
+}
+
+/* 以任务顺序组织常用设置，减少装饰性容器，把视觉重点留给标签和控件。 */
+.quick-page-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  padding: 4px 0 8px;
+}
+.quick-page-heading h2 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 650;
+  color: var(--ink-900);
+  letter-spacing: -0.03em;
+}
+.quick-page-heading p {
+  margin: 8px 0 0;
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.quick-settings-workbench > .setting-card,
+.quick-settings-workbench > .panel {
+  margin: 0;
+  border: 1px solid var(--color-line-soft);
+  box-shadow: none;
+  border-radius: 12px;
+}
+.quick-settings-workbench > .setting-card:hover {
+  box-shadow: none;
+  border-color: var(--color-line-soft);
+}
+.setting-card-header,
+.sandbox-stage-bar {
+  background: transparent;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--color-line-soft);
+}
+.sandbox-stage-bar > strong {
+  font-size: 13px;
+  color: var(--ink-800);
+}
+.schema-settings-body {
+  padding: 14px 20px;
+}
+.schema-select-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  max-width: 560px;
+}
+.schema-choice-grid + .schema-select-row {
+  margin-top: 14px;
+}
+.stage-knobs {
+  padding: 16px 20px;
+  border-top: 0;
+  gap: 20px 32px;
+}
+.knob-label {
+  font-weight: 500;
+}
+.quick-save-bar {
+  position: static;
+  top: auto;
+  bottom: 0;
+  margin-top: 4px;
+  box-shadow: none;
+}
+/* 只有存在未保存修改时才固定操作栏，浏览设置时不遮挡内容。 */
+.quick-save-bar.dirty {
+  position: sticky;
+  box-shadow: 0 -4px 18px color-mix(in srgb, var(--color-bg) 70%, transparent);
+}
+.bento-section-title {
+  font-size: 13px;
+  font-weight: 650;
+}
+.bento-section-subtitle {
+  margin-top: 5px;
+}
+@media (max-width: 760px) {
+  .quick-page-heading {
+    align-items: flex-start;
+  }
+  .quick-page-heading h2 {
+    font-size: 20px;
+  }
+  .settings-group-tabs button {
+    padding: 10px;
+  }
+  .setting-row {
+    flex-wrap: wrap;
+  }
+  .setting-row .setting-control {
+    width: 100% !important;
+  }
+  .ice-tile {
+    flex-wrap: wrap;
+  }
+  .quick-save-bar.dirty {
+    position: static;
+  }
+  .sandbox-canvas {
+    overflow-x: auto;
+    justify-content: flex-start;
+  }
 }
 </style>

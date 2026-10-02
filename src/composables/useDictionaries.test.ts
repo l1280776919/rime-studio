@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
     deleteDictionary: vi.fn(),
     installLmdgDicts: vi.fn(),
     installLmdgGrammar: vi.fn(),
+    uninstallLmdgGrammar: vi.fn(),
+    lmdgGrammarInstalled: vi.fn(),
     listOnlineDictionariesByCategory: vi.fn(),
     previewDictionaryUrlImport: vi.fn(),
     importDictionaryUrl: vi.fn(),
@@ -85,6 +87,7 @@ beforeEach(() => {
   mocks.deactivated.length = 0;
   mocks.unmounted.length = 0;
   mocks.api.listDictionaries.mockResolvedValue([]);
+  mocks.api.lmdgGrammarInstalled.mockResolvedValue(false);
   mocks.api.getDictionaryConfig.mockResolvedValue(config());
   mocks.api.listOnlineDictionaries.mockResolvedValue([]);
   mocks.api.listOnlineDictionaryCategories.mockResolvedValue([]);
@@ -93,6 +96,57 @@ beforeEach(() => {
 });
 
 describe("dictionary interaction flows", () => {
+  it("preserves the catalog title and provider captured by the import preview", async () => {
+    const state = useDictionaries(vi.fn());
+    const entry = { ...online("15117"), title: "计算机名词", source: "搜狗细胞词库" };
+    mocks.api.previewDictionaryUrlImport.mockResolvedValue(preview("sogou_15117.dict.yaml"));
+    mocks.api.importDictionaryUrl.mockResolvedValue({
+      imported_entries: 1,
+      name: "sogou_15117.dict.yaml",
+    });
+    await state.previewOnlineDictionary(entry);
+    entry.title = "已切换的其他词库";
+    await state.confirmDictionaryImport();
+    expect(mocks.api.importDictionaryUrl).toHaveBeenCalledWith(
+      entry.detail_url,
+      entry.source_name,
+      "计算机名词",
+      "搜狗细胞词库",
+    );
+  });
+
+  it("scans actual model state and only permits the matching action", async () => {
+    const state = useDictionaries(vi.fn());
+    await state.installLmdgGrammar();
+    expect(mocks.api.installLmdgGrammar).not.toHaveBeenCalled();
+    await state.loadAllStats();
+    expect(state.grammarInstalled.value).toBe(false);
+    await state.uninstallLmdgGrammar();
+    expect(mocks.api.uninstallLmdgGrammar).not.toHaveBeenCalled();
+    mocks.api.installLmdgGrammar.mockResolvedValue({ message: "installed" });
+    mocks.api.lmdgGrammarInstalled.mockResolvedValue(true);
+    await state.installLmdgGrammar();
+    expect(state.grammarInstalled.value).toBe(true);
+    await state.installLmdgGrammar();
+    expect(mocks.api.installLmdgGrammar).toHaveBeenCalledTimes(1);
+    mocks.api.uninstallLmdgGrammar.mockResolvedValue({ message: "removed" });
+    mocks.api.lmdgGrammarInstalled.mockResolvedValue(false);
+    await state.uninstallLmdgGrammar();
+    expect(state.grammarInstalled.value).toBe(false);
+  });
+
+  it("keeps failed scans unknown and blocks both model actions", async () => {
+    mocks.api.lmdgGrammarInstalled.mockRejectedValue(new Error("unreadable"));
+    const state = useDictionaries(vi.fn());
+    await state.loadAllStats();
+    expect(state.grammarScanError.value).toBe(true);
+    expect(state.grammarInstalled.value).toBeUndefined();
+    await state.installLmdgGrammar();
+    await state.uninstallLmdgGrammar();
+    expect(mocks.api.installLmdgGrammar).not.toHaveBeenCalled();
+    expect(mocks.api.uninstallLmdgGrammar).not.toHaveBeenCalled();
+  });
+
   it("keeps health results attached to the last expanded dictionary", async () => {
     const a = deferred<DictHealth>();
     const b = deferred<DictHealth>();
@@ -232,6 +286,21 @@ describe("dictionary interaction flows", () => {
     expect(mocks.api.saveDictionaryImports).toHaveBeenCalledExactlyOnceWith(["present", "missing"]);
     result.resolve(config());
     await first;
+  });
+
+  it("moves a dragged reference across multiple rows and leaves state intact on failure", async () => {
+    const state = useDictionaries(vi.fn());
+    state.dictConfig.value = { ...config(), imports: ["a", "missing", "b", "c"] };
+    mocks.api.saveDictionaryImports.mockRejectedValue(new Error("write failed"));
+    await state.reorderReference("a", 3);
+    expect(mocks.api.saveDictionaryImports).toHaveBeenCalledWith(["missing", "b", "c", "a"]);
+    expect(state.dictConfig.value.imports).toEqual(["a", "missing", "b", "c"]);
+    expect(state.updatingReference.value).toBeUndefined();
+    mocks.api.saveDictionaryImports.mockClear();
+    await state.reorderReference("unknown", 0);
+    await state.reorderReference("a", -1);
+    await state.reorderReference("a", 0);
+    expect(mocks.api.saveDictionaryImports).not.toHaveBeenCalled();
   });
 
   it("loads initial lists even when progress subscription fails", async () => {

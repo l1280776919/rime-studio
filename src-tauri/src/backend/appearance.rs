@@ -10,6 +10,24 @@ pub(crate) const SYSTEM_THEME_NAMES: &[&str] = &[
     "rime_studio_dark",
     "rime_studio_warm",
     "rime_studio_bamboo",
+    // Happy Hues 内置方案：加载时排除自定义列表，切换主题时保留已保存的配色。
+    "rime_studio_happy_hues_1",
+    "rime_studio_happy_hues_2",
+    "rime_studio_happy_hues_3",
+    "rime_studio_happy_hues_4",
+    "rime_studio_happy_hues_5",
+    "rime_studio_happy_hues_6",
+    "rime_studio_happy_hues_7",
+    "rime_studio_happy_hues_8",
+    "rime_studio_happy_hues_9",
+    "rime_studio_happy_hues_10",
+    "rime_studio_happy_hues_11",
+    "rime_studio_happy_hues_12",
+    "rime_studio_happy_hues_13",
+    "rime_studio_happy_hues_14",
+    "rime_studio_happy_hues_15",
+    "rime_studio_happy_hues_16",
+    "rime_studio_happy_hues_17",
 ];
 
 fn yaml_u32(value: u32) -> Value {
@@ -273,4 +291,42 @@ pub(crate) fn write_appearance_config(
         &merge_weasel_custom(&existing, config)?,
         "写入外观配置文件失败",
     )
+}
+
+#[cfg(test)]
+mod happy_hues_tests {
+    use super::*;
+
+    /// 内置方案保存再读取不能变成重复的自定义卡片；副本仍需可编辑。
+    #[test]
+    fn happy_hues_round_trip_preserves_presets_and_custom_copies() {
+        let mut contents = String::new();
+        for id in 1..=17 {
+            let mut config = appearance_from_contents(&contents, "");
+            config.theme_name = format!("rime_studio_happy_hues_{id}");
+            config.back_color = "0x17430F".to_string();
+            let mut copy = appearance_as_scheme(&config);
+            copy.name = format!("{}_copy", config.theme_name);
+            config.custom_schemes.push(copy);
+            contents = merge_weasel_custom(&contents, &config).expect("save preset and copy");
+            let loaded = appearance_from_contents(&contents, "");
+            assert_eq!(loaded.theme_name, config.theme_name);
+            assert_eq!(loaded.back_color, config.back_color);
+            assert_eq!(loaded.custom_schemes.len(), id);
+            assert!(loaded
+                .custom_schemes
+                .iter()
+                .all(|scheme| scheme.name.ends_with("_copy")));
+        }
+        // 切换后，之前保存的全部内置方案仍保留在 YAML 中。
+        let root = parse_yaml_mapping(&contents).expect("parse saved YAML");
+        let patch = root
+            .get(yaml_str("patch"))
+            .and_then(Value::as_mapping)
+            .expect("patch mapping");
+        let names = collect_color_scheme_names(patch);
+        for id in 1..=17 {
+            assert!(names.contains(&format!("rime_studio_happy_hues_{id}")));
+        }
+    }
 }

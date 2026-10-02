@@ -261,6 +261,8 @@ pub(crate) struct DictInfo {
     pub(crate) entry_count: usize,
     pub(crate) size_bytes: u64,
     pub(crate) modified: Option<u64>,
+    pub(crate) display_name: Option<String>,
+    pub(crate) source: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

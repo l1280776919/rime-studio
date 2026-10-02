@@ -18,6 +18,9 @@ type LmdgDownloadProgress = {
 
 const props = defineProps<{
   dictInstalling: boolean;
+  grammarInstalled?: boolean;
+  grammarScanning: boolean;
+  grammarScanError: boolean;
   grammarInstalling: boolean;
   grammarUninstalling: boolean;
   loading: boolean;
@@ -56,7 +59,17 @@ const showProgress = computed(
 <template>
   <section class="lmdg-resource-panel">
     <div class="lmdg-resource-copy">
-      <el-tag type="success" size="small">高级资源</el-tag>
+      <el-tag :type="grammarInstalled ? 'success' : 'info'" size="small">{{
+        grammarScanning
+          ? "扫描中"
+          : grammarScanError
+            ? "扫描失败，请刷新重试"
+            : grammarInstalled === true
+              ? "已安装"
+              : grammarInstalled === false
+                ? "未安装"
+                : "等待扫描"
+      }}</el-tag>
       <div>
         <strong>万象语言模型 RIME-LMDG</strong>
         <small>
@@ -67,7 +80,11 @@ const showProgress = computed(
     </div>
     <div class="lmdg-resource-actions">
       <el-button
+        v-if="grammarInstalled !== true"
         type="success"
+        :disabled="
+          grammarInstalled !== false || grammarScanning || grammarUninstalling || dictInstalling
+        "
         :icon="Download"
         :loading="grammarInstalling"
         @click="emit('installGrammar')"
@@ -75,7 +92,9 @@ const showProgress = computed(
         安装模型
       </el-button>
       <el-button
+        v-else
         type="warning"
+        :disabled="grammarScanning || grammarInstalling || dictInstalling"
         plain
         :icon="Delete"
         :loading="grammarUninstalling"
@@ -86,8 +105,13 @@ const showProgress = computed(
       <el-button :icon="Collection" :loading="dictInstalling" @click="emit('installDicts')">
         安装词库包
       </el-button>
-      <el-button :icon="Refresh" :loading="loading" @click="emit('refresh')">
-        刷新本地词库
+      <el-button
+        :icon="Refresh"
+        :loading="loading || grammarScanning"
+        :disabled="grammarInstalling || grammarUninstalling || dictInstalling"
+        @click="emit('refresh')"
+      >
+        重新扫描
       </el-button>
     </div>
     <div v-if="showProgress" class="lmdg-download-progress">

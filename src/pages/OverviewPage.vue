@@ -3,6 +3,7 @@ import { computed, onDeactivated, onMounted, onUnmounted, reactive, ref, watch }
 import { ElMessage, ElMessageBox } from "element-plus";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useSettingsDocument } from "../composables/useSettingsDocument";
+import { confirmSchemaDeployment } from "../composables/confirmSchemaDeployment";
 import { useConfigReload } from "../composables/useConfigReload";
 import { useErrorHandler } from "../composables/useErrorHandler";
 import { api } from "../api";
@@ -152,6 +153,14 @@ async function onTileToggle() {
   if (await document.save()) {
     emit("saved");
     ElMessage.success("特性已更新 (点击「一键部署」可立即对小狼毫生效)");
+  }
+}
+
+/** 方案下拉框保存成功后提醒部署，其他功能开关保留原有保存行为。 */
+async function onSchemaChange() {
+  if (await document.save()) {
+    emit("saved");
+    if (await confirmSchemaDeployment(hasDeployer.value)) emit("deploy");
   }
 }
 
@@ -669,7 +678,7 @@ onDeactivated(() => {
               size="small"
               placeholder="切换输入方案"
               style="width: 170px"
-              @change="onTileToggle"
+              @change="onSchemaChange"
             >
               <el-option
                 v-for="schema in schemas"

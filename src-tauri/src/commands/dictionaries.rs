@@ -95,8 +95,11 @@ pub(crate) async fn preview_dictionary_url_import(
 pub(crate) async fn import_dictionary_url(
     url: String,
     source_name: Option<String>,
+    display_name: Option<String>,
+    source_label: Option<String>,
 ) -> Result<DictionaryImportResult, RimeError> {
-    run_blocking(move || import_dictionary_url_sync(url, source_name)).await
+    run_blocking(move || import_dictionary_url_sync(url, source_name, display_name, source_label))
+        .await
 }
 
 #[tauri::command]
@@ -149,4 +152,9 @@ pub(crate) async fn export_dictionary(
     dict_name: String,
 ) -> Result<DictionaryExportResult, RimeError> {
     run_blocking(move || export_dictionary_sync(dict_name)).await
+}
+
+#[tauri::command]
+pub(crate) async fn lmdg_grammar_installed() -> Result<bool, RimeError> {
+    run_blocking(lmdg_grammar_installed_sync).await
 }
