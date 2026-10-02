@@ -19,7 +19,7 @@ pub(crate) fn validate_config_relpath(filename: &str) -> Result<(), RimeError> {
     Ok(())
 }
 
-fn validate_config_content(filename: &str, content: &str) -> Result<(), RimeError> {
+pub(crate) fn validate_config_content(filename: &str, content: &str) -> Result<(), RimeError> {
     if filename.ends_with(".yaml") || filename.ends_with(".yml") {
         // Rime dictionaries have a YAML header followed by tab-separated data.
         let yaml_content = if filename.ends_with(".dict.yaml") {

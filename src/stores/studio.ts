@@ -26,6 +26,7 @@ export const useStudioStore = defineStore("studio", () => {
   const deletingBackup = ref<string>();
   const restartingServer = ref(false);
   const syncing = ref(false);
+  const migrationBusy = ref(false);
 
   let scanVersion = 0;
   let healthVersion = 0;
@@ -38,7 +39,8 @@ export const useStudioStore = defineStore("studio", () => {
       !!restoringBackup.value ||
       !!deletingBackup.value ||
       restartingServer.value ||
-      syncing.value,
+      syncing.value ||
+      migrationBusy.value,
   );
 
   const hasDeployer = computed(() => Boolean(env.value?.deployer_path));
@@ -328,6 +330,17 @@ export const useStudioStore = defineStore("studio", () => {
     }
   }
 
+  /** Share the existing mutation gate with migration export, preview and import. */
+  async function runMigration<T>(task: () => Promise<T>): Promise<T> {
+    if (mutationBusy.value) throw new Error("请等待当前操作完成后再迁移");
+    migrationBusy.value = true;
+    try {
+      return await task();
+    } finally {
+      migrationBusy.value = false;
+    }
+  }
+
   return {
     env,
     scanning,
@@ -343,9 +356,12 @@ export const useStudioStore = defineStore("studio", () => {
     deletingBackup,
     restartingServer,
     syncing,
+    migrationBusy,
+    runMigration,
     hasDeployer,
     mutationBusy,
     loadEnvironment,
+    loadBackups,
     loadDictionaryHealth,
     deploy,
     cancelDeploy,

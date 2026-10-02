@@ -1,3 +1,5 @@
+pub(crate) use self::migration::*;
+mod migration;
 use crate::types::RimeError;
 
 mod app_update;

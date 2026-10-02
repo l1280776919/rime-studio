@@ -1,3 +1,6 @@
+pub(crate) use self::migration::*;
+pub(crate) mod migration_archive;
+pub(crate) use self::migration_archive::*;
 pub(crate) mod app_update;
 pub(crate) mod appearance;
 pub(crate) mod backup;
@@ -13,6 +16,7 @@ pub(crate) mod fonts;
 pub(crate) mod http;
 pub(crate) mod installers;
 pub(crate) mod lua_plugins;
+pub(crate) mod migration;
 pub(crate) mod phrases;
 pub(crate) mod proxy;
 pub(crate) mod schemas;

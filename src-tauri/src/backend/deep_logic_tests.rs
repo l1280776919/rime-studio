@@ -916,3 +916,54 @@ fn guarded_editor_and_phrases_preserve_external_changes() {
         },
     );
 }
+
+#[test]
+fn migration_export_import_preserves_device_state_and_retains_a_safety_backup() {
+    isolated(
+        "migration_export_import_preserves_device_state_and_retains_a_safety_backup",
+        || {
+            let user = rime_user_dir().expect("user");
+            fs::write(user.join("weasel.custom.yaml"), "patch: {}\n").expect("config");
+            fs::write(
+                user.join("installation.yaml"),
+                "installation_id: this-device\n",
+            )
+            .expect("identity");
+            fs::create_dir_all(user.join("sync")).expect("sync");
+            fs::write(user.join("sync/words.userdb.txt"), "private words").expect("sync data");
+            let exported = export_migration_sync(vec!["config".into()]).expect("export");
+            let data = fs::read(&exported.path).expect("archive");
+            let (_, files) = decode_migration_archive(data.clone()).expect("decode");
+            assert_eq!(files.len(), 1);
+            assert!(!files.contains_key("installation.yaml"));
+            fs::write(
+                user.join("weasel.custom.yaml"),
+                "patch:\n  style/font_point: 24\n",
+            )
+            .expect("target config");
+            let initial = preview_migration_sync(data.clone(), None).expect("catalog");
+            assert_eq!(initial.files[0].status, "conflict");
+            assert!(!initial.files[0].selected);
+            assert!(import_migration_sync(initial.token).is_err());
+            let preview = preview_migration_sync(data, Some(vec!["weasel.custom.yaml".into()]))
+                .expect("review");
+            assert!(preview.blockers.is_empty());
+            let result = import_migration_sync(preview.token.clone()).expect("import");
+            assert_eq!(result.imported_files, 1);
+            assert_eq!(
+                fs::read_to_string(user.join("installation.yaml")).expect("identity"),
+                "installation_id: this-device\n"
+            );
+            assert_eq!(
+                fs::read_to_string(user.join("weasel.custom.yaml")).expect("config"),
+                "patch: {}\n"
+            );
+            assert_eq!(
+                fs::read_to_string(Path::new(&result.safety_backup_dir).join("weasel.custom.yaml"))
+                    .expect("backup"),
+                "patch:\n  style/font_point: 24\n"
+            );
+            assert!(import_migration_sync(preview.token).is_err());
+        },
+    );
+}

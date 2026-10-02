@@ -30,7 +30,7 @@ pub(crate) struct DiagnosticReport {
 }
 
 /// Only parse dictionary headers; vocabulary rows can be very large and private.
-fn read_yaml_header(path: &Path, dictionary: bool) -> Result<String, String> {
+pub(crate) fn read_yaml_header(path: &Path, dictionary: bool) -> Result<String, String> {
     let file = fs::File::open(path).map_err(|_| "unreadable".to_string())?;
     let mut reader = BufReader::new(file);
     let mut contents = String::new();
@@ -175,43 +175,54 @@ fn inspect_config_diagnostics_in(
                 continue;
             }
         };
-        if filename == "default.custom.yaml" || filename == "default.yaml" {
-            for schema in parse_schema_list(&content) {
-                queue.push_back((format!("{schema}.schema.yaml"), true));
+        queue.extend(config_yaml_dependencies(&filename, &content, &yaml));
+    }
+    (issues, checked)
+}
+
+/// Shared static YAML references used by environment checks and migration previews.
+pub(crate) fn config_yaml_dependencies(
+    filename: &str,
+    content: &str,
+    yaml: &Value,
+) -> Vec<(String, bool)> {
+    let mut dependencies = Vec::new();
+    if filename == "default.custom.yaml" || filename == "default.yaml" {
+        for schema in parse_schema_list(content) {
+            dependencies.push((format!("{schema}.schema.yaml"), true));
+        }
+    }
+    if filename.ends_with(".schema.yaml") {
+        let id = filename.trim_end_matches(".schema.yaml");
+        dependencies.push((format!("{id}.custom.yaml"), false));
+        if let Some(deps) = yaml
+            .get("schema")
+            .and_then(|v| v.get("dependencies"))
+            .and_then(Value::as_sequence)
+        {
+            for dep in deps.iter().filter_map(Value::as_str) {
+                dependencies.push((format!("{dep}.schema.yaml"), true));
             }
         }
-        if filename.ends_with(".schema.yaml") {
-            let id = filename.trim_end_matches(".schema.yaml");
-            queue.push_back((format!("{id}.custom.yaml"), false));
-            if let Some(deps) = yaml
-                .get("schema")
-                .and_then(|v| v.get("dependencies"))
-                .and_then(Value::as_sequence)
-            {
-                for dep in deps.iter().filter_map(Value::as_str) {
-                    queue.push_back((format!("{dep}.schema.yaml"), true));
+        // Translators can have custom names, so inspect every top-level section.
+        if let Some(sections) = yaml.as_mapping() {
+            for section in sections.values() {
+                if let Some(dict) = section
+                    .get("dictionary")
+                    .and_then(Value::as_str)
+                    .filter(|v| !v.is_empty())
+                {
+                    dependencies.push((format!("{dict}.dict.yaml"), true));
                 }
-            }
-            // Translators can have custom names, so inspect every top-level section.
-            if let Some(sections) = yaml.as_mapping() {
-                for section in sections.values() {
-                    if let Some(dict) = section
-                        .get("dictionary")
-                        .and_then(Value::as_str)
-                        .filter(|v| !v.is_empty())
-                    {
-                        queue.push_back((format!("{dict}.dict.yaml"), true));
-                    }
-                }
-            }
-        }
-        if let Some(imports) = yaml.get("import_tables").and_then(Value::as_sequence) {
-            for name in imports.iter().filter_map(Value::as_str) {
-                queue.push_back((format!("{name}.dict.yaml"), true));
             }
         }
     }
-    (issues, checked)
+    if let Some(imports) = yaml.get("import_tables").and_then(Value::as_sequence) {
+        for name in imports.iter().filter_map(Value::as_str) {
+            dependencies.push((format!("{name}.dict.yaml"), true));
+        }
+    }
+    dependencies
 }
 
 pub(crate) fn get_diagnostic_report_sync() -> Result<DiagnosticReport, RimeError> {

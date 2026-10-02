@@ -1,3 +1,10 @@
+import type {
+  MigrationFile,
+  MigrationExport,
+  MigrationPreview,
+  MigrationResult,
+  MigrationCategory,
+} from "./migration/types";
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import type { DiagnosticReport } from "./utils/diagnostics";
 import type { FileRevision } from "./utils/fileConflict";
@@ -45,6 +52,14 @@ import type {
 } from "./types";
 
 export const api = {
+  listMigrationFiles: () => invoke<MigrationFile[]>("list_migration_files"),
+  exportMigration: (categories: MigrationCategory[]) =>
+    invoke<MigrationExport>("export_migration", { categories }),
+  previewMigration: (data: number[], selectedNames?: string[]) =>
+    invoke<MigrationPreview>("preview_migration", { data, selectedNames }),
+  importMigration: (token: string) => invoke<MigrationResult>("import_migration", { token }),
+  discardMigrationPreview: (token: string) => invoke<void>("discard_migration_preview", { token }),
+  openMigrationExportDir: () => invoke<void>("open_migration_export_dir"),
   compareConfigText: (before: string, after: string) =>
     invoke<string[]>("compare_config_text", { before, after }),
   getDiagnosticReport: () => invoke<DiagnosticReport>("get_diagnostic_report"),

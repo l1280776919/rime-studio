@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MigrationAssistant from "../components/backups/MigrationAssistant.vue";
 import { computed, onDeactivated, ref, watch } from "vue";
 import {
   Clock,
@@ -112,6 +113,7 @@ function diffLineClass(line: string) {
       </div>
 
       <div class="hero-actions">
+        <MigrationAssistant />
         <el-button
           type="primary"
           class="create-backup-btn"
