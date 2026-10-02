@@ -100,3 +100,8 @@ pub(crate) async fn list_userdb_entries(
 pub(crate) async fn set_weasel_deployer(path: String) -> Result<String, RimeError> {
     run_blocking(move || set_weasel_deployer_sync(path)).await
 }
+
+#[tauri::command]
+pub(crate) async fn get_diagnostic_report() -> Result<DiagnosticReport, RimeError> {
+    run_blocking(get_diagnostic_report_sync).await
+}

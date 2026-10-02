@@ -1,10 +1,15 @@
+import type { FileRevision } from "../utils/fileConflict";
 import { ref } from "vue";
 import type { LuaPluginInfo } from "../types";
 import { useConfigDocument } from "./useConfigDocument";
 
 export function useLuaScriptEditor(
-  read: (id: string) => Promise<string | undefined>,
-  write: (id: string, content: string) => Promise<boolean | undefined>,
+  read: (id: string) => Promise<string | FileRevision | undefined>,
+  write: (
+    id: string,
+    content: string,
+    expected: FileRevision,
+  ) => Promise<boolean | { reload: FileRevision } | undefined>,
   saved: () => void,
 ) {
   const document = useConfigDocument(read, write);

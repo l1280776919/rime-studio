@@ -24,6 +24,14 @@ pub(crate) async fn get_lua_script_content(plugin_id: String) -> Result<String, 
 pub(crate) async fn save_lua_script_content(
     plugin_id: String,
     content: String,
+    expected: FileRevision,
 ) -> Result<(), RimeError> {
-    run_blocking(move || save_lua_script_content_sync(plugin_id, content)).await
+    run_blocking(move || save_lua_script_guarded_sync(plugin_id, content, expected)).await
+}
+
+#[tauri::command]
+pub(crate) async fn read_lua_script_revision(
+    plugin_id: String,
+) -> Result<LuaScriptRevision, RimeError> {
+    run_blocking(move || read_lua_script_revision_sync(plugin_id)).await
 }

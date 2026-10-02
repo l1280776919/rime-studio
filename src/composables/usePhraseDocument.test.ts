@@ -62,7 +62,7 @@ describe("phrase document", () => {
     expect(await document.load()).toBe(false);
     result.resolve(true);
     await first;
-    expect(write).toHaveBeenCalledExactlyOnceWith([phrase("a")]);
+    expect(write).toHaveBeenCalledExactlyOnceWith([phrase("a")], { content: null });
     expect(document.dirty.value).toBe(true);
   });
   it("ignores late refreshes and pending reads canceled during unmount", async () => {
@@ -87,4 +87,35 @@ describe("phrase document", () => {
     await loading;
     expect(canceled.ready.value).toBe(false);
   });
+});
+
+it("reloads external phrases without reporting a save or deployment", async () => {
+  const document = usePhraseDocument(
+    async () => [phrase("old")],
+    async () => ({ reload: [phrase("external")], revision: { content: "external" } }),
+  );
+  await document.load();
+  document.entries.value = [phrase("draft")];
+  expect(await document.save()).toBe(false);
+  expect(document.entries.value).toEqual([phrase("external")]);
+  expect(document.dirty.value).toBe(false);
+});
+
+it("commits phrase rows and their revision from the same accepted read", async () => {
+  type Snapshot = { entries: PhraseEntry[]; revision: { content: string } };
+  const first = deferred<Snapshot>();
+  const second = deferred<Snapshot>();
+  const write = vi.fn(async () => true);
+  const document = usePhraseDocument(
+    vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise),
+    write,
+  );
+  const a = document.load();
+  const b = document.load();
+  second.resolve({ entries: [phrase("new")], revision: { content: "new revision" } });
+  await b;
+  first.resolve({ entries: [phrase("old")], revision: { content: "old revision" } });
+  await a;
+  await document.save();
+  expect(write).toHaveBeenCalledExactlyOnceWith([phrase("new")], { content: "new revision" });
 });

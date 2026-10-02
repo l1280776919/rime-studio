@@ -45,7 +45,29 @@ pub(crate) fn get_custom_phrases_sync() -> Result<Vec<PhraseEntry>, RimeError> {
     parse_phrases(&read_optional_config(&path)?)
 }
 
+#[derive(serde::Serialize)]
+pub(crate) struct PhraseDocument {
+    pub entries: Vec<PhraseEntry>,
+    pub revision: FileRevision,
+}
+
+pub(crate) fn read_phrase_document_sync() -> Result<PhraseDocument, RimeError> {
+    let path = resolve_config_path("custom_phrase.txt", false)?;
+    let revision = read_file_revision(&path)?;
+    let entries = parse_phrases(revision.content.as_deref().unwrap_or_default())?;
+    Ok(PhraseDocument { entries, revision })
+}
+
+#[cfg(test)]
 pub(crate) fn save_custom_phrases_sync(phrases: Vec<PhraseEntry>) -> Result<(), RimeError> {
+    let revision = read_phrase_document_sync()?.revision;
+    save_custom_phrases_guarded_sync(phrases, revision).map(|_| ())
+}
+
+pub(crate) fn save_custom_phrases_guarded_sync(
+    phrases: Vec<PhraseEntry>,
+    expected: FileRevision,
+) -> Result<FileRevision, RimeError> {
     let _config_guard = lock_config_write()?;
     for phrase in &phrases {
         if is_phrase_metadata(&phrase.text)
@@ -62,7 +84,8 @@ pub(crate) fn save_custom_phrases_sync(phrases: Vec<PhraseEntry>) -> Result<(), 
     fs::create_dir_all(&user_dir)
         .map_err(|err| RimeError::FileOperationError(format!("创建 Rime 目录失败: {err}")))?;
     let path = resolve_user_relative_path(&user_dir, "custom_phrase.txt", false)?;
-    let previous = read_optional_config(&path)?;
+    check_file_revision(&path, &expected)?;
+    let previous = expected.content.as_deref().unwrap_or_default();
     // Preserve all annotations, including comments between entries.
     let header = previous
         .trim_start_matches('\u{feff}')
@@ -82,5 +105,9 @@ pub(crate) fn save_custom_phrases_sync(phrases: Vec<PhraseEntry>) -> Result<(), 
         ));
     }
     backup_user_config(&user_dir, BackupKind::BeforeSave)?;
-    write_text_file(&path, &contents, "写入自定义短语文件失败")
+    check_file_revision(&path, &expected)?;
+    write_text_file(&path, &contents, "写入自定义短语文件失败")?;
+    Ok(FileRevision {
+        content: Some(contents),
+    })
 }

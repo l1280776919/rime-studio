@@ -3,13 +3,8 @@ use crate::*;
 use serde_yaml::Value;
 use std::{ffi::OsStr, fs, path::PathBuf};
 
-pub(crate) fn list_schemas_sync() -> Result<Vec<SchemaInfo>, RimeError> {
-    let user_dir = rime_user_dir()?;
-    let active_schema = read_to_string(&user_dir.join("default.custom.yaml"));
-    let active = parse_schema(&active_schema);
-    let enabled = parse_schema_list(&active_schema);
-    let mut schemas = Vec::new();
-
+/// Shared source directories for schema browsing and deployment diagnostics.
+pub(crate) fn system_data_dirs() -> Vec<PathBuf> {
     // Find system schemas from Weasel data directory
     let mut system_dirs: Vec<PathBuf> = Vec::new();
     if let Some(deployer) = locate_deployer() {
@@ -31,6 +26,20 @@ pub(crate) fn list_schemas_sync() -> Result<Vec<SchemaInfo>, RimeError> {
         }
         system_dirs.push(parent.join("data"));
     }
+
+    let mut seen = std::collections::HashSet::new();
+    system_dirs.retain(|path| seen.insert(path.clone()));
+    system_dirs
+}
+
+pub(crate) fn list_schemas_sync() -> Result<Vec<SchemaInfo>, RimeError> {
+    let user_dir = rime_user_dir()?;
+    let active_schema = read_to_string(&user_dir.join("default.custom.yaml"));
+    let active = parse_schema(&active_schema);
+    let enabled = parse_schema_list(&active_schema);
+    let mut schemas = Vec::new();
+
+    let system_dirs = system_data_dirs();
 
     let mut seen = std::collections::HashSet::new();
 

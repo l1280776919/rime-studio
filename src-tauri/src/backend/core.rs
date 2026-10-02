@@ -409,22 +409,33 @@ pub(crate) fn resolve_windows_shortcut(path: &Path) -> Option<PathBuf> {
         .filter(|target| target.exists())
 }
 
-pub(crate) fn locate_deployer() -> Option<PathBuf> {
-    let mut candidates = Vec::new();
+/// Paths are shown locally; the exported report excludes them.
+#[derive(serde::Serialize)]
+pub(crate) struct DeployerCandidate {
+    pub source: String,
+    pub path: String,
+    pub valid: bool,
+    pub reason: String,
+}
 
-    // A stale manual path must not prevent automatic detection after an upgrade.
-    if let Ok(app_dir) = app_data_dir() {
-        let saved = read_to_string(&app_dir.join("weasel-deployer.txt"));
-        if let Some(path) = weasel_registry_path(&saved) {
-            if validate_weasel_deployer(&path) {
-                return Some(path);
-            }
+pub(crate) fn discover_deployer_candidates() -> Vec<DeployerCandidate> {
+    discover_deployer_candidates_internal(false)
+}
+
+/// Normal scans stop resolving shortcuts after a match; diagnostics inspect every source.
+fn discover_deployer_candidates_internal(stop_after_match: bool) -> Vec<DeployerCandidate> {
+    let mut candidates: Vec<(String, PathBuf)> = Vec::new();
+    let mut add_roots = |source: &str, root: &Path| {
+        let found = weasel_deployers_under(root);
+        if found.is_empty() {
+            candidates.push((source.into(), root.to_path_buf()));
         }
-    }
+        candidates.extend(found.into_iter().map(|path| (source.into(), path)));
+    };
 
     // 1. Check registry-discovered paths
     for root in weasel_root_from_registry() {
-        candidates.extend(weasel_deployers_under(&root));
+        add_roots("注册表", &root);
     }
 
     // 2. Check standard Program Files installation paths
@@ -443,24 +454,61 @@ pub(crate) fn locate_deployer() -> Option<PathBuf> {
     }
 
     for parent in rime_parents {
-        candidates.extend(weasel_deployers_under(&parent));
+        add_roots("安装目录", &parent);
     }
 
     // 3. Machine-wide and per-user shortcuts in all installer languages.
     for base in ["PROGRAMDATA", "APPDATA"] {
         if let Ok(base) = env::var(base) {
-            candidates.extend(weasel_shortcuts_under(
-                &PathBuf::from(base).join(r"Microsoft\Windows\Start Menu\Programs"),
-            ));
+            candidates.extend(
+                weasel_shortcuts_under(
+                    &PathBuf::from(base).join(r"Microsoft\Windows\Start Menu\Programs"),
+                )
+                .into_iter()
+                .map(|path| ("开始菜单快捷方式".into(), path)),
+            );
         }
     }
 
+    if let Ok(app_dir) = app_data_dir() {
+        let saved = read_to_string(&app_dir.join("weasel-deployer.txt"));
+        if let Some(path) = weasel_registry_path(&saved) {
+            candidates.insert(0, ("手动指定".into(), path));
+        }
+    }
     candidates
         .into_iter()
-        .filter(|path| path.exists())
-        .find_map(|path| {
-            resolve_windows_shortcut(&path).filter(|target| validate_weasel_deployer(target))
+        .scan(false, |found, (source, path)| {
+            if stop_after_match && *found {
+                return None;
+            }
+            let target = resolve_windows_shortcut(&path);
+            let valid = target
+                .as_ref()
+                .is_some_and(|path| validate_weasel_deployer(path));
+            let reason = if valid {
+                "可用"
+            } else if !path.exists() {
+                "路径不存在"
+            } else {
+                "未发现有效部署器或快捷方式目标无效"
+            };
+            *found = valid;
+            Some(DeployerCandidate {
+                source,
+                path: target.unwrap_or(path).to_string_lossy().into_owned(),
+                valid,
+                reason: reason.into(),
+            })
         })
+        .collect()
+}
+
+pub(crate) fn locate_deployer() -> Option<PathBuf> {
+    discover_deployer_candidates_internal(true)
+        .into_iter()
+        .find(|entry| entry.valid)
+        .map(|entry| PathBuf::from(entry.path))
 }
 
 fn weasel_shortcuts_under(programs: &Path) -> Vec<PathBuf> {

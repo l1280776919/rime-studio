@@ -2,6 +2,7 @@
 import { computed, nextTick, ref } from "vue";
 import { ChatLineRound, Delete, Opportunity, RefreshRight } from "@element-plus/icons-vue";
 import type { AppearanceConfig } from "../../types";
+import RealInputTest from "./RealInputTest.vue";
 import { api } from "../../api";
 import { cssFontFamily, formatCandidateLabel, rimeToCssColor } from "../../utils/rimeColor";
 
@@ -282,9 +283,10 @@ defineExpose({
       class="sandbox-trigger-btn"
       @click="openSandbox"
     >
-      打字沙盒测试
+      模拟外观预览
     </el-button>
 
+    <RealInputTest />
     <el-dialog
       v-model="visible"
       title="Rime 输入法打字模拟沙盒"
@@ -297,7 +299,7 @@ defineExpose({
         <div class="sandbox-tips">
           <el-icon><Opportunity /></el-icon>
           <span>
-            在此沙盒中直接输入字母（如
+            此预览使用内置模拟词条，不验证实际方案、词库或 Lua。直接输入字母（如
             <code>nihao</code
             >、<code>shurufa</code>、<code>date</code>、<code>=1+2*3</code>），支持数字选词、空格确认、逗号/句号翻页，实时呈现外观主题效果。
           </span>

@@ -6,6 +6,7 @@ import { useSettingsDocument } from "../composables/useSettingsDocument";
 import { confirmSchemaDeployment } from "../composables/confirmSchemaDeployment";
 import { useConfigReload } from "../composables/useConfigReload";
 import { useErrorHandler } from "../composables/useErrorHandler";
+import EnvironmentDiagnostics from "../components/common/EnvironmentDiagnostics.vue";
 import { api } from "../api";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
@@ -419,6 +420,7 @@ onDeactivated(() => {
 
 <template>
   <div class="cockpit-container custom-scrollbar">
+    <div><EnvironmentDiagnostics /></div>
     <!-- 0. Onboarding Hero (Only when Weasel not detected) -->
     <div v-if="!hasDeployer && env" class="onboarding-hero">
       <div class="onboarding-body">

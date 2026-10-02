@@ -1,9 +1,14 @@
 import { computed, ref } from "vue";
+import type { FileRevision } from "../utils/fileConflict";
 import type { FileStatus } from "../types";
 
 export function useConfigDocument(
-  read: (name: string) => Promise<string | undefined>,
-  write: (name: string, content: string) => Promise<boolean | undefined>,
+  read: (name: string) => Promise<string | FileRevision | undefined>,
+  write: (
+    name: string,
+    content: string,
+    expected: FileRevision,
+  ) => Promise<boolean | { reload: FileRevision } | undefined>,
 ) {
   const selectedFile = ref<FileStatus | null>(null);
   const content = ref("");
@@ -11,6 +16,7 @@ export function useConfigDocument(
   const loading = ref(false);
   const saving = ref(false);
   const dirty = computed(() => content.value !== originalContent.value);
+  let revision: FileRevision = { content: null };
   let readVersion = 0;
   let disposed = false;
 
@@ -23,8 +29,9 @@ export function useConfigDocument(
       if (version !== readVersion || result === undefined) return false;
       // Commit the filename and its contents together, only after a successful read.
       selectedFile.value = file;
-      originalContent.value = result;
-      content.value = result;
+      revision = typeof result === "string" ? { content: result } : result;
+      originalContent.value = revision.initialContent ?? revision.content ?? "";
+      content.value = originalContent.value;
       return true;
     } finally {
       if (version === readVersion) loading.value = false;
@@ -37,7 +44,16 @@ export function useConfigDocument(
     const snapshot = content.value;
     saving.value = true;
     try {
-      if (!(await write(file.name, snapshot))) return false;
+      const result = await write(file.name, snapshot, revision);
+      if (!result) return false;
+      if (typeof result === "object") {
+        revision = result.reload;
+        originalContent.value = revision.initialContent ?? revision.content ?? "";
+        // Keep any new edits made while the conflict dialog was open.
+        if (content.value === snapshot) content.value = originalContent.value;
+        return false;
+      }
+      revision = { content: snapshot };
       // Edits made while saving still need to be saved.
       originalContent.value = snapshot;
       return true;

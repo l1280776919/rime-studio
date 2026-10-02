@@ -108,6 +108,11 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             scan_rime_environment,
+            get_diagnostic_report,
+            read_config_file_revision,
+            compare_config_text,
+            read_phrase_document,
+            read_lua_script_revision,
             set_weasel_deployer,
             scan_dictionary_health,
             deploy_rime,

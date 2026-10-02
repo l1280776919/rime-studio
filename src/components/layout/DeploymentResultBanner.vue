@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import RealInputTest from "../common/RealInputTest.vue";
+import EnvironmentDiagnostics from "../common/EnvironmentDiagnostics.vue";
 import { computed, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import type { DeployResult } from "../../types";
@@ -43,6 +45,8 @@ async function copyDetails() {
       <span :title="result.message">{{ result.message }}</span>
     </div>
     <div class="result-actions">
+      <RealInputTest v-if="result.success" />
+      <EnvironmentDiagnostics v-else />
       <el-button
         v-if="!result.success"
         size="small"

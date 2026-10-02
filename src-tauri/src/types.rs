@@ -10,6 +10,8 @@ pub(crate) const CREATE_NO_WINDOW: u32 = 0x08000000;
 // ── Error types ────────────────────────────────────
 #[derive(Debug, Error)]
 pub(crate) enum RimeError {
+    #[error("配置冲突: {0}")]
+    ConfigConflict(String),
     #[error("YAML 解析失败: {0}")]
     YamlParseError(String),
 
@@ -56,6 +58,7 @@ pub(crate) enum RimeError {
 impl RimeError {
     pub(crate) fn code(&self) -> &'static str {
         match self {
+            Self::ConfigConflict(_) => "config_conflict",
             Self::YamlParseError(_) => "yaml_parse",
             Self::FileOperationError(_) => "file_operation",
             Self::InvalidDictionaryPath(_) => "invalid_dictionary_path",

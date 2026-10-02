@@ -9,6 +9,14 @@ pub(crate) async fn get_custom_phrases() -> Result<Vec<PhraseEntry>, RimeError> 
 }
 
 #[tauri::command]
-pub(crate) async fn save_custom_phrases(phrases: Vec<PhraseEntry>) -> Result<(), RimeError> {
-    run_blocking(move || save_custom_phrases_sync(phrases)).await
+pub(crate) async fn save_custom_phrases(
+    phrases: Vec<PhraseEntry>,
+    expected: FileRevision,
+) -> Result<FileRevision, RimeError> {
+    run_blocking(move || save_custom_phrases_guarded_sync(phrases, expected)).await
+}
+
+#[tauri::command]
+pub(crate) async fn read_phrase_document() -> Result<PhraseDocument, RimeError> {
+    run_blocking(read_phrase_document_sync).await
 }

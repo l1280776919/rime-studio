@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from "vue";
 import { ElMessage } from "element-plus";
+import { saveWithConflict } from "../../utils/fileConflict";
+import { resolveFileConflict } from "../../composables/resolveFileConflict";
 import { api } from "../../api";
 import { Edit, Refresh } from "@element-plus/icons-vue";
 import type { LuaPluginInfo } from "../../types";
@@ -16,11 +18,23 @@ const loading = ref(false);
 const toggling = ref<string | null>(null);
 const plugins = ref<LuaPluginInfo[]>([]);
 const editor = useLuaScriptEditor(
-  (id) => withErrorHandling(() => api.getLuaScriptContent(id)),
-  (id, content) =>
+  (id) => withErrorHandling(() => api.readLuaScriptRevision(id)),
+  (id, content, expected) =>
     withErrorHandling(async () => {
-      await api.saveLuaScriptContent(id, content);
-      return true;
+      const result = await saveWithConflict(
+        expected,
+        () => api.readLuaScriptRevision(id),
+        async (revision) => {
+          await api.saveLuaScriptContent(id, content, revision);
+          return { content };
+        },
+        (previous, current) => resolveFileConflict(id, content, previous, current),
+      );
+      return result.kind === "saved"
+        ? true
+        : result.kind === "reload"
+          ? { reload: result.revision }
+          : false;
     }),
   () => {
     ElMessage.success("Lua 脚本已保存");

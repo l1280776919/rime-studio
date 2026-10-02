@@ -240,19 +240,13 @@ fn collect_weasel_logs(user_dir: &Path) -> String {
 }
 
 fn diagnose_yaml_files(user_dir: &Path, hints: &mut Vec<String>) {
-    for name in [
-        "default.custom.yaml",
-        "weasel.custom.yaml",
-        "rime_ice.custom.yaml",
-    ] {
-        let path = user_dir.join(name);
-        if !path.exists() {
-            continue;
-        }
-        let contents = read_to_string(&path);
-        if let Err(err) = serde_yaml::from_str::<serde_yaml::Value>(&contents) {
-            hints.push(format!("{name} YAML 语法错误: {err}"));
-        }
+    let (issues, _) = inspect_config_diagnostics(user_dir);
+    for issue in issues {
+        let location = issue
+            .line
+            .map(|line| format!("第 {line} 行，第 {} 列", issue.column.unwrap_or(1)))
+            .unwrap_or_default();
+        hints.push(format!("{} {location}: {}", issue.filename, issue.message));
     }
 }
 

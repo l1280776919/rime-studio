@@ -850,3 +850,69 @@ fn quick_settings_do_not_materialize_or_overwrite_appearance_defaults() {
         },
     );
 }
+
+#[test]
+fn guarded_editor_and_phrases_preserve_external_changes() {
+    isolated(
+        "guarded_editor_and_phrases_preserve_external_changes",
+        || {
+            let user = rime_user_dir().expect("user directory");
+            let file = user.join("sample.yaml");
+            fs::write(&file, "value: original\n").expect("fixture");
+            let revision = read_file_revision(&file).expect("revision");
+            fs::write(&file, "value: external\n").expect("external edit");
+            assert!(matches!(
+                write_config_file_guarded_sync(
+                    "sample.yaml".into(),
+                    "value: draft\n".into(),
+                    revision
+                ),
+                Err(RimeError::ConfigConflict(_))
+            ));
+            assert_eq!(
+                fs::read_to_string(&file).expect("contents"),
+                "value: external\n"
+            );
+            let latest = read_file_revision(&file).expect("latest");
+            write_config_file_guarded_sync("sample.yaml".into(), "value: draft\n".into(), latest)
+                .expect("reviewed overwrite");
+            assert_eq!(
+                fs::read_to_string(&file).expect("contents"),
+                "value: draft\n"
+            );
+
+            let lua_original = read_lua_script_revision_sync("date".into()).expect("lua revision");
+            save_lua_script_guarded_sync(
+                "date".into(),
+                "-- external script".into(),
+                lua_original.revision.clone(),
+            )
+            .expect("create external lua");
+            assert!(matches!(
+                save_lua_script_guarded_sync(
+                    "date".into(),
+                    "-- stale draft".into(),
+                    lua_original.revision
+                ),
+                Err(RimeError::ConfigConflict(_))
+            ));
+            assert_eq!(
+                get_lua_script_content_sync("date".into()).expect("script"),
+                "-- external script"
+            );
+
+            let phrases = user.join("custom_phrase.txt");
+            fs::write(&phrases, "original\ta\t1\n").expect("fixture");
+            let document = read_phrase_document_sync().expect("read");
+            fs::write(&phrases, "external\ta\t2\n").expect("external edit");
+            assert!(matches!(
+                save_custom_phrases_guarded_sync(document.entries, document.revision),
+                Err(RimeError::ConfigConflict(_))
+            ));
+            assert_eq!(
+                fs::read_to_string(&phrases).expect("contents"),
+                "external\ta\t2\n"
+            );
+        },
+    );
+}

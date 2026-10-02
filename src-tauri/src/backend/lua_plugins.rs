@@ -346,9 +346,43 @@ pub(crate) fn get_lua_script_content_sync(plugin_id: String) -> Result<String, R
     }
 }
 
+#[derive(serde::Serialize)]
+pub(crate) struct LuaScriptRevision {
+    #[serde(flatten)]
+    pub revision: FileRevision,
+    #[serde(rename = "initialContent")]
+    pub initial_content: String,
+}
+
+pub(crate) fn read_lua_script_revision_sync(
+    plugin_id: String,
+) -> Result<LuaScriptRevision, RimeError> {
+    let preset = find_preset(&plugin_id)?;
+    let path = resolve_config_path(&format!("lua/{}", preset.file_name), false)?;
+    let revision = read_file_revision(&path)?;
+    let initial_content = revision
+        .content
+        .clone()
+        .unwrap_or_else(|| preset.script_template.into());
+    Ok(LuaScriptRevision {
+        revision,
+        initial_content,
+    })
+}
+
+#[cfg(test)]
 pub(crate) fn save_lua_script_content_sync(
     plugin_id: String,
     content: String,
+) -> Result<(), RimeError> {
+    let revision = read_lua_script_revision_sync(plugin_id.clone())?.revision;
+    save_lua_script_guarded_sync(plugin_id, content, revision)
+}
+
+pub(crate) fn save_lua_script_guarded_sync(
+    plugin_id: String,
+    content: String,
+    expected: FileRevision,
 ) -> Result<(), RimeError> {
     let _config_guard = lock_config_write()?;
     let _guard = LUA_WRITE_LOCK
@@ -360,9 +394,10 @@ pub(crate) fn save_lua_script_content_sync(
         .map_err(|err| RimeError::FileOperationError(format!("创建用户目录失败: {err}")))?;
     let script =
         resolve_user_relative_path(&user_dir, &format!("lua/{}", preset.file_name), false)?;
-    read_optional_config(&script)?;
+    check_file_revision(&script, &expected)?;
     backup_user_config(&user_dir, BackupKind::BeforeSave)?;
     fs::create_dir_all(script.parent().expect("script parent"))
         .map_err(|err| RimeError::FileOperationError(format!("创建 lua 目录失败: {err}")))?;
+    check_file_revision(&script, &expected)?;
     write_text_file(&script, &content, "保存 Lua 脚本失败")
 }

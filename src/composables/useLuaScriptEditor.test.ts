@@ -25,7 +25,7 @@ it("keeps script contents and dialog title from the same completed request", asy
   expect(editor.content.value).toBe("B script");
   editor.content.value = "edited B";
   await editor.save();
-  expect(write).toHaveBeenCalledExactlyOnceWith("b", "edited B");
+  expect(write).toHaveBeenCalledExactlyOnceWith("b", "edited B", { content: "B script" });
 });
 it("does not expose a stale script under a new title or report failed saves as successful", async () => {
   const notify = vi.fn();
@@ -39,7 +39,7 @@ it("does not expose a stale script under a new title or report failed saves as s
   expect(notify).not.toHaveBeenCalled();
   expect(editor.visible.value).toBe(true);
   expect(editor.dirty.value).toBe(true);
-  expect(write).toHaveBeenCalledExactlyOnceWith("a", "edited A");
+  expect(write).toHaveBeenCalledExactlyOnceWith("a", "edited A", { content: "A" });
 });
 it("keeps the editor open if more edits arrive while a save is pending", async () => {
   const result = deferred<boolean>();

@@ -20,6 +20,8 @@ import {
 import type { PhraseEntry, RimeEnvironment } from "../types";
 import { useErrorHandler } from "../composables/useErrorHandler";
 import { useConfigReload } from "../composables/useConfigReload";
+import { saveWithConflict } from "../utils/fileConflict";
+import { resolveFileConflict } from "../composables/resolveFileConflict";
 import { usePhraseDocument } from "../composables/usePhraseDocument";
 import {
   countDuplicatePhrases,
@@ -39,11 +41,24 @@ const emit = defineEmits<{
 }>();
 
 const document = usePhraseDocument(
-  () => withErrorHandling(() => api.getCustomPhrases()),
-  (entries) =>
+  () => withErrorHandling(() => api.readPhraseDocument()),
+  (entries, expected) =>
     withErrorHandling(async () => {
-      await api.saveCustomPhrases(entries);
-      return true;
+      const draft = entries
+        .map((entry) => `${entry.text}\t${entry.code}\t${entry.weight}`)
+        .join("\n");
+      const result = await saveWithConflict(
+        expected,
+        () => api.readConfigFileRevision("custom_phrase.txt"),
+        (revision) => api.saveCustomPhrases(entries, revision),
+        (previous, current) => resolveFileConflict("custom_phrase.txt", draft, previous, current),
+      );
+      if (result.kind === "keep") return false;
+      if (result.kind === "reload") {
+        const latest = await api.readPhraseDocument();
+        return { reload: latest.entries, revision: latest.revision };
+      }
+      return { saved: result.revision };
     }),
 );
 const { entries, loading, ready, dirty } = document;

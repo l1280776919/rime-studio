@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useRoute } from "vue-router";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { api } from "../api";
@@ -14,18 +15,37 @@ import {
   Search,
   UploadFilled,
 } from "@element-plus/icons-vue";
+import { saveWithConflict } from "../utils/fileConflict";
+import { resolveFileConflict } from "../composables/resolveFileConflict";
 import { useConfigDocument } from "../composables/useConfigDocument";
 import { useErrorHandler } from "../composables/useErrorHandler";
 import type { FileStatus, RimeEnvironment } from "../types";
 
+const route = useRoute();
 const props = defineProps<{ env?: RimeEnvironment }>();
 const emit = defineEmits<{ saved: []; deploy: []; dirtyChange: [dirty: boolean] }>();
 const { withErrorHandling } = useErrorHandler();
 
 const files = ref<FileStatus[]>([]);
 const document = useConfigDocument(
-  (name) => withErrorHandling(() => api.readConfigFileContent(name)),
-  (name, content) => withErrorHandling(() => api.writeConfigFileContent(name, content)),
+  (name) => withErrorHandling(() => api.readConfigFileRevision(name)),
+  (name, content, expected) =>
+    withErrorHandling(async () => {
+      const result = await saveWithConflict(
+        expected,
+        () => api.readConfigFileRevision(name),
+        async (revision) => {
+          await api.writeConfigFileContent(name, content, revision);
+          return { content };
+        },
+        (previous, current) => resolveFileConflict(name, content, previous, current),
+      );
+      return result.kind === "saved"
+        ? true
+        : result.kind === "reload"
+          ? { reload: result.revision }
+          : false;
+    }),
 );
 const { selectedFile, content, dirty, saving, loading } = document;
 const fileSearch = ref("");
@@ -159,7 +179,10 @@ async function handleSave(): Promise<boolean> {
     return false;
   }
 
-  if (!(await document.save())) return false;
+  if (!(await document.save())) {
+    setEditorContent(content.value);
+    return false;
+  }
   ElMessage.success(`已保存 ${selectedFile.value.name}`);
   emit("saved");
   return true;
@@ -274,11 +297,35 @@ watch(
   { immediate: true },
 );
 
+/** Navigate through the normal dirty-file guard before focusing a diagnostic line. */
+async function openDiagnosticFile() {
+  if (route.path !== "/editor" || typeof route.query.file !== "string") return false;
+  const file = files.value.find((item) => item.name === route.query.file);
+  if (!file) return false;
+  await selectFile(file);
+  if (selectedFile.value?.name !== file.name) return true;
+  const line = Number(route.query.line);
+  if (editorView && Number.isInteger(line) && line > 0) {
+    const target = editorView.state.doc.line(Math.min(line, editorView.state.doc.lines));
+    editorView.dispatch({ selection: { anchor: target.from }, scrollIntoView: true });
+    editorView.focus();
+  }
+  return true;
+}
+watch(
+  () => route.fullPath,
+  async () => {
+    if (route.path !== "/editor") return;
+    await loadFiles();
+    await openDiagnosticFile();
+  },
+);
 onMounted(async () => {
   initEditor();
   await nextTick();
   await loadFiles();
 
+  if (await openDiagnosticFile()) return;
   // Select default.custom.yaml if present
   if (!selectedFile.value && files.value.length > 0) {
     const def = files.value.find((f) => f.name === "default.custom.yaml") ?? files.value[0];

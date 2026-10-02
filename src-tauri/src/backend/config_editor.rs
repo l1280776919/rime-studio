@@ -92,7 +92,7 @@ fn collect_config_files(user_dir: &Path, dir: &Path, files: &mut Vec<FileStatus>
     }
 }
 
-fn resolve_config_path(filename: &str, must_exist: bool) -> Result<PathBuf, RimeError> {
+pub(crate) fn resolve_config_path(filename: &str, must_exist: bool) -> Result<PathBuf, RimeError> {
     validate_config_relpath(filename)?;
     let user_dir = rime_user_dir()?;
     if !must_exist {
@@ -124,13 +124,24 @@ pub(crate) fn read_config_file_content_sync(filename: String) -> Result<String, 
         .map_err(|err| RimeError::FileOperationError(format!("读取文件失败: {err}")))
 }
 
+#[cfg(test)]
 pub(crate) fn write_config_file_content_sync(
     filename: String,
     content: String,
 ) -> Result<(), RimeError> {
+    let revision = read_file_revision(&resolve_config_path(&filename, false)?)?;
+    write_config_file_guarded_sync(filename, content, revision)
+}
+
+pub(crate) fn write_config_file_guarded_sync(
+    filename: String,
+    content: String,
+    expected: FileRevision,
+) -> Result<(), RimeError> {
     let _config_guard = lock_config_write()?;
     validate_config_content(&filename, &content)?;
     let path = resolve_config_path(&filename, false)?;
+    check_file_revision(&path, &expected)?;
     let user_dir = rime_user_dir()?;
     fs::create_dir_all(&user_dir)
         .map_err(|err| RimeError::SettingsError(format!("创建 Rime 目录失败: {err}")))?;
@@ -140,6 +151,7 @@ pub(crate) fn write_config_file_content_sync(
     }
 
     backup_user_config(&user_dir, BackupKind::BeforeSave)?;
+    check_file_revision(&path, &expected)?;
     write_text_file(&path, &content, "写入配置文件失败")?;
     Ok(())
 }

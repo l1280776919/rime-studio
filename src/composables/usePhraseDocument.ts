@@ -1,9 +1,20 @@
 import { computed, ref } from "vue";
+import type { FileRevision } from "../utils/fileConflict";
 import type { PhraseEntry } from "../types";
 
 export function usePhraseDocument(
-  read: () => Promise<PhraseEntry[] | undefined>,
-  write: (entries: PhraseEntry[]) => Promise<boolean | undefined>,
+  read: () => Promise<
+    PhraseEntry[] | { entries: PhraseEntry[]; revision: FileRevision } | undefined
+  >,
+  write: (
+    entries: PhraseEntry[],
+    expected: FileRevision,
+  ) => Promise<
+    | boolean
+    | { saved: FileRevision }
+    | { reload: PhraseEntry[]; revision: FileRevision }
+    | undefined
+  >,
 ) {
   const entries = ref<PhraseEntry[]>([]);
   const loading = ref(false);
@@ -12,6 +23,7 @@ export function usePhraseDocument(
   const original = ref("[]");
   const dirty = computed(() => ready.value && JSON.stringify(entries.value) !== original.value);
   let version = 0;
+  let revision: FileRevision = { content: null };
 
   async function load() {
     if (saving.value) return false;
@@ -20,8 +32,10 @@ export function usePhraseDocument(
     try {
       const result = await read();
       if (request !== version || result === undefined) return false;
-      entries.value = result;
-      original.value = JSON.stringify(result);
+      // Commit rows and revision together only for the accepted read request.
+      entries.value = Array.isArray(result) ? result : result.entries;
+      revision = Array.isArray(result) ? { content: null } : result.revision;
+      original.value = JSON.stringify(entries.value);
       ready.value = true;
       return true;
     } finally {
@@ -34,7 +48,16 @@ export function usePhraseDocument(
     const snapshot = entries.value.map((entry) => ({ ...entry }));
     saving.value = true;
     try {
-      if (!(await write(snapshot))) return false;
+      const result = await write(snapshot, revision);
+      if (!result) return false;
+      if (typeof result === "object" && "reload" in result) {
+        revision = result.revision;
+        original.value = JSON.stringify(result.reload);
+        if (JSON.stringify(entries.value) === JSON.stringify(snapshot))
+          entries.value = result.reload;
+        return false;
+      }
+      if (typeof result === "object" && "saved" in result) revision = result.saved;
       original.value = JSON.stringify(snapshot);
       return true;
     } finally {

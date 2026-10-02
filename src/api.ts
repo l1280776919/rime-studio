@@ -1,4 +1,6 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import type { DiagnosticReport } from "./utils/diagnostics";
+import type { FileRevision } from "./utils/fileConflict";
 import { formatInvokeError } from "./utils/error";
 
 async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
@@ -43,6 +45,9 @@ import type {
 } from "./types";
 
 export const api = {
+  compareConfigText: (before: string, after: string) =>
+    invoke<string[]>("compare_config_text", { before, after }),
+  getDiagnosticReport: () => invoke<DiagnosticReport>("get_diagnostic_report"),
   scanEnvironment: () => invoke<RimeEnvironment>("scan_rime_environment"),
   setWeaselDeployer: (path: string) => invoke<string>("set_weasel_deployer", { path }),
   scanDictionaryHealth: () => invoke<DictHealth | null>("scan_dictionary_health"),
@@ -93,7 +98,10 @@ export const api = {
     invoke<UserdbEntriesResult>("list_userdb_entries", { filename, limit, offset, query }),
 
   getCustomPhrases: () => invoke<PhraseEntry[]>("get_custom_phrases"),
-  saveCustomPhrases: (phrases: PhraseEntry[]) => invoke("save_custom_phrases", { phrases }),
+  readPhraseDocument: () =>
+    invoke<{ entries: PhraseEntry[]; revision: FileRevision }>("read_phrase_document"),
+  saveCustomPhrases: (phrases: PhraseEntry[], expected: FileRevision) =>
+    invoke<FileRevision>("save_custom_phrases", { phrases, expected }),
 
   listDictionaries: () => invoke<DictInfo[]>("list_dictionaries"),
   getDictionaryConfig: () => invoke<DictionaryConfig>("get_dictionary_config"),
@@ -160,12 +168,16 @@ export const api = {
   toggleLuaPlugin: (pluginId: string, enabled: boolean) =>
     invoke<LuaPluginInfo[]>("toggle_lua_plugin", { pluginId, enabled }),
   getLuaScriptContent: (pluginId: string) => invoke<string>("get_lua_script_content", { pluginId }),
-  saveLuaScriptContent: (pluginId: string, content: string) =>
-    invoke("save_lua_script_content", { pluginId, content }),
+  readLuaScriptRevision: (pluginId: string) =>
+    invoke<FileRevision>("read_lua_script_revision", { pluginId }),
+  saveLuaScriptContent: (pluginId: string, content: string, expected: FileRevision) =>
+    invoke("save_lua_script_content", { pluginId, content, expected }),
 
   listYamlConfigFiles: () => invoke<FileStatus[]>("list_yaml_config_files"),
   readConfigFileContent: (filename: string) =>
     invoke<string>("read_config_file_content", { filename }),
-  writeConfigFileContent: (filename: string, content: string) =>
-    invoke<boolean>("write_config_file_content", { filename, content }),
+  readConfigFileRevision: (filename: string) =>
+    invoke<FileRevision>("read_config_file_revision", { filename }),
+  writeConfigFileContent: (filename: string, content: string, expected: FileRevision) =>
+    invoke<boolean>("write_config_file_content", { filename, content, expected }),
 };

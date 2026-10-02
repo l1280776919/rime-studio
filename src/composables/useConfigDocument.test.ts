@@ -33,7 +33,7 @@ describe("configuration document", () => {
     expect(doc.selectedFile.value?.name).toBe("a");
     expect(doc.dirty.value).toBe(true);
     await doc.save();
-    expect(write).toHaveBeenCalledWith("a", "edited A");
+    expect(write).toHaveBeenCalledWith("a", "edited A", { content: "A" });
   });
 
   it("blocks saves during reads and duplicate saves, retaining edits made during a save", async () => {
@@ -53,7 +53,7 @@ describe("configuration document", () => {
     write.resolve(true);
     expect(await saving).toBe(true);
     expect(doc.dirty.value).toBe(true);
-    expect(writer).toHaveBeenCalledExactlyOnceWith("a", "first edit");
+    expect(writer).toHaveBeenCalledExactlyOnceWith("a", "first edit", { content: "A" });
   });
 
   it("retains dirty state on failed saves and resets busy state on rejected calls", async () => {
@@ -91,4 +91,16 @@ it("does not permit saving after the first script/config read fails", async () =
   expect(await doc.load(file("lua/date.lua"))).toBe(false);
   expect(await doc.save()).toBe(false);
   expect(write).not.toHaveBeenCalled();
+});
+
+it("reloads a conflict without claiming the draft was saved", async () => {
+  const doc = useConfigDocument(
+    async () => "old",
+    async () => ({ reload: { content: "external" } }),
+  );
+  await doc.load(file("a"));
+  doc.content.value = "draft";
+  expect(await doc.save()).toBe(false);
+  expect(doc.content.value).toBe("external");
+  expect(doc.dirty.value).toBe(false);
 });
