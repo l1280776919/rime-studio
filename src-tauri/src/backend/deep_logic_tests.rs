@@ -67,7 +67,7 @@ fn quick_settings_preserve_schemas_and_validate_both_files_before_writing() {
             assert_eq!(parse_schema_list(&saved), vec!["rime_ice", "luna_pinyin"]);
             assert_eq!(detect_paging_keys(&saved), "comma_period");
             assert_eq!(detect_navigation_keys(&saved), "left_right");
-            let bindings = yaml_lookup(&saved, "key_binder/bindings").expect("bindings");
+            let bindings = yaml_lookup(&saved, "key_binder/bindings/+").expect("bindings");
             let bindings = bindings.as_sequence().expect("sequence");
             assert!(bindings.contains(&binding_value("has_menu", "Left", "Up")));
             assert!(bindings.contains(&binding_value("paging", "comma", "Page_Up")));
@@ -84,6 +84,85 @@ fn quick_settings_preserve_schemas_and_validate_both_files_before_writing() {
                 fs::read_to_string(user.join("default.custom.yaml")).expect("read"),
                 before
             );
+        },
+    );
+}
+
+#[test]
+fn quick_settings_migrate_legacy_bindings_with_preview_backup_and_schema_saves() {
+    isolated(
+        "quick_settings_migrate_legacy_bindings_with_preview_backup_and_schema_saves",
+        || {
+            let user = rime_user_dir().expect("user directory");
+            let original = "patch:\n  schema_list: [{schema: rime_ice}]\n  menu/page_size: 9\n  ascii_composer/switch_key/Shift_L: commit_code\n  ascii_composer/switch_key/Shift_R: commit_code\n  key_binder/bindings:\n    - {when: composing, accept: Tab, send: Shift+Right}\n    - {when: paging, accept: Up, send: Page_Up}\n    - {when: has_menu, accept: Down, send: Page_Down}\n";
+            let defaults = "key_binder:\n  bindings:\n    - {when: composing, accept: Tab, send: Shift+Right}\n    - {when: composing, accept: Shift+Tab, send: Shift+Left}\n";
+            fs::write(user.join("default.yaml"), defaults).expect("default bindings");
+            fs::write(user.join("default.custom.yaml"), original).expect("legacy settings");
+            fs::write(user.join("weasel.custom.yaml"), "patch: {}\n").expect("appearance fixture");
+            let preview = preview_quick_settings_sync(quick()).expect("preview migration");
+            assert_eq!(read_to_string(&user.join("default.custom.yaml")), original);
+            let loaded = save_quick_settings_sync(quick()).expect("save migration");
+            assert_eq!(loaded.paging_keys, "comma_period");
+            assert_eq!(loaded.navigation_keys, "left_right");
+            let saved = read_to_string(&user.join("default.custom.yaml"));
+            assert!(yaml_lookup(&saved, "key_binder/bindings").is_none());
+            let appended = yaml_lookup(&saved, "key_binder/bindings/+").expect("appended bindings");
+            assert!(appended
+                .as_sequence()
+                .expect("list")
+                .contains(&binding_value("composing", "Tab", "Shift+Right")));
+            assert_eq!(
+                preview.files[0].diff_lines,
+                build_text_diff(original, &saved)
+            );
+            assert_eq!(read_to_string(&user.join("default.yaml")), defaults);
+            assert!(list_backup_dirs(&user)
+                .expect("backups")
+                .iter()
+                .any(|backup| {
+                    read_to_string(&Path::new(&backup.path).join("default.custom.yaml")) == original
+                }));
+            for file in preview_quick_settings_sync(quick())
+                .expect("repeat preview")
+                .files
+            {
+                assert!(!file.changed, "{}: {:?}", file.name, file.diff_lines);
+            }
+
+            save_active_schema_list_sync(vec!["luna_pinyin".into(), "rime_ice".into()])
+                .expect("save schema list after migration");
+            let schema_saved = read_to_string(&user.join("default.custom.yaml"));
+            assert_eq!(
+                yaml_lookup(&schema_saved, "key_binder/bindings/+"),
+                Some(appended)
+            );
+
+            // The schema-management entry point must also migrate old files on its own.
+            fs::write(user.join("default.custom.yaml"), original).expect("restore old fixture");
+            let loaded = set_active_schema_sync("luna_pinyin".into()).expect("switch schema");
+            assert_eq!(loaded.paging_keys, "arrow_keys");
+            assert_eq!(loaded.navigation_keys, "up_down");
+            let saved = read_to_string(&user.join("default.custom.yaml"));
+            assert!(yaml_lookup(&saved, "key_binder/bindings").is_none());
+            assert!(yaml_lookup(&saved, "key_binder/bindings/+").is_some());
+        },
+    );
+}
+
+#[test]
+fn invalid_key_binding_append_does_not_modify_either_settings_file() {
+    isolated(
+        "invalid_key_binding_append_does_not_modify_either_settings_file",
+        || {
+            let user = rime_user_dir().expect("user directory");
+            let original = "patch:\n  key_binder/bindings/+: {__include: mine:/bindings}\n";
+            let weasel = "patch:\n  style/font_face: MyFont\n";
+            fs::write(user.join("default.custom.yaml"), original).expect("fixture");
+            fs::write(user.join("weasel.custom.yaml"), weasel).expect("fixture");
+            assert!(preview_quick_settings_sync(quick()).is_err());
+            assert!(save_quick_settings_sync(quick()).is_err());
+            assert_eq!(read_to_string(&user.join("default.custom.yaml")), original);
+            assert_eq!(read_to_string(&user.join("weasel.custom.yaml")), weasel);
         },
     );
 }

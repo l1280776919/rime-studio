@@ -53,3 +53,6 @@ pub(crate) use self::yaml_patch::*;
 
 #[cfg(test)]
 mod deep_logic_tests;
+
+#[cfg(test)]
+mod key_bindings_tests;

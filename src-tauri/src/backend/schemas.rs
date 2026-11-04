@@ -242,7 +242,10 @@ pub(crate) fn apply_default_custom_patch(
     patch: &mut serde_yaml::Mapping,
     config: &QuickSettingsConfig,
     schema_ids: &[String],
-) {
+) -> Result<(), RimeError> {
+    // Inspect the original patch before writing ownership markers, so a user's
+    // explicit replacement is not mistaken for a legacy Studio-generated list.
+    merge_key_binder_bindings(patch, managed_key_bindings(config))?;
     let switch_value = if config.switch_key == "shift" {
         "commit_code"
     } else {
@@ -265,7 +268,7 @@ pub(crate) fn apply_default_custom_patch(
         "ascii_composer/switch_key/Shift_R",
         yaml_str(switch_value),
     );
-    merge_key_binder_bindings(patch, managed_key_bindings(config));
+    Ok(())
 }
 
 pub(crate) fn merge_default_custom(
@@ -273,8 +276,8 @@ pub(crate) fn merge_default_custom(
     config: &QuickSettingsConfig,
     schema_ids: &[String],
 ) -> Result<String, RimeError> {
-    merge_custom_yaml(existing, |patch| {
-        apply_default_custom_patch(patch, config, schema_ids);
+    try_merge_custom_yaml(existing, |patch| {
+        apply_default_custom_patch(patch, config, schema_ids)
     })
 }
 

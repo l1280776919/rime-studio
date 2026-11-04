@@ -9,11 +9,12 @@ pub(crate) fn get_appearance_config_sync() -> Result<AppearanceConfig, RimeError
 }
 
 fn binding_accept_send(contents: &str) -> Vec<(String, String)> {
-    let Some(Value::Sequence(items)) = yaml_lookup(contents, "key_binder/bindings") else {
-        return Vec::new();
-    };
-    items
-        .iter()
+    ["key_binder/bindings", "key_binder/bindings/+"]
+        .into_iter()
+        .flat_map(|path| match yaml_lookup(contents, path) {
+            Some(Value::Sequence(items)) => items,
+            _ => Vec::new(),
+        })
         .filter_map(|item| {
             let mapping = item.as_mapping()?;
             Some((

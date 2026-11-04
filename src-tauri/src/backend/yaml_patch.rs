@@ -281,6 +281,16 @@ pub(crate) fn merge_custom_yaml<F>(existing: &str, apply: F) -> Result<String, R
 where
     F: FnOnce(&mut Mapping),
 {
+    try_merge_custom_yaml(existing, |patch| {
+        apply(patch);
+        Ok(())
+    })
+}
+
+pub(crate) fn try_merge_custom_yaml<F>(existing: &str, apply: F) -> Result<String, RimeError>
+where
+    F: FnOnce(&mut Mapping) -> Result<(), RimeError>,
+{
     let mut root = parse_yaml_mapping(existing)?;
     {
         let key = yaml_str("patch");
@@ -298,7 +308,7 @@ where
         let Some(Value::Mapping(patch)) = root.get_mut(&key) else {
             return Err(RimeError::YamlParseError("无法创建 patch 映射".to_string()));
         };
-        apply(patch);
+        apply(patch)?;
     }
 
     if existing.trim().is_empty() {
@@ -423,24 +433,89 @@ pub(crate) fn is_managed_binding(value: &Value) -> bool {
     })
 }
 
-pub(crate) fn merge_key_binder_bindings(patch: &mut Mapping, managed: Vec<Value>) {
+// Older quick-settings saves always wrote these settings and a complete paging
+// pair alongside a replacement list. Do not migrate an arbitrary hand-written
+// replacement: it may deliberately disable the inherited shortcuts.
+fn is_legacy_binding_override(patch: &Mapping, bindings: &[Value]) -> bool {
+    let shift_left = get_patch_path(patch, "ascii_composer/switch_key/Shift_L");
+    let shift_right = get_patch_path(patch, "ascii_composer/switch_key/Shift_R");
+    get_patch_path(patch, "schema_list").is_some_and(Value::is_sequence)
+        && get_patch_path(patch, "menu/page_size").is_some_and(Value::is_number)
+        && matches!(
+            shift_left.and_then(Value::as_str),
+            Some("commit_code" | "noop")
+        )
+        && shift_left == shift_right
+        && [("Up", "Down"), ("minus", "equal"), ("comma", "period")]
+            .into_iter()
+            .any(|(previous, next)| {
+                bindings.contains(&binding_value("paging", previous, "Page_Up"))
+                    && bindings.contains(&binding_value("has_menu", next, "Page_Down"))
+            })
+}
+
+fn remove_legacy_binding_override(patch: &mut Mapping) -> Result<(), RimeError> {
+    remove_patch_path(patch, "key_binder/bindings");
+    // A nested `key_binder: {}` (or a map of its remaining sibling settings)
+    // would itself replace the inherited section. Keep siblings as leaf patches.
+    if let Some(Value::Mapping(binder)) = patch.get(yaml_str("key_binder")).cloned() {
+        patch.remove(yaml_str("key_binder"));
+        for (key, value) in binder {
+            let key = mapping_key_string(&key).ok_or_else(|| {
+                RimeError::YamlParseError("key_binder 包含无法迁移的键，已中止写入".into())
+            })?;
+            patch
+                .entry(yaml_str(&format!("key_binder/{key}")))
+                .or_insert(value);
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn merge_key_binder_bindings(
+    patch: &mut Mapping,
+    managed: Vec<Value>,
+) -> Result<(), RimeError> {
+    let appended = match get_patch_path(patch, "key_binder/bindings/+") {
+        Some(Value::Sequence(items)) => items.clone(),
+        None | Some(Value::Null) => Vec::new(),
+        Some(_) => {
+            return Err(RimeError::YamlParseError(
+                "key_binder/bindings/+ 必须是列表，已中止写入以免覆盖自定义按键".into(),
+            ));
+        }
+    };
     let mut kept = Vec::new();
     if let Some(Value::Sequence(existing)) = get_patch_path(patch, "key_binder/bindings") {
-        kept.extend(
-            existing
-                .iter()
-                .filter(|item| !is_managed_binding(item))
-                .cloned(),
-        );
+        let user_bindings: Vec<_> = existing
+            .iter()
+            .filter(|item| !is_managed_binding(item))
+            .cloned()
+            .collect();
+        if is_legacy_binding_override(patch, existing) {
+            kept.extend(user_bindings);
+            remove_legacy_binding_override(patch)?;
+        } else {
+            set_patch_path(patch, "key_binder/bindings", Value::Sequence(user_bindings));
+        }
     }
+    // Rime gives later entries of the same key/condition precedence. Preserve
+    // the user's append order after any migrated replacement entries.
+    kept.extend(
+        appended
+            .into_iter()
+            .filter(|item| !is_managed_binding(item)),
+    );
     kept.extend(managed);
 
     if kept.is_empty() {
-        remove_patch_path(patch, "key_binder/bindings");
-        return;
+        remove_patch_path(patch, "key_binder/bindings/+");
+    } else {
+        // /+ preserves Tab, Shift+Tab and all other inherited bindings, including
+        // future changes to the user's or the distribution's default.yaml.
+        set_patch_path(patch, "key_binder/bindings/+", Value::Sequence(kept));
     }
-
-    set_patch_path(patch, "key_binder/bindings", Value::Sequence(kept));
+    Ok(())
 }
 
 pub(crate) fn collect_color_scheme_names(patch: &Mapping) -> Vec<String> {
@@ -574,8 +649,8 @@ patch:
     - {when: always, accept: Control+p, toggle: ascii_mode}
     - {when: paging, accept: Up, send: Page_Up}
 "#;
-        let rendered = merge_custom_yaml(existing, |patch| {
-            merge_key_binder_bindings(patch, vec![binding_value("paging", "minus", "Page_Up")]);
+        let rendered = try_merge_custom_yaml(existing, |patch| {
+            merge_key_binder_bindings(patch, vec![binding_value("paging", "minus", "Page_Up")])
         })
         .expect("merge bindings");
 
