@@ -201,8 +201,138 @@ fn appended_settings_round_trip_without_stale_managed_bindings() {
 
 #[test]
 fn malformed_append_patch_is_rejected_instead_of_discarded() {
-    for value in ["important", "{__include: other:/bindings}"] {
-        let existing = format!("patch:\n  key_binder/bindings/+: {value}\n");
-        assert!(merge_default_custom(&existing, &quick(), &["rime_ice".into()]).is_err());
+    for value in ["important", "{unknown: keep}"] {
+        for prefix in ["patch:\n", LEGACY_CUSTOM] {
+            let existing = format!("{prefix}  key_binder/bindings/+: {value}\n");
+            assert!(merge_default_custom(&existing, &quick(), &["rime_ice".into()]).is_err());
+        }
     }
+}
+
+#[test]
+fn referenced_append_lists_keep_their_reference_and_local_shortcuts() {
+    let existing = "patch:\n  key_binder/bindings/+:\n    __include: my_keys:/bindings\n    __patch: {\"@0/accept\": Control+y}\n    __append:\n      - {when: composing, accept: Tab, send: Page_Down}\n";
+    let saved = save(existing, &quick());
+    let appended = yaml_lookup(&saved, "key_binder/bindings/+").expect("append node");
+    let node = appended.as_mapping().expect("preserved reference");
+    assert_eq!(
+        node.get(yaml_str("__include")),
+        Some(&yaml_str("my_keys:/bindings"))
+    );
+    let original = yaml_lookup(existing, "key_binder/bindings/+").expect("original node");
+    assert_eq!(
+        node.get(yaml_str("__patch")),
+        original
+            .as_mapping()
+            .expect("reference")
+            .get(yaml_str("__patch"))
+    );
+    let local = node
+        .get(yaml_str("__append"))
+        .expect("local additions")
+        .as_sequence()
+        .expect("list");
+    assert_eq!(local[0], binding_value("composing", "Tab", "Page_Down"));
+    assert!(local.ends_with(&managed_key_bindings(&quick())));
+    assert_eq!(save(&saved, &quick()), saved);
+    let mut config = quick();
+    config.paging_keys = "arrow_keys".into();
+    let saved = save(&saved, &config);
+    assert_eq!(detect_paging_keys(&saved), "arrow_keys");
+}
+
+#[test]
+fn dynamic_appends_do_not_reorder_legacy_replacements() {
+    let existing = format!(
+        "{LEGACY_CUSTOM}  key_binder/bindings/+:\n    __include: my_keys:/bindings\n    __append:\n      __include: other_keys:/bindings\n"
+    );
+    let saved = save(&existing, &quick());
+    assert_eq!(
+        yaml_lookup(&saved, "key_binder/bindings"),
+        yaml_lookup(&existing, "key_binder/bindings")
+    );
+    let appended = yaml_lookup(&saved, "key_binder/bindings/+").expect("append node");
+    let node = appended.as_mapping().expect("reference");
+    let nested = node
+        .get(yaml_str("__append"))
+        .expect("nested append")
+        .as_mapping()
+        .expect("nested reference");
+    assert_eq!(
+        nested.get(yaml_str("__include")),
+        Some(&yaml_str("other_keys:/bindings"))
+    );
+    assert_eq!(
+        literal_binding_items(&appended),
+        managed_key_bindings(&quick())
+    );
+    assert_eq!(detect_paging_keys(&saved), "comma_period");
+    assert_eq!(save(&saved, &quick()), saved);
+}
+
+#[test]
+fn positional_overrides_keep_the_original_binding_positions() {
+    let existing = format!("{LEGACY_CUSTOM}  key_binder/bindings/@0/accept: Control+x\n");
+    let original = yaml_lookup(&existing, "key_binder/bindings");
+    let saved = save(&existing, &quick());
+    assert_eq!(yaml_lookup(&saved, "key_binder/bindings"), original);
+    assert_eq!(
+        yaml_lookup(&saved, "key_binder/bindings/@0/accept"),
+        Some(yaml_str("Control+x"))
+    );
+    assert_eq!(detect_paging_keys(&saved), "comma_period");
+    assert_eq!(save(&saved, &quick()), saved);
+}
+
+#[test]
+fn nested_compiler_directives_are_not_converted_to_literal_patch_paths() {
+    let mut root = parse_yaml_mapping(LEGACY_CUSTOM).expect("fixture");
+    let patch = root
+        .get_mut(yaml_str("patch"))
+        .expect("patch")
+        .as_mapping_mut()
+        .expect("map");
+    let bindings = patch
+        .remove(yaml_str("key_binder/bindings"))
+        .expect("bindings");
+    let mut binder = serde_yaml::Mapping::new();
+    binder.insert(yaml_str("__include"), yaml_str("my_keys:/key_binder"));
+    binder.insert(yaml_str("bindings"), bindings);
+    patch.insert(yaml_str("key_binder"), Value::Mapping(binder.clone()));
+    let saved = save(&serialize_custom_yaml(&root).expect("fixture"), &quick());
+    assert_eq!(
+        yaml_lookup(&saved, "key_binder"),
+        Some(Value::Mapping(binder))
+    );
+    assert!(yaml_lookup(&saved, "key_binder/__include").is_some());
+    let root = parse_yaml_mapping(&saved).expect("saved");
+    assert!(!root
+        .get(yaml_str("patch"))
+        .expect("patch")
+        .as_mapping()
+        .expect("map")
+        .contains_key(yaml_str("key_binder/__include")));
+}
+
+#[test]
+fn custom_bindings_with_extra_fields_are_not_claimed_as_managed() {
+    let custom: Value =
+        serde_yaml::from_str("{when: paging, accept: Up, send: Page_Up, note: keep}")
+            .expect("binding");
+    assert!(!is_managed_binding(&custom));
+    let saved = save("patch:\n  key_binder/bindings/+:\n    - {when: paging, accept: Up, send: Page_Up, note: keep}\n", &quick());
+    assert!(yaml_lookup(&saved, "key_binder/bindings/+")
+        .expect("bindings")
+        .as_sequence()
+        .expect("list")
+        .contains(&custom));
+}
+
+#[test]
+fn settings_readback_uses_conditions_and_prefers_the_latest_append_pair() {
+    let config = "patch:\n  key_binder/bindings:\n    - {when: composing, accept: Up, send: Page_Up}\n    - {when: composing, accept: Left, send: Up}\n  key_binder/bindings/+:\n    - {when: paging, accept: comma, send: Page_Up}\n    - {when: has_menu, accept: period, send: Page_Down}\n";
+    assert_eq!(detect_paging_keys(config), "comma_period");
+    assert_eq!(detect_navigation_keys(config), "up_down");
+    let config = format!("{LEGACY_CUSTOM}  key_binder/bindings/+:\n    - {{when: paging, accept: minus, send: Page_Up}}\n    - {{when: has_menu, accept: equal, send: Page_Down}}\n");
+    assert_eq!(detect_paging_keys(&config), "minus_equal");
 }

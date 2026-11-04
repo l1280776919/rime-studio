@@ -425,12 +425,76 @@ const MANAGED_BINDINGS: &[(&str, &str, &str)] = &[
 ];
 
 pub(crate) fn is_managed_binding(value: &Value) -> bool {
+    // Extra fields belong to the user or another tool; a matching send action
+    // alone is not sufficient evidence that Studio owns the whole entry.
+    if !value.as_mapping().is_some_and(|mapping| mapping.len() == 3) {
+        return false;
+    }
     let Some(signature) = binding_signature(value) else {
         return false;
     };
     MANAGED_BINDINGS.iter().any(|(when, accept, send)| {
         signature.0 == *when && signature.1 == *accept && signature.2 == *send
     })
+}
+
+/// Literal additions only: references are deliberately left to Rime to resolve.
+pub(crate) fn literal_binding_items(value: &Value) -> Vec<Value> {
+    match value {
+        Value::Sequence(items) => items.clone(),
+        Value::Mapping(node) => node
+            .get(yaml_str("__append"))
+            .map(literal_binding_items)
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    }
+}
+
+fn update_binding_additions(value: Value, managed: &[Value]) -> Result<Value, RimeError> {
+    match value {
+        Value::Null => Ok(Value::Sequence(managed.to_vec())),
+        Value::Sequence(items) => {
+            let mut kept: Vec<_> = items
+                .into_iter()
+                .filter(|item| !is_managed_binding(item))
+                .collect();
+            kept.extend_from_slice(managed);
+            Ok(Value::Sequence(kept))
+        }
+        Value::Mapping(mut node)
+            if ["__include", "__patch", "__append"]
+                .iter()
+                .any(|key| node.contains_key(yaml_str(key))) =>
+        {
+            // __include may resolve to a list. Rime's __append adds to that
+            // result without freezing the reference or rewriting __patch.
+            let local = node.remove(yaml_str("__append")).unwrap_or(Value::Null);
+            node.insert(
+                yaml_str("__append"),
+                update_binding_additions(local, managed)?,
+            );
+            Ok(Value::Mapping(node))
+        }
+        _ => Err(RimeError::YamlParseError(
+            "无法合并 key_binder/bindings/+ 的配置格式，已中止写入以免覆盖自定义按键".into(),
+        )),
+    }
+}
+
+fn has_binding_layout_dependencies(patch: &Mapping, appended: &Value) -> bool {
+    // Moving/reordering a replacement list would retarget positional patches.
+    // Dynamic maps can also depend on its order or introduce their own defaults.
+    let sensitive_keys = |mapping: &Mapping, prefix: &str| {
+        mapping
+            .keys()
+            .filter_map(Value::as_str)
+            .any(|key| key.starts_with("__") || key.starts_with(&format!("{prefix}/@")))
+    };
+    appended.is_mapping()
+        || sensitive_keys(patch, "key_binder/bindings")
+        || get_patch_path(patch, "key_binder")
+            .and_then(Value::as_mapping)
+            .is_some_and(|binder| sensitive_keys(binder, "bindings"))
 }
 
 // Older quick-settings saves always wrote these settings and a complete paging
@@ -476,44 +540,36 @@ pub(crate) fn merge_key_binder_bindings(
     patch: &mut Mapping,
     managed: Vec<Value>,
 ) -> Result<(), RimeError> {
-    let appended = match get_patch_path(patch, "key_binder/bindings/+") {
-        Some(Value::Sequence(items)) => items.clone(),
-        None | Some(Value::Null) => Vec::new(),
-        Some(_) => {
-            return Err(RimeError::YamlParseError(
-                "key_binder/bindings/+ 必须是列表，已中止写入以免覆盖自定义按键".into(),
-            ));
-        }
-    };
-    let mut kept = Vec::new();
+    let appended = get_patch_path(patch, "key_binder/bindings/+")
+        .cloned()
+        .unwrap_or(Value::Null);
+    // Validate before migration, so a malformed append cannot be discarded when
+    // a legacy replacement is converted into an additive list.
+    let mut appended = update_binding_additions(appended, &managed)?;
+    let preserve_layout = has_binding_layout_dependencies(patch, &appended);
     if let Some(Value::Sequence(existing)) = get_patch_path(patch, "key_binder/bindings") {
         let user_bindings: Vec<_> = existing
             .iter()
             .filter(|item| !is_managed_binding(item))
             .cloned()
             .collect();
-        if is_legacy_binding_override(patch, existing) {
-            kept.extend(user_bindings);
+        if !preserve_layout && is_legacy_binding_override(patch, existing) {
+            let mut combined = user_bindings;
+            combined.extend(literal_binding_items(&appended));
             remove_legacy_binding_override(patch)?;
-        } else {
+            appended = Value::Sequence(combined);
+        } else if !preserve_layout {
             set_patch_path(patch, "key_binder/bindings", Value::Sequence(user_bindings));
         }
     }
     // Rime gives later entries of the same key/condition precedence. Preserve
     // the user's append order after any migrated replacement entries.
-    kept.extend(
-        appended
-            .into_iter()
-            .filter(|item| !is_managed_binding(item)),
-    );
-    kept.extend(managed);
-
-    if kept.is_empty() {
+    if appended.as_sequence().is_some_and(Vec::is_empty) {
         remove_patch_path(patch, "key_binder/bindings/+");
     } else {
         // /+ preserves Tab, Shift+Tab and all other inherited bindings, including
         // future changes to the user's or the distribution's default.yaml.
-        set_patch_path(patch, "key_binder/bindings/+", Value::Sequence(kept));
+        set_patch_path(patch, "key_binder/bindings/+", appended);
     }
     Ok(())
 }

@@ -8,51 +8,60 @@ pub(crate) fn get_appearance_config_sync() -> Result<AppearanceConfig, RimeError
     read_appearance_config_checked(&user_dir)
 }
 
-fn binding_accept_send(contents: &str) -> Vec<(String, String)> {
-    ["key_binder/bindings", "key_binder/bindings/+"]
-        .into_iter()
-        .flat_map(|path| match yaml_lookup(contents, path) {
-            Some(Value::Sequence(items)) => items,
-            _ => Vec::new(),
-        })
-        .filter_map(|item| {
-            let mapping = item.as_mapping()?;
-            Some((
-                yaml_mapping_get(mapping, "accept")
-                    .and_then(yaml_value_to_string)
-                    .unwrap_or_default(),
-                yaml_mapping_get(mapping, "send")
-                    .and_then(yaml_value_to_string)
-                    .unwrap_or_default(),
-            ))
-        })
-        .collect()
+fn binding_layers(contents: &str) -> [Vec<Value>; 2] {
+    ["key_binder/bindings", "key_binder/bindings/+"].map(|path| {
+        yaml_lookup(contents, path)
+            .as_ref()
+            .map(literal_binding_items)
+            .unwrap_or_default()
+    })
+}
+
+fn last_binding_pair(items: &[Value], first: Value, second: Value) -> Option<usize> {
+    let first = items.iter().rposition(|item| item == &first)?;
+    let second = items.iter().rposition(|item| item == &second)?;
+    Some(first.max(second))
 }
 
 pub(crate) fn detect_paging_keys(contents: &str) -> String {
-    let bindings = binding_accept_send(contents);
-    if bindings
-        .iter()
-        .any(|(accept, send)| accept == "Up" && send == "Page_Up")
-    {
-        return "arrow_keys".to_string();
-    }
-    if bindings
-        .iter()
-        .any(|(accept, send)| accept == "minus" && send == "Page_Up")
-    {
-        return "minus_equal".to_string();
+    // Later additions override earlier keys of the same condition in Rime.
+    // Only infer a Studio setting from a complete pair with matching conditions.
+    for items in binding_layers(contents).iter().rev() {
+        let mode = [
+            ("Up", "Down", "arrow_keys"),
+            ("minus", "equal", "minus_equal"),
+            ("comma", "period", "comma_period"),
+        ]
+        .into_iter()
+        .filter_map(|(previous, next, mode)| {
+            last_binding_pair(
+                items,
+                binding_value("paging", previous, "Page_Up"),
+                binding_value("has_menu", next, "Page_Down"),
+            )
+            .map(|position| (position, mode))
+        })
+        .max_by_key(|(position, _)| *position);
+        if let Some((_, mode)) = mode {
+            return mode.to_string();
+        }
     }
     "comma_period".to_string()
 }
 
 pub(crate) fn detect_navigation_keys(contents: &str) -> String {
-    let bindings = binding_accept_send(contents);
-    if bindings
-        .iter()
-        .any(|(accept, send)| accept == "Left" && (send == "Up" || send == "Page_Up"))
-    {
-        return "left_right".to_string();
+    for items in binding_layers(contents).iter().rev() {
+        for (previous, next) in [("Up", "Down"), ("Page_Up", "Page_Down")] {
+            if last_binding_pair(
+                items,
+                binding_value("has_menu", "Left", previous),
+                binding_value("has_menu", "Right", next),
+            )
+            .is_some()
+            {
+                return "left_right".to_string();
+            }
+        }
     }
     "up_down".to_string()
 }

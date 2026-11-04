@@ -155,7 +155,7 @@ fn invalid_key_binding_append_does_not_modify_either_settings_file() {
         "invalid_key_binding_append_does_not_modify_either_settings_file",
         || {
             let user = rime_user_dir().expect("user directory");
-            let original = "patch:\n  key_binder/bindings/+: {__include: mine:/bindings}\n";
+            let original = "patch:\n  key_binder/bindings/+: {unknown: keep}\n";
             let weasel = "patch:\n  style/font_face: MyFont\n";
             fs::write(user.join("default.custom.yaml"), original).expect("fixture");
             fs::write(user.join("weasel.custom.yaml"), weasel).expect("fixture");
