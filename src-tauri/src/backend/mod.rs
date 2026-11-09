@@ -13,6 +13,7 @@ pub(crate) mod dictionary_parse;
 pub(crate) mod downloads;
 pub(crate) mod file_revision;
 pub(crate) mod fonts;
+pub(crate) mod fuzzy;
 pub(crate) mod http;
 pub(crate) mod installers;
 pub(crate) mod lua_plugins;
@@ -41,6 +42,7 @@ pub(crate) use self::dictionary_parse::*;
 pub(crate) use self::downloads::*;
 pub(crate) use self::file_revision::*;
 pub(crate) use self::fonts::*;
+pub(crate) use self::fuzzy::*;
 pub(crate) use self::http::*;
 pub(crate) use self::installers::*;
 pub(crate) use self::lua_plugins::*;
@@ -56,3 +58,6 @@ mod deep_logic_tests;
 
 #[cfg(test)]
 mod key_bindings_tests;
+
+#[cfg(test)]
+mod fuzzy_tests;

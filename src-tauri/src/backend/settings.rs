@@ -601,7 +601,7 @@ pub(crate) fn get_rime_ice_settings_sync() -> Result<RimeIceSettings, RimeError>
     let user_dir = rime_user_dir()?;
     let custom = read_user_custom_config(&user_dir, "rime_ice.custom.yaml")?;
     let detected_pairs = detect_fuzzy_pinyin_pairs(&custom);
-    let has_fuzzy = !detected_pairs.is_empty() || has_fuzzy_pinyin_patch(&custom);
+    let has_fuzzy = !detected_pairs.is_empty();
     Ok(RimeIceSettings {
         ascii_punct: parse_patch_bool(&custom, "switches/@1/reset", false),
         traditionalization: parse_patch_bool(&custom, "switches/@2/reset", false),
@@ -622,158 +622,6 @@ pub(crate) fn get_rime_ice_settings_sync() -> Result<RimeIceSettings, RimeError>
 pub(crate) fn has_lmdg_grammar_patch(contents: &str) -> bool {
     contents.contains("wanxiang-lts-zh-hans")
         || contents.contains("translator/contextual_suggestions")
-}
-
-pub(crate) fn has_fuzzy_pinyin_patch(contents: &str) -> bool {
-    contents.contains("speller/algebra/+")
-        || contents.contains("derive/^([zcs])h/$1/")
-        || contents.contains("derive/ang$/an/")
-}
-
-pub(crate) fn detect_fuzzy_pinyin_pairs(contents: &str) -> Vec<String> {
-    let mut pairs = Vec::new();
-    let has_zcs = contents.contains("derive/^([zcs])h/$1/");
-    if has_zcs
-        || contents.contains("derive/^z([^h])/zh$1/")
-        || contents.contains("derive/^zh/z/")
-        || contents.contains("derive/^z/zh/")
-    {
-        pairs.push("z_zh".to_string());
-    }
-    if has_zcs
-        || contents.contains("derive/^c([^h])/ch$1/")
-        || contents.contains("derive/^ch/c/")
-        || contents.contains("derive/^c/ch/")
-    {
-        pairs.push("c_ch".to_string());
-    }
-    if has_zcs
-        || contents.contains("derive/^s([^h])/sh$1/")
-        || contents.contains("derive/^sh/s/")
-        || contents.contains("derive/^s/sh/")
-    {
-        pairs.push("s_sh".to_string());
-    }
-    if contents.contains("derive/^l/n/") || contents.contains("derive/^n/l/") {
-        pairs.push("l_n".to_string());
-    }
-    if contents.contains("derive/^f/h/") || contents.contains("derive/^h/f/") {
-        pairs.push("f_h".to_string());
-    }
-    if contents.contains("derive/^r/l/") || contents.contains("derive/^l/r/") {
-        pairs.push("r_l".to_string());
-    }
-    if contents.contains("derive/ang$/an/") || contents.contains("derive/an$/ang/") {
-        pairs.push("an_ang".to_string());
-    }
-    if contents.contains("derive/eng$/en/") || contents.contains("derive/en$/eng/") {
-        pairs.push("en_eng".to_string());
-    }
-    if contents.contains("derive/in$/ing/") || contents.contains("derive/ing$/in/") {
-        pairs.push("in_ing".to_string());
-    }
-    if contents.contains("derive/ian$/iang/") || contents.contains("derive/iang$/ian/") {
-        pairs.push("ian_iang".to_string());
-    }
-    if contents.contains("derive/uan$/uang/") || contents.contains("derive/uang$/uan/") {
-        pairs.push("uan_uang".to_string());
-    }
-    if contents.contains("derive/ui$/uei/") {
-        pairs.push("ui_uei".to_string());
-    }
-    if contents.contains("derive/un$/uen/") {
-        pairs.push("un_uen".to_string());
-    }
-    if contents.contains("derive/iu$/iou/") {
-        pairs.push("iu_iou".to_string());
-    }
-    pairs
-}
-
-pub(crate) fn rules_for_fuzzy_pairs(pairs: &[String]) -> Vec<&'static str> {
-    let mut rules = Vec::new();
-    for pair in pairs {
-        match pair.as_str() {
-            "z_zh" => {
-                rules.push("derive/^z([^h])/zh$1/");
-                rules.push("derive/^zh/z/");
-            }
-            "c_ch" => {
-                rules.push("derive/^c([^h])/ch$1/");
-                rules.push("derive/^ch/c/");
-            }
-            "s_sh" => {
-                rules.push("derive/^s([^h])/sh$1/");
-                rules.push("derive/^sh/s/");
-            }
-            "l_n" => {
-                rules.push("derive/^l/n/");
-                rules.push("derive/^n/l/");
-            }
-            "f_h" => {
-                rules.push("derive/^f/h/");
-                rules.push("derive/^h/f/");
-            }
-            "r_l" => {
-                rules.push("derive/^r/l/");
-                rules.push("derive/^l/r/");
-            }
-            "an_ang" => {
-                rules.push("derive/ang$/an/");
-                rules.push("derive/an$/ang/");
-            }
-            "en_eng" => {
-                rules.push("derive/eng$/en/");
-                rules.push("derive/en$/eng/");
-            }
-            "in_ing" => {
-                rules.push("derive/in$/ing/");
-                rules.push("derive/ing$/in/");
-            }
-            "ian_iang" => {
-                rules.push("derive/ian$/iang/");
-                rules.push("derive/iang$/ian/");
-            }
-            "uan_uang" => {
-                rules.push("derive/uan$/uang/");
-                rules.push("derive/uang$/uan/");
-            }
-            "ui_uei" => {
-                rules.push("derive/ui$/uei/");
-            }
-            "un_uen" => {
-                rules.push("derive/un$/uen/");
-            }
-            "iu_iou" => {
-                rules.push("derive/iu$/iou/");
-            }
-            _ => {}
-        }
-    }
-    rules.dedup();
-    rules
-}
-
-pub(crate) fn fuzzy_pinyin_algebra_rules() -> Vec<&'static str> {
-    vec![
-        "derive/^([zcs])h/$1/",
-        "derive/^([zcs])([^h])/$1h$2/",
-        "derive/^l/n/",
-        "derive/^n/l/",
-        "derive/ang$/an/",
-        "derive/an$/ang/",
-        "derive/eng$/en/",
-        "derive/en$/eng/",
-        "derive/in$/ing/",
-        "derive/ing$/in/",
-        "derive/ian$/iang/",
-        "derive/iang$/ian/",
-        "derive/uan$/uang/",
-        "derive/uang$/uan/",
-        "derive/un$/uen/",
-        "derive/ui$/uei/",
-        "derive/iu$/iou/",
-    ]
 }
 
 #[derive(Clone, Copy)]
@@ -806,20 +654,11 @@ fn apply_lmdg_grammar_patch(patch: &mut serde_yaml::Mapping, enable: bool) {
     remove_patch_path(patch, "translator/max_homographs");
 }
 
-fn patch_has_our_fuzzy_rules(patch: &serde_yaml::Mapping) -> bool {
-    match get_patch_path(patch, "speller/algebra/+") {
-        Some(Value::Sequence(items)) => items.iter().any(|item| {
-            matches!(item, Value::String(value) if value.contains("derive/") || value.contains("derive/^"))
-        }),
-        _ => false,
-    }
-}
-
 pub(crate) fn apply_rime_ice_patch(
     patch: &mut serde_yaml::Mapping,
     settings: &RimeIceSettings,
     lmdg: LmdgPatchAction,
-) {
+) -> Result<(), RimeError> {
     let reset = |value: bool| Value::from(if value { 1 } else { 0 });
     set_patch_path(patch, "switches/@1/reset", reset(settings.ascii_punct));
     set_patch_path(
@@ -840,25 +679,14 @@ pub(crate) fn apply_rime_ice_patch(
         yaml_str(&settings.traditional_preset),
     );
 
-    if settings.fuzzy_pinyin {
-        let rules: Vec<&'static str> = match settings.fuzzy_pairs.as_deref() {
-            Some(pairs) if !pairs.is_empty() => rules_for_fuzzy_pairs(pairs),
-            _ => fuzzy_pinyin_algebra_rules(),
-        };
-        set_patch_path(
-            patch,
-            "speller/algebra/+",
-            Value::Sequence(rules.into_iter().map(yaml_str).collect()),
-        );
-    } else if patch_has_our_fuzzy_rules(patch) {
-        remove_patch_path(patch, "speller/algebra/+");
-    }
+    merge_fuzzy_pinyin_rules(patch, settings)?;
 
     match lmdg {
         LmdgPatchAction::Keep => {}
         LmdgPatchAction::Enable => apply_lmdg_grammar_patch(patch, true),
         LmdgPatchAction::Disable => apply_lmdg_grammar_patch(patch, false),
     }
+    Ok(())
 }
 
 pub(crate) fn merge_rime_ice_custom(
@@ -866,8 +694,8 @@ pub(crate) fn merge_rime_ice_custom(
     settings: &RimeIceSettings,
     lmdg: LmdgPatchAction,
 ) -> Result<String, RimeError> {
-    merge_custom_yaml(existing, |patch| {
-        apply_rime_ice_patch(patch, settings, lmdg);
+    try_merge_custom_yaml(existing, |patch| {
+        apply_rime_ice_patch(patch, settings, lmdg)
     })
 }
 
